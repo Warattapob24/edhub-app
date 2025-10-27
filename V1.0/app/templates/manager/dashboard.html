@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="h3">{{ title }}</h1>
+<p>รายการรายวิชาที่รอการตรวจสอบและอนุมัติจากคุณ</p>
+<hr>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+    <div class="alert alert-{{ 'danger' if category == 'error' else 'success' }}" role="alert">{{ message }}</div>
+    {% endfor %}
+{% endwith %}
+
+<table class="table table-hover align-middle">
+    <thead class="table-light">
+        <tr>
+            <th>ปี/เทอม</th>
+            <th>รายวิชา</th>
+            <th>ครูผู้สอน</th>
+            <th class="text-center">ดำเนินการ</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for course in courses %}
+        <tr>
+<td> <form action="{{ url_for('manager.approve_course_action', course_id=course.id) }}" method="POST" onsubmit="return confirm('คุณยืนยันที่จะดำเนินการนี้ใช่หรือไม่?');">
+    
+    <div class="mb-2">
+      <textarea name="comments" class="form-control form-control-sm" placeholder="เหตุผล (ถ้ามี)"></textarea>
+    </div>
+
+    <button type="submit" name="action" value="approve" class="btn btn-success btn-sm">
+      <i class="fas fa-check"></i> อนุมัติ
+    </button>
+    <button type="submit" name="action" value="reject" class="btn btn-danger btn-sm">
+      <i class="fas fa-times"></i> ตีกลับ
+    </button>
+
+  </form>
+
+</td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="4" class="text-center text-muted">ไม่มีรายการรออนุมัติ</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+{% block sidebar %}
+    {% include 'admin/_sidebar.html' %}
+{% endblock %}
+{% block main_content %}
+    <h2 class="bi bi-plus-lg"> {{ title }}</h2>
+    <hr>
+    <div class="card">
+        <div class="card-body">
+            <form action="" method="post" novalidate>
+                {{ form.hidden_tag() }}
+                <div class="mb-3">
+                    {{ form.name.label(class="form-label") }}
+                    {{ form.name(class="form-control") }}
+                    {% for error in form.name.errors %}<span class="text-danger small">{{ error }}</span>{% endfor %}
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        {{ form.academic_year.label(class="form-label") }}
+                        {{ form.academic_year(class="form-select") }}
+                        {% for error in form.academic_year.errors %}<span class="text-danger small">{{ error }}</span>{% endfor %}
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        {{ form.grade_level.label(class="form-label") }}
+                        {{ form.grade_level(class="form-select") }}
+                        {% for error in form.grade_level.errors %}<span class="text-danger small">{{ error }}</span>{% endfor %}
+                    </div>
+                </div>
+                <hr>
+                {{ form.submit(class="btn btn-success") }}
+                <a href="{{ url_for('admin.list_classrooms') }}" class="btn btn-secondary">ยกเลิก</a>
+            </form>
+        </div>
+    </div>
+{% endblock %}

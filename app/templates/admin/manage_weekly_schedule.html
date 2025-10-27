@@ -1,0 +1,696 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+
+{% block styles %}
+{{ super() }} {# Keep existing styles if any #}
+<link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet">
+<style>
+    .schedule-cell { vertical-align: top; min-width: 150px; }
+    .slot-card { font-size: 0.8rem; cursor: pointer; transition: all 0.2s ease; border-left-width: 4px; }
+    .slot-card.teaching { border-left-color: var(--bs-primary); }
+    .slot-card.activity { border-left-color: var(--bs-info); }
+    .slot-card:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+    .sticky-header { position: sticky; top: 0; z-index: 1020; background-color: var(--bs-body-bg); padding-bottom: 1rem; margin-bottom: 1rem; border-bottom: 1px solid var(--bs-border-color);}
+</style>
+{% endblock %}
+
+{% block sidebar %}
+    {% include 'admin/_sidebar.html' %}
+{% endblock %}
+
+{% block main_content %}
+{# --- [START] Added Sticky Header for Controls --- #}
+<div class="sticky-header">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2 class="bi bi-calendar3-week me-3 mb-0"> {{ title }}</h2>
+        {# --- Copy Button (Starts disabled) --- #}
+        <button type="button" class="btn btn-outline-secondary btn-sm"
+                data-bs-toggle="modal" data-bs-target="#copyScheduleModal"
+                id="copy-schedule-trigger-btn"
+                disabled>
+            <i class="bi bi-copy"></i> คัดลอกโครงสร้างจาก...
+        </button>
+    </div>
+    {# --- Semester Selection --- #}
+    <form method="GET" class="d-flex align-items-end">
+        <div class="flex-grow-1 me-2">
+            <label for="semester_id" class="form-label">เลือกภาคเรียน:</label>
+            <select name="semester_id" id="semester_id" class="form-select" onchange="this.form.submit()">
+                <option value="">-- เลือก --</option>
+                {% for sem in all_semesters_for_dropdown %}
+                <option value="{{ sem.id }}" {% if semester and sem.id == semester.id %}selected{% endif %}>
+                    {{ sem.academic_year.year }}/{{ sem.term }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+    </form>
+</div>
+{# --- [END] Sticky Header --- #}
+
+
+{% if semester %} {# Only show table if a semester is selected #}
+    <div class="table-responsive">
+        <table class="table table-bordered text-center">
+            {# ... Table Head ... #}
+             <thead class="table-light">
+                 <tr>
+                     <th class="align-middle">คาบที่ / เวลา</th>
+                     {% for grade in grade_levels %}
+                         <th>{{ grade.name }}</th>
+                     {% endfor %}
+                 </tr>
+             </thead>
+            <tbody>
+                {% for day in range(1, 6) %}
+                    {% set day_map = {1: "จันทร์", 2: "อังคาร", 3: "พุธ", 4: "พฤหัสบดี", 5: "ศุกร์"} %}
+                    <tr><td colspan="{{ grade_levels|length + 1 }}" class="table-group-divider fw-bold bg-light text-start p-2 ps-3">{{ day_map[day] }}</td></tr>
+                    {% for period in range(1, 11) %}
+                    <tr>
+                        <th class="align-middle">
+                            <small>คาบที่ {{ period }}</small><br>
+                            {# Find time from the first slot found for that day/period #}
+                            {% set time_display = None %}
+                            {% for grade in grade_levels %}
+                                {% set time_key = '[' ~ grade.id ~ ',' ~ day ~ ',' ~ period ~ ']' %}
+                                {% if slots_data.get(time_key) and not time_display %}
+                                    {% set time_display = slots_data.get(time_key) %}
+                                {% endif %}
+                            {% endfor %}
+                            {% if time_display %}
+                            <small class="text-muted fw-normal">{{ time_display.start_time[:5] }} - {{ time_display.end_time[:5] }}</small>
+                            {% endif %}
+                        </th>
+                        {% for grade in grade_levels %}
+                        <td class="schedule-cell p-1" data-day="{{ day }}" data-period="{{ period }}" data-grade-id="{{ grade.id }}">
+                            {% set slot_key = '[' ~ grade.id ~ ',' ~ day ~ ',' ~ period ~ ']' %}
+                            {% set slot = slots_data.get(slot_key) %}
+                            {% if slot %}
+                                <div class="card slot-card {{ 'teaching' if slot.is_teaching_period else 'activity' }}"
+                                     data-slot-id="{{ slot.id }}" data-bs-toggle="modal" data-bs-target="#slotModal">
+                                    <div class="card-body p-2">
+                                        <strong class="slot-name">{{ slot.activity_name or 'คาบเรียนปกติ' }}</strong><br>
+                                        <small class="text-muted slot-time">{{ slot.start_time[:5] }}-{{ slot.end_time[:5] }}</small>
+                                    </div>
+                                </div>
+                            {% else %}
+                                <button class="btn btn-sm btn-outline-secondary w-100 h-100 add-slot-btn" data-bs-toggle="modal" data-bs-target="#slotModal"><i class="bi bi-plus-lg"></i></button>
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% else %}
+    <div class="alert alert-info" role="alert">
+        กรุณาเลือกภาคเรียนด้านบนเพื่อจัดการตารางสอน
+    </div>
+{% endif %}
+
+
+{# --- Modal for adding/editing a single slot --- #}
+<div class="modal fade" id="slotModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+             {# ... content of slotModal (unchanged) ... #}
+            <div class="modal-header">
+                <h5 class="modal-title" id="slotModalTitle">เพิ่ม/แก้ไขคาบเรียน</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="slot-form">
+                <div class="modal-body">
+                    <input type="hidden" id="modal-slot-id">
+                    <p id="modal-slot-info" class="fw-bold"></p>
+
+                    <div class="mb-3" id="day-select-group">
+                        <label for="day-level-select" class="form-label">สำหรับวัน (เลือกได้หลายวัน)</label>
+                        <select id="day-select" multiple placeholder="เลือกวันที่..."></select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="start_time" class="form-label">เวลาเริ่มต้น</label>
+                        <input type="time" class="form-control" id="start_time" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="end_time" class="form-label">เวลาสิ้นสุด</label>
+                        <input type="time" class="form-control" id="end_time" required>
+                    </div>
+
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" role="switch" id="is_teaching_period" checked>
+                        <label class="form-check-label" for="is_teaching_period">เป็นคาบสอนปกติ</label>
+                    </div>
+
+                    <div class="mb-3" id="activity-name-group">
+                        <label for="activity_name" class="form-label">ชื่อกิจกรรม (ถ้าไม่ใช่คาบสอน)</label>
+                        <input type="text" class="form-control" id="activity_name" placeholder="เช่น พักกลางวัน, เคารพธงชาติ">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="grade-level-select" class="form-label">สำหรับระดับชั้น (เลือกได้หลายระดับ)</label>
+                        <select id="grade-level-select" multiple placeholder="เลือกระดับชั้น..."></select>
+                    </div>
+                </div>
+                <div class="modal-footer justify-content-between">
+                    <button type="button" id="delete-slot-btn" class="btn btn-danger" style="display: none;">ลบคาบเรียนนี้</button>
+                    <div>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+                        <button type="submit" class="btn btn-primary">บันทึก</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{# --- Modal for batch editing --- #}
+<div class="modal fade" id="batchSlotModal" tabindex="-1">
+     <div class="modal-dialog">
+        <div class="modal-content">
+             {# ... content of batchSlotModal (unchanged) ... #}
+            <div class="modal-header">
+                <h5 class="modal-title" id="batchSlotModalTitle">แก้ไขคาบเรียนเป็นกลุ่ม</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="batch-slot-form">
+                <div class="modal-body">
+                    <p id="batch-modal-info" class="fw-bold"></p>
+                    <div class="row">
+                        <div class="col-6">
+                            <label for="batch-period-start" class="form-label">ตั้งแต่คาบที่</label>
+                            <input type="number" id="batch-period-start" class="form-control" min="1" max="10" value="1">
+                        </div>
+                        <div class="col-6">
+                            <label for="batch-period-end" class="form-label">ถึงคาบที่</label>
+                            <input type="number" id="batch-period-end" class="form-control" min="1" max="10" value="10">
+                        </div>
+                    </div>
+                    <hr>
+                    <div class="mb-3"><label for="batch_start_time" class="form-label">เวลาเริ่มต้น</label><input type="time" class="form-control" id="batch_start_time" required></div>
+                    <div class="mb-3"><label for="batch_end_time" class="form-label">เวลาสิ้นสุด</label><input type="time" class="form-control" id="batch_end_time" required></div>
+                    <div class="form-check form-switch mb-3"><input class="form-check-input" type="checkbox" role="switch" id="batch_is_teaching_period" checked><label class="form-check-label" for="batch_is_teaching_period">เป็นคาบสอนปกติ</label></div>
+                    <div class="mb-3" id="batch-activity-name-group"><label for="batch_activity_name" class="form-label">ชื่อกิจกรรม</label><input type="text" class="form-control" id="batch_activity_name" placeholder="เช่น พักกลางวัน"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+                    <button type="submit" class="btn btn-primary">บันทึกทั้งหมด</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{# --- Modal for Copying Schedule --- #}
+<div class="modal fade" id="copyScheduleModal" tabindex="-1" aria-labelledby="copyScheduleModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="copyScheduleModalLabel">คัดลอกโครงสร้างตารางสอน</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="copyTargetSemesterId">
+                <p>คุณกำลังจะคัดลอกโครงสร้างตารางสอนมายัง:</p>
+                <p><strong id="copyTargetSemesterName">[ภาคเรียนเป้าหมาย]</strong></p>
+                <p class="text-danger small"><i class="bi bi-exclamation-triangle-fill"></i> การดำเนินการนี้จะลบโครงสร้างตารางสอนเดิม (ถ้ามี) ของภาคเรียนเป้าหมายทิ้งทั้งหมด</p>
+                <hr>
+                <div class="mb-3">
+                    <label for="copySourceSemester" class="form-label">เลือกภาคเรียนต้นทาง:</label>
+                    <select class="form-select" id="copySourceSemester" required>
+                        <option value="" disabled selected>-- กำลังโหลดภาคเรียน --</option>
+                        {# Options populated by JavaScript #}
+                    </select>
+                </div>
+                <div id="copy-schedule-status" class="mt-2 text-danger small"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+                <button type="button" class="btn btn-primary" id="confirmCopyScheduleBtn">
+                    <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                    ยืนยันการคัดลอก
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    console.log("DEBUG: DOMContentLoaded fired!");
+
+    // --- SHARED VARIABLES (Declare ONCE near the top) ---
+    const csrfToken = "{{ form.csrf_token._value() if form else '' }}"; // Get CSRF safely
+    const mainSemesterSelect = document.getElementById('semester_id');
+    const copyTriggerButton = document.getElementById('copy-schedule-trigger-btn');
+    const copyModalElement = document.getElementById('copyScheduleModal'); // *** ประกาศครั้งเดียวตรงนี้ ***
+    const slotModalEl = document.getElementById('slotModal');
+    const batchSlotModalEl = document.getElementById('batchSlotModal');
+    let semesterId = mainSemesterSelect ? mainSemesterSelect.value : null; // Current selected semester ID
+    const dayMap = {1: "จันทร์", 2: "อังคาร", 3: "พุธ", 4: "พฤหัสบดี", 5: "ศุกร์"};
+    let slotsData = {};
+    try {
+        // ใช้ slots_data ที่ส่งมาจาก Route ที่แก้ไขแล้ว
+        slotsData = JSON.parse('{{ slots_data|tojson|safe }}');
+    } catch (e) {
+        console.error("Error parsing slots_data:", e);
+        slotsData = {}; // Default to empty if parsing fails
+    }
+    let activeCell = null; // For single slot modal
+
+    // --- Initialize Modals (ONCE) ---
+    const slotModal = slotModalEl ? bootstrap.Modal.getOrCreateInstance(slotModalEl) : null;
+    const batchSlotModal = batchSlotModalEl ? bootstrap.Modal.getOrCreateInstance(batchSlotModalEl) : null;
+    const copyModal = copyModalElement ? bootstrap.Modal.getOrCreateInstance(copyModalElement) : null;
+
+    // --- Initialize TomSelect (ONCE) ---
+    let gradeSelect = null;
+    if (document.getElementById('grade-level-select')) {
+        gradeSelect = new TomSelect('#grade-level-select', {
+            plugins: ['remove_button'],
+            options: [ {% for grade in grade_levels %} {value: '{{ grade.id }}', text: '{{ grade.name }}'}, {% endfor %} ]
+        });
+    }
+    let daySelect = null;
+    if (document.getElementById('day-select')) {
+         daySelect = new TomSelect('#day-select', {
+            plugins: ['remove_button'],
+            options: [
+                {value: '1', text: 'วันจันทร์'}, {value: '2', text: 'วันอังคาร'},
+                {value: '3', text: 'วันพุธ'}, {value: '4', text: 'วันพฤหัสบดี'},
+                {value: '5', text: 'วันศุกร์'}
+            ]
+        });
+    }
+
+    // --- UTILITY FUNCTION ---
+    async function sendRequest(url, method, body = null) {
+        try {
+            const options = {
+                method: method,
+                headers: { 'X-CSRFToken': csrfToken }
+            };
+            if (body) {
+                options.headers['Content-Type'] = 'application/json';
+                options.body = JSON.stringify(body);
+            }
+            const response = await fetch(url, options);
+            if (!response.ok) {
+                 const errorText = await response.text();
+                 // Try parsing JSON first for structured error message
+                 let message = `Request failed with status ${response.status}`;
+                 try { message = JSON.parse(errorText).message || message; } catch (e) {}
+                 throw new Error(message);
+            }
+             const data = await response.json();
+             if (data.status === 'success') {
+                 Swal.fire({ icon: 'success', title: 'สำเร็จ!', text: data.message, timer: 1500, showConfirmButton: false })
+                     .then(() => window.location.reload());
+             } else {
+                 throw new Error(data.message || 'An unknown error occurred');
+             }
+        } catch (error) {
+             Swal.fire('เกิดข้อผิดพลาด', error.message || 'การเชื่อมต่อล้มเหลว', 'error');
+        }
+    }
+
+    // --- LOGIC FOR ENABLING/DISABLING COPY BUTTON ---
+    if (mainSemesterSelect && copyTriggerButton) {
+        const toggleCopyButton = () => {
+             // Disable if no semester is selected OR if slots already exist for the selected semester
+             const hasExistingSlots = semesterId ? Object.keys(slotsData).length > 0 : false;
+            copyTriggerButton.disabled = !semesterId; // Disable if no semester selected
+        };
+        toggleCopyButton(); // Initial check
+        mainSemesterSelect.addEventListener('change', () => {
+             semesterId = mainSemesterSelect.value; // Update global semesterId
+             toggleCopyButton();
+             // The page reloads via onchange="this.form.submit()", so no further action needed here
+        });
+    }
+
+    // --- LOGIC FOR SINGLE SLOT MODAL ---
+    if (slotModalEl && slotModal && gradeSelect && daySelect) {
+        slotModalEl.querySelector('#is_teaching_period')?.addEventListener('change', function() {
+            slotModalEl.querySelector('#activity-name-group').style.display = this.checked ? 'none' : 'block';
+        });
+
+        slotModalEl.addEventListener('show.bs.modal', function(event) {
+            // ... (โค้ดส่วนนี้เหมือนเดิม ไม่มีการเปลี่ยนแปลง)...
+             activeCell = event.relatedTarget.closest('.schedule-cell');
+             if (!activeCell) return;
+             const slotCard = activeCell.querySelector('.slot-card');
+             const form = document.getElementById('slot-form');
+             if (!form) return;
+             form.reset();
+             gradeSelect.clear();
+             daySelect.clear();
+             const deleteBtn = document.getElementById('delete-slot-btn');
+             if(deleteBtn) deleteBtn.style.display = 'none';
+             const day = activeCell.dataset.day;
+             const period = activeCell.dataset.period;
+             const gradeId = activeCell.dataset.gradeId;
+             const dayText = dayMap[day] || `Day ${day}`;
+             slotModalEl.querySelector('#slotModalTitle').textContent = slotCard ? 'แก้ไขคาบเรียน' : 'เพิ่มคาบเรียน';
+             slotModalEl.querySelector('#modal-slot-info').textContent = `วัน${dayText} - คาบที่ ${period}`;
+             const daySelectGroup = document.getElementById('day-select-group');
+             if (slotCard) {
+                 if(daySelectGroup) daySelectGroup.style.display = 'none';
+                 const slotId = slotCard.dataset.slotId;
+                 slotModalEl.querySelector('#modal-slot-id').value = slotId;
+                 if(deleteBtn) deleteBtn.style.display = 'block';
+                 const slotKey = `[${gradeId},${day},${period}]`;
+                 const slotData = slotsData[slotKey];
+                 if (slotData) {
+                     document.getElementById('start_time').value = slotData.start_time?.substring(0, 5) || '';
+                     document.getElementById('end_time').value = slotData.end_time?.substring(0, 5) || '';
+                     document.getElementById('is_teaching_period').checked = slotData.is_teaching_period !== false;
+                     document.getElementById('activity_name').value = slotData.activity_name || '';
+                     gradeSelect.setValue([gradeId]);
+                 }
+             } else {
+                 if(daySelectGroup) daySelectGroup.style.display = 'block';
+                 gradeSelect.setValue([gradeId]);
+                 daySelect.setValue([day]);
+             }
+             const teachingPeriodCheckbox = slotModalEl.querySelector('#is_teaching_period');
+             if(teachingPeriodCheckbox) teachingPeriodCheckbox.dispatchEvent(new Event('change'));
+        });
+
+        document.getElementById('slot-form')?.addEventListener('submit', function(e) {
+            // ... (โค้ดส่วนนี้เหมือนเดิม ไม่มีการเปลี่ยนแปลง)...
+            e.preventDefault();
+            const slotIdValue = document.getElementById('modal-slot-id')?.value;
+            const isEditMode = !!slotIdValue;
+            const selectedGradeIds = gradeSelect ? gradeSelect.getValue() : [];
+            const selectedDays = daySelect ? daySelect.getValue() : [];
+            const payload = [];
+            const currentPeriod = activeCell?.dataset.period;
+            if (!currentPeriod || !semesterId) {
+                 Swal.fire('ข้อผิดพลาด', 'ไม่สามารถระบุคาบเรียนหรือภาคเรียนปัจจุบันได้', 'error');
+                 return;
+            }
+            if (isEditMode) {
+                if (!selectedGradeIds.length || !activeCell?.dataset.day) {
+                     Swal.fire('ข้อผิดพลาด', 'ข้อมูลสำหรับแก้ไขไม่ครบถ้วน', 'error');
+                     return;
+                }
+                payload.push({
+                    slot_id: parseInt(slotIdValue), semester_id: parseInt(semesterId),
+                    day_of_week: parseInt(activeCell.dataset.day), period_number: parseInt(currentPeriod),
+                    grade_level_ids: selectedGradeIds.map(id => parseInt(id)),
+                    start_time: document.getElementById('start_time').value,
+                    end_time: document.getElementById('end_time').value,
+                    is_teaching_period: document.getElementById('is_teaching_period').checked,
+                    activity_name: document.getElementById('activity_name').value || null,
+                });
+                sendRequest("{{ url_for('admin.add_schedule_slot') }}", 'POST', payload);
+            } else {
+                if (!selectedDays.length || !selectedGradeIds.length) {
+                     Swal.fire('ข้อมูลไม่ครบ', 'กรุณาเลือกวันและระดับชั้นที่ต้องการเพิ่ม', 'warning');
+                     return;
+                }
+                for (const day of selectedDays) {
+                     for (const gradeId of selectedGradeIds) {
+                          payload.push({
+                              semester_id: parseInt(semesterId), day_of_week: parseInt(day),
+                              period_number: parseInt(currentPeriod), grade_level_ids: [parseInt(gradeId)],
+                              start_time: document.getElementById('start_time').value,
+                              end_time: document.getElementById('end_time').value,
+                              is_teaching_period: document.getElementById('is_teaching_period').checked,
+                              activity_name: document.getElementById('activity_name').value || null,
+                          });
+                     }
+                }
+                sendRequest("{{ url_for('admin.add_schedule_slot') }}", 'POST', payload);
+            }
+        });
+
+        document.getElementById('delete-slot-btn')?.addEventListener('click', function() {
+            // ... (โค้ดส่วนนี้เหมือนเดิม ไม่มีการเปลี่ยนแปลง)...
+           const slotId = slotModalEl.querySelector('#modal-slot-id')?.value;
+           if (!slotId) return;
+           Swal.fire({
+               title: 'ยืนยันการลบ?', text: "คุณแน่ใจหรือไม่ว่าต้องการลบคาบเรียนนี้?",
+               icon: 'warning', showCancelButton: true, confirmButtonColor: '#d33',
+               cancelButtonColor: '#6c757d', confirmButtonText: 'ใช่, ลบเลย', cancelButtonText: 'ยกเลิก'
+           }).then((result) => {
+               if (result.isConfirmed) {
+                   sendRequest(`{{ url_for('admin.delete_schedule_slot', slot_id=0) }}`.replace('0', slotId), 'DELETE');
+               }
+           });
+        });
+
+    } else {
+         console.warn("Single slot modal or its elements not found. Skipping listeners.");
+    }
+
+    // --- LOGIC FOR BATCH SLOT MODAL ---
+    if (batchSlotModalEl && batchSlotModal) {
+        // ... (โค้ดส่วนนี้เหมือนเดิม ไม่มีการเปลี่ยนแปลง)...
+         batchSlotModalEl.querySelector('#batch_is_teaching_period')?.addEventListener('change', function() {
+            batchSlotModalEl.querySelector('#batch-activity-name-group').style.display = this.checked ? 'none' : 'block';
+        });
+        document.getElementById('batch-slot-form')?.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const startPeriod = parseInt(document.getElementById('batch-period-start')?.value || 1);
+            const endPeriod = parseInt(document.getElementById('batch-period-end')?.value || 10);
+            const gradeId = batchSlotModalEl.dataset.gradeId;
+            const day = batchSlotModalEl.dataset.day;
+             if (!gradeId || !day || !semesterId) {
+                  Swal.fire('ข้อผิดพลาด', 'ไม่สามารถระบุวัน ระดับชั้น หรือภาคเรียนสำหรับแก้ไขเป็นกลุ่มได้', 'error');
+                  return;
+             }
+            const payload = [];
+            for (let period = startPeriod; period <= endPeriod; period++) {
+                 payload.push({
+                     semester_id: parseInt(semesterId), day_of_week: parseInt(day),
+                     period_number: period, grade_level_ids: [parseInt(gradeId)],
+                     start_time: document.getElementById('batch_start_time').value,
+                     end_time: document.getElementById('batch_end_time').value,
+                     is_teaching_period: document.getElementById('batch_is_teaching_period').checked,
+                     activity_name: document.getElementById('batch_activity_name').value || null,
+                 });
+            }
+             if (payload.length > 0) {
+                 sendRequest("{{ url_for('admin.add_schedule_slot') }}", 'POST', payload);
+             } else {
+                  Swal.fire('ไม่มีข้อมูล', 'ไม่พบคาบเรียนในช่วงที่เลือก', 'info');
+             }
+        });
+         document.querySelectorAll('.batch-edit-btn').forEach(button => {
+             button.addEventListener('click', function() {
+                  const day = this.dataset.day;
+                  const gradeId = this.dataset.gradeId;
+                  const gradeName = this.dataset.gradeName;
+                  const dayText = dayMap[day] || `Day ${day}`;
+                  if (batchSlotModalEl) {
+                       batchSlotModalEl.querySelector('#batch-modal-info').textContent = `แก้ไขเป็นกลุ่ม: วัน${dayText} - ${gradeName}`;
+                       batchSlotModalEl.dataset.day = day;
+                       batchSlotModalEl.dataset.gradeId = gradeId;
+                       document.getElementById('batch-slot-form')?.reset();
+                       const batchTeachingCheckbox = batchSlotModalEl.querySelector('#batch_is_teaching_period');
+                       if (batchTeachingCheckbox) batchTeachingCheckbox.dispatchEvent(new Event('change'));
+                       batchModal.show();
+                  }
+             });
+         });
+    } else {
+        console.warn("Batch slot modal not found. Skipping listeners.");
+    }
+
+    // --- LOGIC FOR COPY SCHEDULE MODAL (เอาโค้ดเดิมที่ถูกต้องกลับมา) ---
+    if (copyModalElement && copyModal) {
+        console.log("DEBUG: Attaching copy modal listener to:", copyModalElement);
+        const targetSemesterIdInput = document.getElementById('copyTargetSemesterId');
+        const targetSemesterNameEl = document.getElementById('copyTargetSemesterName');
+        const sourceSemesterSelect = document.getElementById('copySourceSemester');
+        const confirmCopyBtn = document.getElementById('confirmCopyScheduleBtn');
+        const copyStatusEl = document.getElementById('copy-schedule-status');
+        const copySpinner = confirmCopyBtn ? confirmCopyBtn.querySelector('.spinner-border') : null;
+
+        // Function to fetch semesters
+        async function fetchSemesters(targetSemesterIdStr) {
+            // ... (โค้ด fetchSemesters ที่ถูกต้องจากคำตอบก่อนหน้า) ...
+            const sourceSelect = document.getElementById('copySourceSemester');
+             if (!sourceSelect) {
+                  console.error("CRITICAL: Cannot find #copySourceSemester element inside fetchSemesters!");
+                  const statusEl = document.getElementById('copy-schedule-status');
+                  if(statusEl) statusEl.textContent = "Error: Select element not found!";
+                  return;
+             }
+             console.log("fetchSemesters target ID:", targetSemesterIdStr);
+             try {
+                 const response = await fetch("{{ url_for('admin.get_semesters_list_api') }}");
+                 if (!response.ok) throw new Error(`Failed to fetch semesters (${response.status})`);
+                 const semesters = await response.json();
+                 console.log("Fetched Semesters:", semesters);
+                 sourceSelect.length = 0;
+                 const placeholderOption = new Option('-- เลือกภาคเรียนต้นทาง --', '');
+                 placeholderOption.disabled = true;
+                 placeholderOption.selected = true;
+                 sourceSelect.add(placeholderOption);
+                 if (!targetSemesterIdStr) {
+                     console.error("Target Semester ID is missing!");
+                     placeholderOption.textContent = '-- ข้อผิดพลาด: ไม่พบ ID เป้าหมาย --';
+                     return;
+                 }
+                 let optionsAdded = 0;
+                 semesters.forEach(semester => {
+                     const semesterIdStr = semester.id.toString();
+                     if (semesterIdStr !== targetSemesterIdStr) {
+                         const newOption = new Option(semester.name, semester.id);
+                         try {
+                              sourceSelect.add(newOption);
+                              console.log(`Attempted to add option: ${semester.name} (ID: ${semester.id})`);
+                              optionsAdded++;
+                              const addedOptionExists = Array.from(sourceSelect.options).some(opt => opt.value === semester.id.toString());
+                              if (addedOptionExists) {
+                                   console.log(`Verified option added for ID: ${semester.id}`);
+                              } else {
+                                   console.error(`!!! FAILED to verify option addition for ID: ${semester.id}. Option not found after adding.`);
+                              }
+                         } catch (addError) {
+                              console.error(`Error adding option for ID ${semester.id}:`, addError);
+                         }
+                     } else {
+                         console.log(`Skipped target semester: ${semester.name} (ID: ${semester.id})`);
+                     }
+                 });
+                 if (optionsAdded === 0) {
+                      console.warn("No source semester options were added.");
+                      if (semesters.length <= 1){
+                           placeholderOption.textContent = '-- ไม่มีภาคเรียนอื่นให้เลือก --';
+                      } else {
+                           placeholderOption.textContent = '-- ไม่พบภาคเรียนต้นทาง (ตรวจสอบ Console) --';
+                      }
+                 }
+             } catch (error) {
+                 console.error("Error in fetchSemesters:", error);
+                  if(sourceSelect && sourceSelect.options.length > 0){
+                      sourceSelect.options[0].textContent = `-- Error: ${error.message} --`;
+                  } else if (sourceSelect) {
+                      sourceSelect.add(new Option(`-- Error: ${error.message} --`, '', true, true)).disabled = true;
+                  }
+             }
+        }
+
+        // Event listener when copy modal is shown (ใช้ async function)
+        copyModalElement.addEventListener('show.bs.modal', async (event) => { // *** ใช้ async function ***
+            console.log("DEBUG: Copy modal 'show.bs.modal' fired.");
+
+            const selectedSemesterId = mainSemesterSelect ? mainSemesterSelect.value : null;
+            const selectedSemesterText = mainSemesterSelect ? mainSemesterSelect.options[mainSemesterSelect.selectedIndex]?.text : 'N/A';
+
+            console.log("DEBUG: Target Semester ID for Copy:", selectedSemesterId);
+
+            if (!selectedSemesterId || selectedSemesterId === "") {
+                 console.error("DEBUG: Target semester ID is empty when trying to show copy modal!");
+                 event.preventDefault();
+                 Swal.fire('ข้อผิดพลาด', 'กรุณาเลือกภาคเรียนเป้าหมายในหน้าหลักก่อน', 'warning');
+                 return;
+            }
+
+            if(targetSemesterIdInput) targetSemesterIdInput.value = selectedSemesterId;
+            if(targetSemesterNameEl) targetSemesterNameEl.textContent = selectedSemesterText.trim();
+            if(sourceSemesterSelect) sourceSemesterSelect.innerHTML = '<option value="" disabled selected>-- กำลังโหลด... --</option>';
+            if(confirmCopyBtn) confirmCopyBtn.disabled = false;
+            if(copySpinner) copySpinner.classList.add('d-none');
+            if(copyStatusEl) copyStatusEl.textContent = '';
+
+            console.log(`DEBUG: About to call fetchSemesters for Copy Modal with target ID: ${selectedSemesterId}`);
+            try {
+                if (typeof fetchSemesters === 'function') {
+                    await fetchSemesters(selectedSemesterId); // *** ใช้ await ***
+                    console.log("DEBUG: fetchSemesters call for Copy Modal completed.");
+                } else {
+                     console.error("DEBUG: fetchSemesters function is not defined!");
+                     if (sourceSemesterSelect) sourceSemesterSelect.innerHTML = `<option value="" disabled selected>-- Error: fetchSemesters not found --</option>`;
+                }
+            } catch (error) {
+                console.error("DEBUG: Error during/after fetchSemesters call for Copy Modal:", error);
+                 if (sourceSemesterSelect) sourceSemesterSelect.innerHTML = `<option value="" disabled selected>-- Error during fetch call --</option>`;
+            }
+        });
+
+        // Event listener for copy confirmation button (ใช้ async function)
+        if (confirmCopyBtn) {
+            confirmCopyBtn.addEventListener('click', async () => { // *** ใช้ async function ***
+                 // ... (โค้ดส่วนยืนยันการคัดลอกเหมือนเดิม) ...
+                 console.log("DEBUG: Confirm Copy button clicked.");
+                const targetSemesterId = targetSemesterIdInput ? targetSemesterIdInput.value : null;
+                const sourceSemesterId = sourceSemesterSelect ? sourceSemesterSelect.value : null;
+                const targetName = targetSemesterNameEl ? targetSemesterNameEl.textContent : '[Unknown]';
+                if (!sourceSemesterId) {
+                     if(copyStatusEl) copyStatusEl.textContent = 'กรุณาเลือกภาคเรียนต้นทาง';
+                     return;
+                }
+                 if (!targetSemesterId) {
+                     if(copyStatusEl) copyStatusEl.textContent = 'ข้อผิดพลาด: ไม่พบภาคเรียนเป้าหมาย';
+                      return;
+                 }
+                Swal.fire({
+                    title: 'ยืนยันการคัดลอก?',
+                    html: `โครงสร้างตารางสอนเดิมของภาคเรียน <b class="text-danger">${targetName}</b> จะถูกลบทั้งหมด!`,
+                    icon: 'warning', showCancelButton: true, confirmButtonColor: '#3085d6',
+                    cancelButtonColor: '#d33', confirmButtonText: 'ใช่, ยืนยันการคัดลอก',
+                    cancelButtonText: 'ยกเลิก', target: copyModalElement
+                }).then(async (result) => {
+                    if (result.isConfirmed) {
+                        confirmCopyBtn.disabled = true;
+                        if(copySpinner) copySpinner.classList.remove('d-none');
+                        if(copyStatusEl) {
+                             copyStatusEl.textContent = 'กำลังคัดลอกโครงสร้าง...';
+                             copyStatusEl.classList.remove('text-danger', 'text-success');
+                        }
+                        try {
+                            const response = await fetch("{{ url_for('admin.copy_schedule_structure_api') }}", {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+                                body: JSON.stringify({
+                                    source_semester_id: parseInt(sourceSemesterId),
+                                    target_semester_id: parseInt(targetSemesterId)
+                                })
+                            });
+                            const result = await response.json();
+                            if (response.ok && result.status === 'success') {
+                                 if(copyStatusEl) {
+                                      copyStatusEl.textContent = 'คัดลอกสำเร็จ!';
+                                      copyStatusEl.classList.add('text-success');
+                                 }
+                                copyModal.hide();
+                                Swal.fire({ icon: 'success', title: 'คัดลอกสำเร็จ!', text: result.message || 'โครงสร้างตารางสอนถูกคัดลอกเรียบร้อยแล้ว', showConfirmButton: true })
+                                    .then(() => window.location.reload());
+                            } else {
+                                throw new Error(result.message || 'เกิดข้อผิดพลาดไม่ทราบสาเหตุ');
+                            }
+                        } catch (error) {
+                            console.error("Copy schedule error:", error);
+                             if(copyStatusEl) {
+                                 copyStatusEl.textContent = `ผิดพลาด: ${error.message}`;
+                                 copyStatusEl.classList.add('text-danger');
+                             }
+                            confirmCopyBtn.disabled = false;
+                            if(copySpinner) copySpinner.classList.add('d-none');
+                            Swal.fire({ title: 'เกิดข้อผิดพลาด', text: error.message, icon: 'error', target: copyModalElement });
+                        }
+                    }
+                });
+            });
+        } else {
+             console.warn("Confirm Copy button not found.");
+        }
+
+    } else {
+         console.warn("Copy schedule modal element or its Bootstrap instance not found. Skipping listeners.");
+    }
+
+}); // End DOMContentLoaded
+</script>
+{% endblock %}

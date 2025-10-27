@@ -1,0 +1,198 @@
+{# FILE: app/templates/teacher/_assessment_setup_tab.html (Complete and Corrected) #}
+
+{# --- MACRO for rendering selected topic trees --- #}
+{% macro render_selected_topics(topics) %}
+    <ul class="list-unstyled mb-0">
+        {% for topic in topics %}
+            <li data-topic-id="{{ topic.id }}">
+                {% if topic.is_selected %}
+                    <i class="bi bi-check-circle-fill text-success small"></i> {{ topic.name }}
+                {% else %}
+                    <span class="text-muted">{{ topic.name }}</span>
+                {% endif %}
+                
+                {% if topic.selected_children %}
+                    <div class="ps-3">
+                        {{ render_selected_topics(topic.selected_children) }}
+                    </div>
+                {% endif %}
+            </li>
+        {% endfor %}
+    </ul>
+{% endmacro %}
+
+<div class="card border-primary mb-4 shadow-sm">
+    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-calculator-fill me-2"></i>แผงสรุปคะแนนอัจฉริยะ</h5>
+        <button class="btn btn-light btn-sm" data-bs-toggle="modal" data-bs-target="#ratioTargetModal">
+            <i class="bi bi-bullseye me-1"></i> ตั้งเป้าหมายสัดส่วน
+        </button>
+    </div>
+    <div class="card-body">
+        <div class="row text-center">
+            <div class="col"><div class="h6 text-muted">คะแนนเก็บ</div><div id="summary-collected-score" class="display-6 fw-bold">0</div></div>
+            <div class="col" id="summary-midterm-row"><div class="h6 text-muted">สอบกลางภาค</div><div id="summary-midterm-score" class="display-6 fw-bold">0</div></div>
+            <div class="col" id="summary-final-row"><div class="h6 text-muted">สอบปลายภาค</div><div id="summary-final-score" class="display-6 fw-bold">0</div></div>
+            <div class="col border-start"><div class="h6 text-primary">คะแนนรวม</div><div id="summary-total-score" class="display-6 fw-bold text-primary">0</div></div>
+        </div>
+        <hr>
+        <div class="row small text-center" id="ratio-summary-container">
+            <div class="col"><strong>สัดส่วนตามจริง:</strong><span id="actual-ratio-display" class="font-monospace fw-bold d-block">-- : --</span></div>
+            <div class="col" id="target-ratio-col"><strong>สัดส่วนเป้าหมาย:</strong><span id="target-ratio-display" class="font-monospace fw-bold text-primary d-block">-- : --</span></div>
+            <div class="col" id="diff-ratio-col"><strong>ผลต่าง:</strong><span id="diff-ratio-display" class="font-monospace fw-bold d-block">-- : --</span></div>
+        </div>
+    </div>
+</div>
+
+<h4 class="mb-3">ผังการประเมินรายหน่วยการเรียนรู้</h4>
+<div class="accordion" id="learningUnitsAccordion">
+    {% for unit in units %}
+    <div class="accordion-item" id="unit-accordion-item-{{ unit.id }}">
+        <h2 class="accordion-header" id="heading-unit-{{ unit.id }}">
+            <button class="accordion-button {% if unit.id != active_unit_id %}collapsed{% endif %}" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-unit-{{ unit.id }}">
+                <strong>หน่วยการเรียนรู้ที่ {{ loop.index }}:</strong>&nbsp;{{ unit.title }}
+            </button>
+        </h2>
+        <div id="collapse-unit-{{ unit.id }}" class="accordion-collapse collapse {% if unit.id == active_unit_id %}show{% endif %}" data-bs-parent="#learningUnitsAccordion">
+            <div class="accordion-body">
+                <div class="row g-4">
+                    <div class="col-lg-6">
+                        <h6 class="border-bottom pb-2 mb-3"><i class="bi bi-pencil-square me-2"></i>A: รายการคะแนนเก็บ</h6>
+                        <div id="graded-items-list-{{ unit.id }}">
+                            {% if unit.graded_items %}
+                                <ul class="list-group list-group-flush">
+                                    {% for item in unit.graded_items|sort(attribute='id') %}
+                                    <li class="list-group-item d-flex justify-content-between align-items-center" id="graded-item-{{ item.id }}">
+                                        <div>
+                                            {{ item.name }}
+                                            <span class="badge bg-secondary">{{ item.dimension.code }}</span>
+                                            {% if item.indicator_type == 'SUMMATIVE' %}<span class="badge bg-danger">ปลายทาง</span>{% endif %}
+                                        </div>
+                                        <div>
+                                            <span class="fw-bold me-3 score-value">{{ item.max_score|int }}</span> คะแนน
+                                            <button class="btn btn-xs btn-outline-secondary edit-graded-item-btn" data-item-id="{{ item.id }}" data-bs-toggle="modal" data-bs-target="#addAssessmentItemModal" data-action="edit"><i class="bi bi-pencil"></i></button>
+                                            <button class="btn btn-xs btn-outline-danger delete-graded-item-btn" data-item-id="{{ item.id }}"><i class="bi bi-trash"></i></button>
+                                        </div>
+                                    </li>
+                                    {% endfor %}
+                                </ul>
+                            {% else %}
+                                <p class="text-muted fst-italic no-items-msg">(ยังไม่มีรายการคะแนนเก็บ)</p>
+                            {% endif %}
+                        </div>
+                        <button class="btn btn-sm btn-success mt-3" data-bs-toggle="modal" data-bs-target="#addAssessmentItemModal" data-unit-id="{{ unit.id }}" data-action="add">
+                            <i class="bi bi-plus-circle me-1"></i> เพิ่มรายการคะแนนเก็บ
+                        </button>
+                    </div>
+
+                    <div class="col-lg-6">
+                        <h6 class="border-bottom pb-2 mb-3"><i class="bi bi-clipboard-check me-2"></i>B: หัวข้อประเมินจากแม่แบบ</h6>
+                        
+                        {% for tpl in templates %}
+                            <div class="card mb-2">
+                                <div class="card-header bg-light p-2 d-flex justify-content-between align-items-center">
+                                    <span class="small fw-bold">{{ tpl.name }}</span>
+                                    <button class="btn btn-xs btn-outline-primary select-topics-btn" 
+                                            data-bs-toggle="modal" data-bs-target="#selectTopicsModal"
+                                            data-template-id="{{ tpl.id }}"
+                                            data-template-name="{{ tpl.name }}">
+                                        <i class="bi bi-check2-square"></i> เลือก
+                                    </button>
+                                </div>
+                                <div class="card-body p-2" id="selected-topics-{{ unit.id }}-{{ tpl.id }}">
+                                    {% set unit_data = units_assessment_data.get(unit.id, {}) %}
+                                    {% set structured_topics_for_unit = unit_data.get('structured_topics', {}) %}
+                                    {% set topics_for_this_template = structured_topics_for_unit.get(tpl.id, []) %}
+
+                                    {% if topics_for_this_template %}
+                                        {{ render_selected_topics(topics_for_this_template) }}
+                                    {% else %}
+                                        <p class="text-muted small mb-0 fst-italic">ยังไม่ได้เลือกหัวข้อ</p>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+
+                    <div class="col-12">
+                         <h6 class="border-bottom pb-2 mb-3 mt-3"><i class="bi bi-calendar-event me-2"></i>C: การสอบ</h6>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-check form-switch mb-2">
+                                  <input class="form-check-input exam-score-switch" type="checkbox" role="switch" id="midterm-switch-{{ unit.id }}" {% if unit.midterm_score is not none %}checked{% endif %}>
+                                  <label class="form-check-label" for="midterm-switch-{{ unit.id }}">เปิดใช้คะแนนสอบกลางภาค</label>
+                                </div>
+                                <div class="input-group input-group-sm mb-3">
+                                  <input type="number" class="form-control exam-score-input" data-exam-type="midterm" placeholder="กรอกคะแนน" value="{{ unit.midterm_score or '' }}" {% if unit.midterm_score is none %}disabled{% endif %}>
+                                  <span class="input-group-text">คะแนน</span>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check form-switch mb-2">
+                                  <input class="form-check-input exam-score-switch" type="checkbox" role="switch" id="final-switch-{{ unit.id }}" {% if unit.final_score is not none %}checked{% endif %}>
+                                  <label class="form-check-label" for="final-switch-{{ unit.id }}">เปิดใช้คะแนนสอบปลายภาค</label>
+                                </div>
+                                 <div class="input-group input-group-sm mb-3">
+                                  <input type="number" class="form-control exam-score-input" data-exam-type="final" placeholder="กรอกคะแนน" value="{{ unit.final_score or '' }}" {% if unit.final_score is none %}disabled{% endif %}>
+                                  <span class="input-group-text">คะแนน</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <p class="text-muted">ไม่มีหน่วยการเรียนรู้ในแผนการสอนนี้</p>
+    {% endfor %}
+</div>
+
+<div class="modal fade" id="addAssessmentItemModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title">เพิ่มรายการคะแนนเก็บ</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <form id="addAssessmentItemForm">
+        <div class="modal-body">
+            <input type="hidden" name="learning_unit_id" id="modal-learningUnitId">
+            <div class="mb-3"><label class="form-label">ชื่อรายการ</label><input type="text" class="form-control" name="name" required></div>
+            <div class="mb-3"><label class="form-label">คะแนนเต็ม</label><input type="number" class="form-control" name="max_score" required min="0"></div>
+            <div class="mb-3">
+                <label class="form-label">ประเภทการประเมิน</label>
+                <select class="form-select" name="assessment_dimension_id" required>
+                    <option selected disabled value="">-- เลือกประเภท --</option>
+                    {% for dim in dimensions %}<option value="{{ dim.id }}">{{ dim.code }} ({{ dim.name }})</option>{% endfor %}
+                </select>
+            </div>
+             <div class="mb-3">
+                <label class="form-label">ประเภทตัวชี้วัด</label>
+                <select class="form-select" name="indicator_type" required>
+                    <option value="FORMATIVE">ระหว่างทาง</option><option value="SUMMATIVE">ปลายทาง</option>
+                </select>
+            </div>
+        </div>
+        <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button><button type="submit" class="btn btn-primary">บันทึก</button></div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="ratioTargetModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title">ตั้งเป้าหมายสัดส่วนคะแนน</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <p class="text-muted">กำหนดสัดส่วนระหว่าง "คะแนนระหว่างภาค" และ "คะแนนปลายภาค"</p>
+        <div class="row">
+            <div class="col"><label class="form-label">ระหว่างภาค (%)</label><input type="number" id="target-mid-ratio" class="form-control" value="80"></div>
+            <div class="col"><label class="form-label">ปลายภาค (%)</label><input type="number" id="target-final-ratio" class="form-control" value="20"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-danger me-auto" id="deleteRatioTargetBtn">ล้างค่าเป้าหมาย</button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+        <button type="button" class="btn btn-primary" id="saveRatioTargetBtn">บันทึก</button>
+      </div>
+    </div>
+  </div>
+</div>

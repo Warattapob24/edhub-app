@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-3">
+        {% include 'admin/_admin_menu.html' %}
+    </div>
+    <div class="col-md-9">
+        <h1>แก้ไขห้องเรียน: {{ class_group.grade_level.name }} / ห้อง {{ class_group.room_number }}</h1>
+        <hr>
+        <form method="POST">
+            {{ form.hidden_tag() }}
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    {{ form.room_number.label(class="form-label") }}
+                    {{ form.room_number(class="form-control") }}
+                </div>
+                <div class="col-md-4 mb-3">
+                    {{ form.academic_year.label(class="form-label") }}
+                    {{ form.academic_year(class="form-control") }}
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-8 mb-3">
+                    {{ form.advisors.label(class="form-label") }}
+                    {{ form.advisors(class="form-select", size="8") }}
+                </div>
+            </div>
+            <div class="mt-2">
+                {{ form.submit_class(class="btn btn-primary") }}
+                <a href="{{ url_for('admin.manage_class_groups') }}" class="btn btn-secondary">ยกเลิก</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

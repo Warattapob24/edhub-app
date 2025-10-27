@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+
+{% block sidebar %}
+    {% include 'admin/_sidebar.html' %} {# Assuming admin sidebar template #}
+{% endblock %}
+
+{% block main_content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h2"><i class="bi bi-database-fill-gear me-2"></i> {{ title }}</h1>
+</div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+        {% for category, message in messages %}
+        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+        {% endfor %}
+    {% endif %}
+{% endwith %}
+
+
+<div class="row g-4">
+    {# --- Backup Section --- #}
+    <div class="col-md-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="bi bi-cloud-arrow-down-fill me-2"></i> สำรองข้อมูล (Backup)</h5>
+            </div>
+            <div class="card-body d-flex flex-column">
+                <p>คลิกปุ่มด้านล่างเพื่อสร้างไฟล์สำรองข้อมูล (.zip) ซึ่งจะประกอบด้วย:</p>
+                <ul>
+                    <li><strong>ฐานข้อมูลทั้งหมด:</strong> ข้อมูลผู้ใช้, รายวิชา, แผนการสอน, คะแนน, การเข้าเรียน ฯลฯ</li>
+                    <li><strong>ไฟล์ที่อัปโหลด:</strong> เช่น โลโก้, รูปโปรไฟล์ (ถ้ามี)</li>
+                </ul>
+                <p class="text-muted small">กระบวนการนี้อาจใช้เวลาสักครู่ขึ้นอยู่กับขนาดข้อมูล</p>
+                <div class="mt-auto text-center">
+                    <button id="backup-button" class="btn btn-lg btn-primary px-5">
+                        <span id="backup-spinner" class="spinner-border spinner-border-sm d-none me-2" role="status" aria-hidden="true"></span>
+                        <i class="bi bi-download me-1"></i> สร้างและดาวน์โหลดไฟล์สำรอง
+                    </button>
+                    <div id="backup-status" class="mt-2 small text-danger"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# --- Restore Section --- #}
+    <div class="col-md-6">
+        <div class="card shadow-sm h-100 border-danger">
+            <div class="card-header bg-danger text-white">
+                <h5 class="mb-0"><i class="bi bi-cloud-arrow-up-fill me-2"></i> กู้คืนข้อมูล (Restore)</h5>
+            </div>
+            <div class="card-body d-flex flex-column">
+                <div class="alert alert-danger fw-bold" role="alert">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i> คำเตือน! การกู้คืนข้อมูลจะเขียนทับข้อมูลปัจจุบันทั้งหมด โปรดดำเนินการด้วยความระมัดระวังสูงสุด!
+                </div>
+                <form id="restore-form" enctype="multipart/form-data">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <div class="mb-3">
+                        <label for="backup_zip" class="form-label">เลือกไฟล์สำรองข้อมูล (.zip): <span class="text-danger">*</span></label>
+                        <input class="form-control" type="file" id="backup_zip" name="backup_zip" accept=".zip" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="confirmation_text" class="form-label">พิมพ์ "CONFIRM RESTORE" เพื่อยืนยัน: <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="confirmation_text" name="confirmation_text" required autocomplete="off">
+                    </div>
+
+                    <div class="mt-auto d-grid">
+                        <button id="restore-button" type="submit" class="btn btn-lg btn-danger">
+                             <span id="restore-spinner" class="spinner-border spinner-border-sm d-none me-2" role="status" aria-hidden="true"></span>
+                            <i class="bi bi-upload me-1"></i> เริ่มการกู้คืนข้อมูล
+                        </button>
+                         <div id="restore-status" class="mt-2 small text-danger text-center"></div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const backupButton = document.getElementById('backup-button');
+    const backupSpinner = document.getElementById('backup-spinner');
+    const backupStatus = document.getElementById('backup-status');
+    const restoreForm = document.getElementById('restore-form');
+    const restoreButton = document.getElementById('restore-button');
+    const restoreSpinner = document.getElementById('restore-spinner');
+    const restoreStatus = document.getElementById('restore-status');
+    const confirmationInput = document.getElementById('confirmation_text');
+    const fileInput = document.getElementById('backup_zip');
+
+    // --- Backup Button Handler ---
+    backupButton.addEventListener('click', async function() {
+        backupButton.disabled = true;
+        backupSpinner.classList.remove('d-none');
+        backupStatus.textContent = 'กำลังสร้างไฟล์สำรองข้อมูล...';
+        backupStatus.classList.remove('text-success');
+        backupStatus.classList.add('text-danger'); // Default to error color initially
+
+        try {
+            // Use POST method for the backup creation API
+            const response = await fetch("{{ url_for('admin.backup_create_api') }}", { // Make sure 'admin.backup_create_api' is correct
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': document.querySelector('input[name="csrf_token"]').value
+                }
+            });
+
+            if (!response.ok) {
+                 // Try to get error message from JSON response body
+                let errorMsg = `Error ${response.status}: ${response.statusText}`;
+                try {
+                    const errorData = await response.json();
+                    errorMsg = errorData.message || errorMsg;
+                } catch (e) { /* Ignore if body is not JSON */ }
+                throw new Error(errorMsg);
+            }
+
+            // Handle successful file download
+            const blob = await response.blob();
+            const contentDisposition = response.headers.get('content-disposition');
+            let filename = 'edhub_backup.zip'; // Default filename
+            if (contentDisposition) {
+                const filenameMatch = contentDisposition.match(/filename="?(.+)"?/i);
+                if (filenameMatch && filenameMatch.length > 1) {
+                    filename = filenameMatch[1];
+                }
+            }
+
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            a.remove();
+
+            backupStatus.textContent = 'สร้างและดาวน์โหลดไฟล์สำเร็จ!';
+            backupStatus.classList.remove('text-danger');
+            backupStatus.classList.add('text-success');
+
+
+        } catch (error) {
+            console.error('Backup failed:', error);
+            backupStatus.textContent = `ผิดพลาด: ${error.message}`;
+            backupStatus.classList.add('text-danger');
+            backupStatus.classList.remove('text-success');
+
+        } finally {
+            backupButton.disabled = false;
+            backupSpinner.classList.add('d-none');
+        }
+    });
+
+    // --- Restore Form Handler ---
+    restoreForm.addEventListener('submit', async function(event) {
+        event.preventDefault(); // Prevent default form submission
+
+        if (confirmationInput.value.trim().toUpperCase() !== 'CONFIRM RESTORE') {
+            restoreStatus.textContent = 'ข้อความยืนยันไม่ถูกต้อง';
+            Swal.fire('ข้อผิดพลาด', 'กรุณาพิมพ์ "CONFIRM RESTORE" ให้ถูกต้องเพื่อยืนยัน', 'warning');
+            return;
+        }
+
+        if (!fileInput.files || fileInput.files.length === 0) {
+             restoreStatus.textContent = 'กรุณาเลือกไฟล์ .zip';
+             Swal.fire('ข้อผิดพลาด', 'กรุณาเลือกไฟล์ .zip ที่ต้องการกู้คืน', 'warning');
+             return;
+        }
+
+        // Confirmation Dialog
+        Swal.fire({
+            title: 'ยืนยันการกู้คืนข้อมูล?',
+            html: "<strong class='text-danger'>ข้อมูลปัจจุบันทั้งหมดจะถูกเขียนทับ!</strong><br/>การดำเนินการนี้ไม่สามารถย้อนกลับได้",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#dc3545',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: 'ยืนยันและเริ่มกู้คืน',
+            cancelButtonText: 'ยกเลิก'
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                // Proceed with restore
+                restoreButton.disabled = true;
+                restoreSpinner.classList.remove('d-none');
+                restoreStatus.textContent = 'กำลังกู้คืนข้อมูล (ห้ามปิดหน้านี้)...';
+                restoreStatus.classList.remove('text-success', 'text-danger');
+
+                const formData = new FormData(restoreForm);
+
+                try {
+                    const response = await fetch("{{ url_for('admin.backup_restore_api') }}", { // Make sure 'admin.backup_restore_api' is correct
+                        method: 'POST',
+                        body: formData
+                        // No 'Content-Type' header needed for FormData, browser sets it
+                    });
+
+                    const resultData = await response.json();
+
+                    if (!response.ok) {
+                        throw new Error(resultData.message || `Error ${response.status}`);
+                    }
+
+                    // Success
+                    restoreStatus.textContent = 'กู้คืนข้อมูลสำเร็จ!';
+                    restoreStatus.classList.add('text-success');
+                    Swal.fire(
+                        'สำเร็จ!',
+                        resultData.message || 'การกู้คืนข้อมูลเสร็จสมบูรณ์',
+                        'success'
+                    ).then(() => {
+                        // Optionally reload or redirect after success
+                         location.reload();
+                    });
+
+                } catch (error) {
+                    console.error('Restore failed:', error);
+                    restoreStatus.textContent = `ผิดพลาด: ${error.message}`;
+                    restoreStatus.classList.add('text-danger');
+                     Swal.fire(
+                        'เกิดข้อผิดพลาด!',
+                        `การกู้คืนข้อมูลล้มเหลว: ${error.message}`,
+                        'error'
+                    );
+                } finally {
+                    restoreButton.disabled = false;
+                    restoreSpinner.classList.add('d-none');
+                    // Clear form fields after attempt (optional)
+                    // restoreForm.reset();
+                }
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

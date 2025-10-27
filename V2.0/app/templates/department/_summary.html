@@ -1,0 +1,21 @@
+<table class="table table-sm">
+    <thead>
+        <tr>
+            <th>ครูผู้สอน</th>
+            <th class="text-end">หน่วยกิตรวม</th>
+            <th class="text-end">คาบ/สัปดาห์</th>
+        </tr>
+    </thead>
+    <tbody>
+        {# เรียงลำดับตามชื่อครู #}
+        {% for teacher in summary.values()|sort(attribute='name') %}
+            {% if teacher.credits > 0 %}
+            <tr>
+                <td>{{ teacher.name }}</td>
+                <td class="text-end">{{ "%.1f"|format(teacher.credits) }}</td>
+                <td class="text-end">{{ teacher.periods }}</td>
+            </tr>
+            {% endif %}
+        {% endfor %}
+    </tbody>
+</table>

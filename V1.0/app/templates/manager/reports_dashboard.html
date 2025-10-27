@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="h3">{{ title }}</h1>
+<p>เลือกห้องเรียนและประเภทเอกสารที่ต้องการพิมพ์</p>
+<hr>
+
+<div class="card">
+    <div class="card-header">
+        <strong>พิมพ์เอกสาร ปถ.02 (หลักฐานแสดงผลการเรียน)</strong>
+    </div>
+    <div class="card-body">
+        <form method="GET" action="#"> <div class="row g-3 align-items-end">
+                <div class="col-md-4">
+                    <label for="class_group_select" class="form-label">เลือกห้องเรียน</label>
+                    <select id="class_group_select" name="class_group_id" class="form-select" required>
+                        <option value="">-- กรุณาเลือก --</option>
+                        {% for class_group in class_groups %}
+                            <option value="{{ class_group.id }}">
+                                {{ class_group.grade_level.name }} / ห้อง {{ class_group.room_number }} (ปีการศึกษา {{ class_group.academic_year }})
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <button type="submit" class="btn btn-primary" disabled>สร้างรายงาน ปถ.02 (เร็วๆ นี้)</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}

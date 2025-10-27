@@ -1,0 +1,15 @@
+<div class="d-flex align-items-center mb-3">
+    <label for="attendance-classroom-selector" class="form-label me-2 mb-0"><strong>ห้องเรียน:</strong></label>
+    <select class="form-select w-auto" id="attendance-classroom-selector">
+        <option value="">-- กรุณาเลือกห้องเรียน --</option>
+        {% for data in classrooms_data %}
+            <option value="{{ data.classroom.id }}" data-course-id="{{ data.course_id }}">{{ data.classroom.name }}</option>
+        {% endfor %}
+    </select>
+</div>
+
+<div id="attendance-overview-container">
+    <div class="text-center p-5 text-muted">
+        กรุณาเลือกห้องเรียนเพื่อแสดงข้อมูลการเข้าเรียน
+    </div>
+</div>

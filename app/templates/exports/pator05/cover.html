@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <title>ปถ.05 หน้าปก - {{ course_info.subject_name }} - {{ course_info.classroom_name }}</title>
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap');
+    body { font-family: 'Sarabun', sans-serif; font-size: 11pt; line-height: 1.4; }
+    .container { width: 90%; margin: 20px auto;} /* [NEW] Added border and padding */
+    .header { text-align: center; }
+    .school-logo { max-height: 110px; max-width: 110px; } /* Slightly smaller logo */
+    h2 { font-size: 14pt; font-weight: bold; margin: 5px 0; }
+    h3 { font-size: 12pt; font-weight: bold; margin: 5px 0; }
+    .header p { font-size: 10pt; margin-bottom: 0; }
+
+    table.grade-summary { width: 100%; border-collapse: collapse; margin-top: 15px; }
+    table.grade-summary th, table.grade-summary td { border: 1px solid black; padding: 3px 5px; text-align: center; font-size: 10pt; }
+    table.grade-summary th { background-color: #f2f2f2; font-weight: bold; }
+
+    .info-section { margin-bottom: 15px; font-size: 10.5pt; border: none; } /* Remove border */
+    .info-section .label { font-weight: bold; }
+    .info-line { margin-bottom: 5px; clear: both;} /* Use clear:both for better line control */
+    .info-left { float: left; width: 48%; margin-right: 2%;} /* Use float for side-by-side */
+    .info-right { float: left; width: 48%; margin-left: 2%;}
+    .info-full { clear: both; margin-bottom: 5px;} /* For full width lines */
+
+    .signature-section {
+        margin-top: 25px;
+        font-size: 10pt;
+        border: 1px solid black;
+        padding: 15px;
+        border-top: 1px solid black; /* Keep the top line separator */
+    }
+    .signature-title { text-align: center; font-weight: bold; margin-bottom: 15px; }
+    .sig-block { /* Container for each signature line */
+        margin-bottom: 18px;
+        text-align: left;
+        padding-left: 10%;
+        /* [FIX] Use white-space nowrap to keep elements on one line */
+        white-space: nowrap;
+        overflow: hidden; /* Prevent overflow issues */
+    }
+    .sig-line-placeholder {
+        display: inline-block; /* Keep inline */
+        margin-right: 10px;
+        color: #555;
+    }
+    .sig-line-placeholder::before {
+        content: "ลงชื่อ..................................................";
+    }
+    .sig-position {
+        font-weight: bold;
+        display: inline-block; /* Keep inline */
+        /* [FIX] Remove block display */
+    }
+    .sig-name {
+        display: block; /* Name on new line */
+        margin-top: 2px;
+        padding-left: calc(10% + 20px); /* Indent name further than position */
+        white-space: normal; /* Allow name to wrap */
+    }
+    .approval-text { text-align: left; margin-left: 10%; margin-bottom: 5px; font-size: 9pt;}
+    .sig-checkbox { font-family: monospace; margin-right: 5px;}
+
+    /* Style for the centered Director signature */
+    .sig-director {
+        text-align: center;
+        margin-top: 25px;
+        white-space: normal; /* Allow director block to wrap normally */
+    }
+    .sig-director .sig-line-placeholder {
+        display: block;
+        width: 70%; /* Adjust width */
+        margin: 0 auto 5px auto;
+        white-space: nowrap; /* Keep placeholder line itself nowrap */
+    }
+    .sig-director .sig-position, .sig-director .sig-name {
+        display: block;
+        padding-left: 0;
+        white-space: normal; /* Allow name/pos to wrap */
+    }
+    .approval-text {text-align: left; margin-left: 15%; margin-bottom: 5px;} /* Align checkbox text */
+
+</style>
+</head>
+<body>
+    <div class="container">
+        <div style="position: absolute; top: 15px; right: 20px; font-size: 10pt; font-weight: bold;">
+            {# --- [FIX 7.3.20] Update Top Right Text Condition --- #}
+            {% set grade_level_short = course_info.grade_level.split(' ')[-1] if course_info.grade_level else '' %}
+            {% if grade_level_short in ['1', '2', '3'] %}
+                ปถ.05 : บ
+            {% elif grade_level_short in ['4', '5', '6'] %}
+                ปถ.05 : พ
+            {% else %}
+                ปถ.05 {# Fallback #}
+            {% endif %}
+        </div>        
+        <div class="header">
+            {% if school_info.school_logo_url %}
+                <img src="{{ school_info.school_logo_url }}" alt="School Logo" class="school-logo">
+            {% endif %}
+            <h3>แบบบันทึกผลการเรียนประจำรายวิชาระดับชั้นมัธยมศึกษา ตอนต้น</h3>
+            <h3>{{ school_info.get('school_name', 'โรงเรียน....') }}</h3>
+            <p class="label">
+                อำเภอ{{ school_info.get('school_district', '....') }} จังหวัด{{ school_info.get('school_province', '....') }} <br>
+                สังกัด{{ school_info.get('school_affiliation', '....') }}
+            </p>
+        </div>
+        <br>
+
+        {# [UPDATED] Info Section using Floats #}
+        <div class="info-section">
+             <div class="info-line">
+                <div class="info-left"><span class="label">ชั้นมัธยมศึกษาปีที่:</span> {{ course_info.grade_level.split(' ')[1] if course_info.grade_level else '....' }} <span class="label" style="margin-left: 15px;">ห้อง:</span> {{ course_info.classroom_name.split('/')[-1] if '/' in course_info.classroom_name else course_info.classroom_name }}</div>
+                <div class="info-right"><span class="label">ภาคเรียนที่:</span> {{ course_info.semester_term }} <span class="label" style="margin-left: 15px;">ปีการศึกษา:</span> {{ course_info.academic_year }}</div>
+             </div>
+            <div class="info-full">
+                <span class="label">{{ course_info.subject_group }}</span>
+                <span class="label" style="margin-left: 15px;">รหัสวิชา:</span> {{ course_info.subject_code }}
+                <span class="label" style="margin-left: 15px;">รายวิชา:</span> {{ course_info.subject_name }}
+            </div>
+             <div class="info-full">
+                <span class="label">เวลาเรียน:</span> {{ course_info.hours_per_week }} ชั่วโมง/สัปดาห์
+                <span class="label" style="margin-left: 15px;">จำนวน:</span> {{ course_info.credit }} หน่วยกิต
+            </div>
+             <div class="info-full">
+                <span class="label">ครูผู้สอนประจำวิชา:</span> {{ course_info.teachers | join(', ') }}
+            </div>
+            <div class="info-full">
+                 <span class="label">ครูที่ปรึกษา:</span> {{ course_info.advisors | join(', ') if course_info.advisors else '-' }}
+                 {# Example for multiple lines if needed in future
+                 {% if course_info.advisors %}
+                    {% for advisor in course_info.advisors %}
+                         <span class="label">ครูที่ปรึกษา {{ loop.index }}:</span> {{ advisor }}<br>
+                    {% endfor %}
+                {% else %}
+                     <span class="label">ครูที่ปรึกษา:</span> -
+                {% endif %}
+                 #}
+            </div>
+        </div>
+
+        <h3 style="font-size: 12pt;">สรุปผลการประเมิน</h3>
+        <table class="grade-summary"> {# Added class #}
+            <thead>
+                <tr>
+                    <th rowspan="2">จำนวนนักเรียน<br>ทั้งหมด (คน)</th>
+                    <th colspan="10">ระดับผลการเรียน</th>
+                </tr>
+                <tr>
+                    <th>4</th><th>3.5</th><th>3</th><th>2.5</th><th>2</th><th>1.5</th><th>1</th><th>0</th><th>ร</th><th>มส</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>{{ total_students }}</td>
+                    <td>{{ grade_stats.get('4', 0) }}</td>
+                    <td>{{ grade_stats.get('3.5', 0) }}</td>
+                    <td>{{ grade_stats.get('3', 0) }}</td>
+                    <td>{{ grade_stats.get('2.5', 0) }}</td>
+                    <td>{{ grade_stats.get('2', 0) }}</td>
+                    <td>{{ grade_stats.get('1.5', 0) }}</td>
+                    <td>{{ grade_stats.get('1', 0) }}</td>
+                    <td>{{ grade_stats.get('0', 0) }}</td>
+                    <td>{{ grade_stats.get('ร', 0) }}</td>
+                    <td>{{ grade_stats.get('มส', 0) }}</td>
+                </tr>
+                 <tr>
+                    <td>ร้อยละ</td>
+                    <td>{{ grade_stats_percent.get('4', 0.0) }}</td>
+                    <td>{{ grade_stats_percent.get('3.5', 0.0) }}</td>
+                    <td>{{ grade_stats_percent.get('3', 0.0) }}</td>
+                    <td>{{ grade_stats_percent.get('2.5', 0.0) }}</td>
+                    <td>{{ grade_stats_percent.get('2', 0.0) }}</td>
+                    <td>{{ grade_stats_percent.get('1.5', 0.0) }}</td>
+                    <td>{{ grade_stats_percent.get('1', 0.0) }}</td>
+                    <td>{{ grade_stats_percent.get('0', 0.0) }}</td>
+                    <td>{{ grade_stats_percent.get('ร', 0.0) }}</td>
+                    <td>{{ grade_stats_percent.get('มส', 0.0) }}</td>
+                </tr>
+            </tbody>
+        </table>
+
+        {# [UPDATED] Signature Section Layout with placeholders #}
+        <div class="signature-section">
+            <div class="signature-title">การอนุมัติผลการเรียน</div>
+            <p style="text-align:center; margin-bottom: 20px;">เสนอเพื่อพิจารณา</p>
+
+            <div class="sig-block">
+                <span class="sig-line-placeholder"></span>
+                <span class="sig-position">ครูผู้สอน</span>
+                {# Add name if needed later: <span class="sig-name">(..............................)</span> #}
+            </div>
+
+            <div class="sig-block">
+                <span class="sig-line-placeholder"></span>
+                <span class="sig-position">หัวหน้ากลุ่มสาระการเรียนรู้</span>
+                {# <span class="sig-name">(..............................)</span> #}
+            </div>
+
+            <div class="sig-block">
+                <span class="sig-line-placeholder"></span>
+                <span class="sig-position">เจ้าหน้าที่งานวัดผลประเมินผล</span>
+                {# <span class="sig-name">(..............................)</span> #}
+            </div>
+
+            <div class="sig-block">
+                <div class="approval-text">
+                    <span class="sig-checkbox">[ &nbsp; ]</span> เห็นควรอนุมัติ<br>
+                    <span class="sig-checkbox">[ &nbsp; ]</span> ไม่เห็นควรอนุมัติ เพราะ.......
+                </div>
+                <span class="sig-line-placeholder"></span>
+                <span class="sig-position">รองผู้อำนวยการฝ่ายบริหารวิชาการ</span>
+                <span class="sig-name" style="margin-left: 40px;">({{ school_info.get('deputy_director_full_name', '..............................') }})</span>
+            </div>
+
+            <div class="sig-director">
+                <p style="text-align: center; margin-bottom: 10px;">[ &nbsp; ] อนุมัติ &nbsp;&nbsp; [ &nbsp; ] ไม่อนุมัติ</p>
+                <div class="sig-line-placeholder"></div>
+                <span class="sig-position">ผู้อำนวยการสถานศึกษา</span>
+                <span class="sig-name">({{ school_info.get('director_full_name', '..............................') }})</span>
+            </div>
+        </div>
+
+    </div> {# End Container #}
+</body>
+</html>

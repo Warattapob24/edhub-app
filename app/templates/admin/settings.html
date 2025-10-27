@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+{% block sidebar %}
+    {% include 'admin/_sidebar.html' %}
+{% endblock %}
+
+{% block main_content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2><i class="bi bi-gear-fill"></i> {{ title }}</h2>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        {# [FIX] เพิ่ม enctype="multipart/form-data" สำหรับการอัปโหลดไฟล์ #}
+        <form method="POST" novalidate enctype="multipart/form-data">
+            {{ form.hidden_tag() }}
+            
+            {# --- ข้อมูลทั่วไป --- #}
+            <h5 class="mb-3 border-bottom pb-2">ข้อมูลทั่วไป</h5>
+            <div class="row">
+                <div class="col-md-12 mb-3">
+                    <label for="{{ form.school_name.id }}" class="form-label">{{ form.school_name.label }}</label>
+                    {{ form.school_name(class="form-control" + (" is-invalid" if form.school_name.errors else "")) }}
+                    {% for error in form.school_name.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="{{ form.school_district.id }}" class="form-label">{{ form.school_district.label }}</label>
+                    {{ form.school_district(class="form-control" + (" is-invalid" if form.school_district.errors else "")) }}
+                    {% for error in form.school_district.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+                </div>
+                 <div class="col-md-6 mb-3">
+                    <label for="{{ form.school_province.id }}" class="form-label">{{ form.school_province.label }}</label>
+                    {{ form.school_province(class="form-control" + (" is-invalid" if form.school_province.errors else "")) }}
+                    {% for error in form.school_province.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+                </div>
+            </div>
+             <div class="mb-3">
+                <label for="{{ form.school_affiliation.id }}" class="form-label">{{ form.school_affiliation.label }}</label>
+                {{ form.school_affiliation(class="form-control" + (" is-invalid" if form.school_affiliation.errors else "")) }}
+                {% for error in form.school_affiliation.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+            </div>
+            <div class="mb-3">
+                <label for="{{ form.school_address.id }}" class="form-label">{{ form.school_address.label }}</label>
+                {{ form.school_address(class="form-control" + (" is-invalid" if form.school_address.errors else ""), rows=3) }}
+                {% for error in form.school_address.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+            </div>
+
+            {# --- โลโก้ --- #}
+            <h5 class="mb-3 border-bottom pb-2 pt-3">โลโก้โรงเรียน</h5>
+            <div class="row align-items-center">
+                <div class="col-md-3 text-center mb-3 mb-md-0">
+                    {% if current_logo_url %}
+                        <img src="{{ current_logo_url }}" alt="School Logo" class="img-thumbnail" style="max-height: 150px; max-width: 100%;">
+                    {% else %}
+                        <div class="border rounded p-3 text-muted" style="height: 150px; display: flex; align-items: center; justify-content: center;">
+                            (ยังไม่มีโลโก้)
+                        </div>
+                    {% endif %}
+                </div>
+                <div class="col-md-9 mb-3">
+                     <label for="{{ form.school_logo.id }}" class="form-label">{{ form.school_logo.label }}</label>
+                    {{ form.school_logo(class="form-control" + (" is-invalid" if form.school_logo.errors else "")) }}
+                    <div class="form-text">อัปโหลดไฟล์ใหม่เพื่อแทนที่โลโก้เดิม (ถ้ามี)</div>
+                     {% for error in form.school_logo.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+                </div>
+            </div>
+
+            <hr class="mt-4">
+
+            <div class="text-end">
+                {{ form.submit(class="btn btn-primary px-4") }}
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

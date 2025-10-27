@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+
+{% block sidebar %}
+    {% include 'teacher/_sidebar.html' %}
+{% endblock %}
+{% block styles %}
+{{ super() }} {# Keep styles from base.html #}
+<style>
+    /* On small screens (Bootstrap's 'md' breakpoint and below) */
+    @media (max-width: 767.98px) {
+        /* Force the main content area to have no horizontal padding */
+        main.main-content {
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+            margin-left: 0 !important; /* Just in case */
+            margin-right: 0 !important; /* Just in case */
+        }
+        /* Add a little padding back to the grid container itself */
+        /* You might need to adjust the selector if your grid has a different class/id */
+        .row.row-cols-1 { /* Target the row specifically for mobile view */
+             padding-left: 0.5rem !important; /* Adjust as needed */
+             padding-right: 0.5rem !important; /* Adjust as needed */
+             margin-left: 0 !important;
+             margin-right: 0 !important;
+        }
+    }
+</style>
+{% endblock %}
+{% block main_content %}
+<div class="text-center mb-4">
+    <h1 class="h2"><i class="bi bi-calendar-event me-2"></i> ห้องเรียนวันนี้</h1>
+    <p class="text-muted mb-0">
+        วันที่ {{ today_formatted }}
+    </p>
+</div>
+
+{% if entries_with_next %}
+    <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-3">
+        {% for data in entries_with_next %} {% set entry = data.entry %} {% set next_entry_id = data.next_entry_id %}
+            <div class="col">
+                <div class="card h-100 shadow-sm">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="card-title mb-0 d-flex align-items-center flex-wrap">
+                            <i class="bi bi-clock-fill me-2"></i>
+                            <span>
+                                คาบที่ {{ entry.slot.period_number }} 
+                                <small>({{ entry.slot.start_time.strftime('%H:%M') }} - {{ entry.slot.end_time.strftime('%H:%M') }})</small>
+                            </span>
+                        </h5>
+                    </div>
+
+                    <div class="card-body d-flex flex-column">
+                        <h6 class="card-subtitle mb-2 text-dark">
+                            {{ entry.course.subject.subject_code }} - {{ entry.course.subject.name }}
+                        </h6>
+                        <div class="mt-2">
+                            <span class="badge bg-secondary mb-1"><i class="bi bi-people-fill me-1"></i> ห้องเรียน: {{ entry.course.classroom.name }}</span>
+                            {% if entry.course.room %}
+                                <br>
+                                <span class="badge bg-info text-dark"><i class="bi bi-geo-alt-fill me-1"></i> ห้อง: {{ entry.course.room.name }}</span>
+                            {% endif %}
+                        </div>
+
+                        <a href="{{ url_for('teacher.check_attendance', entry_id=entry.id, date=today.isoformat()) }}"
+                           class="btn btn-success mt-auto w-100 mt-3 d-none d-md-block">
+                            <i class="bi bi-person-check"></i> เข้าสู่ห้องเรียน / เช็คชื่อ
+                        </a>
+                        
+                        <a href="{{ url_for('teacher.mobile_entry', entry_id=entry.id, date=today.isoformat()) }}"
+                           class="btn btn-success mt-auto w-100 mt-3 d-block d-md-none">
+                            <i class="bi bi-phone-fill"></i> เปิดห้องเรียน (Mobile)
+                        </a>
+
+                        {% if next_entry_id %}
+                        <button class="btn btn-sm btn-outline-primary w-100 copy-attendance-btn"
+                                data-source-entry-id="{{ entry.id }}"
+                                data-target-entry-id="{{ next_entry_id }}"
+                                data-date="{{ today.isoformat() }}"
+                                title="คัดลอกข้อมูลเช็คชื่อจากคาบนี้ไปยังคาบถัดไป">
+                            <i class="bi bi-clipboard-plus-fill"></i> คัดลอกเช็คชื่อไปคาบถัดไป
+                        </button>
+                        {% endif %}
+                        
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+{% else %}
+    <div class="text-center text-muted py-5 mt-5">
+        <div class="mb-3">
+            <i class="bi bi-calendar-check-fill" style="font-size: 4rem;"></i>
+        </div>
+        <h4 class="mt-3">วันนี้ไม่มีคาบสอน</h4>
+        <p>คุณสามารถพักผ่อนหรือเตรียมการสอนสำหรับวันถัดไป</p>
+    </div>
+{% endif %}
+{% endblock %}
+{# --- START MODIFICATION: Add JavaScript for Copy Button --- #}
+{% block scripts %}
+{{ super() }}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script> {# Ensure SweetAlert is loaded #}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const copyButtons = document.querySelectorAll('.copy-attendance-btn');
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+
+    copyButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            const sourceId = this.dataset.sourceEntryId;
+            const targetId = this.dataset.targetEntryId;
+            const date = this.dataset.date;
+
+            Swal.fire({
+                title: 'ยืนยันการคัดลอก',
+                text: "ข้อมูลการเข้าเรียนจากคาบนี้จะถูกคัดลอกไปคาบถัดไป ต้องการดำเนินการต่อหรือไม่?",
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: 'ยืนยันคัดลอก',
+                cancelButtonText: 'ยกเลิก'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    // Show loading state
+                    Swal.fire({
+                        title: 'กำลังคัดลอก...',
+                        text: 'กรุณารอสักครู่',
+                        allowOutsideClick: false,
+                        didOpen: () => {
+                            Swal.showLoading();
+                        }
+                    });
+
+                    // Call the new API endpoint
+                    fetch("{{ url_for('teacher.copy_attendance_between_entries') }}", { // <<< NEW API URL
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': csrfToken
+                        },
+                        body: JSON.stringify({
+                            source_entry_id: sourceId,
+                            target_entry_id: targetId,
+                            date: date
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        Swal.fire(
+                            data.status === 'success' ? 'สำเร็จ!' : 'ผิดพลาด!',
+                            data.message,
+                            data.status // 'success' or 'error'
+                        );
+                    })
+                    .catch((error) => {
+                        console.error('Copy Error:', error);
+                        Swal.fire('ผิดพลาด!', 'การเชื่อมต่อล้มเหลว หรือเกิดข้อผิดพลาด', 'error');
+                    });
+                }
+            });
+        });
+    });
+});
+</script>
+{% endblock %}
+{# --- END MODIFICATION --- #}

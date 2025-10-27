@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+
+{% block sidebar %}
+    {% include 'admin/_sidebar.html' %}
+{% endblock %}
+
+{% block main_content %}
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="bi bi-person-check-fill me-2"></i>เลื่อนชั้นนักเรียนข้ามปีการศึกษา</h5>
+    </div>
+    <div class="card-body">
+        <div class="alert alert-warning" role="alert">
+            <h4 class="alert-heading">ข้อควรระวัง!</h4>
+            <p>การดำเนินการนี้จะทำการย้ายนักเรียนและครูที่ปรึกษาไปยังปีการศึกษาถัดไปตามเงื่อนไขที่กำหนด และ Flag นักเรียนที่อาจต้องซ้ำชั้น โปรดตรวจสอบให้แน่ใจว่าได้สร้างปีการศึกษาและห้องเรียนสำหรับปีการศึกษาปลายทางเรียบร้อยแล้ว</p>
+            <hr>
+            <p class="mb-0">การกระทำนี้ **ไม่สามารถย้อนกลับได้** โดยง่าย กรุณาสำรองข้อมูลก่อนดำเนินการ</p>
+        </div>
+
+        <form action="{{ url_for('admin.promote_students_page') }}" method="POST" class="mt-4">
+            {{ form.hidden_tag() }} {# CSRF Protection #}
+
+            <div class="row g-3 align-items-center">
+                <div class="col-md-5">
+                    <label for="source_year_id" class="form-label fs-5">จากปีการศึกษา:</label>
+                    <select class="form-select form-select-lg" id="source_year_id" name="source_year_id" required>
+                        <option value="" disabled selected>-- เลือกปีต้นทาง --</option>
+                        {% for year in academic_years %}
+                            <option value="{{ year.id }}">{{ year.year }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2 text-center pt-4">
+                    <i class="bi bi-arrow-right-circle-fill fs-1 text-primary"></i>
+                </div>
+                <div class="col-md-5">
+                    <label for="target_year_id" class="form-label fs-5">ไปยังปีการศึกษา:</label>
+                    <select class="form-select form-select-lg" id="target_year_id" name="target_year_id" required>
+                         <option value="" disabled selected>-- เลือกปีปลายทาง --</option>
+                        {% for year in academic_years %}
+                            <option value="{{ year.id }}">{{ year.year }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            {# Optional: Add inputs for promotion criteria here later #}
+
+            <hr class="my-4">
+
+            <button type="submit" class="btn btn-primary btn-lg w-100">
+                <i class="bi bi-arrow-right-square-fill me-2"></i>ดำเนินการเลื่อนชั้น
+            </button>
+        </form>
+    </div>
+
+    <div class="card-footer text-muted small">
+        <i class="bi bi-info-circle-fill"></i> โปรดตรวจสอบข้อมูลห้องเรียนในปีการศึกษาปลายทางให้ถูกต้องก่อนดำเนินการ
+    </div>
+</div>
+{% endblock %}

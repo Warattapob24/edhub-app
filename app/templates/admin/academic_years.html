@@ -1,0 +1,68 @@
+{# CHANGED: เปลี่ยนมาสืบทอดจาก base.html ตามสถาปัตยกรรมใหม่ #}
+{% extends "base.html" %}
+
+{% block title %}EdHub {{ title }}{% endblock %}
+
+{# ADDED: เรียกใช้ Sidebar ของ Admin ที่ถูกต้องเข้ามาใน block sidebar #}
+{% block sidebar %}
+    {% include 'admin/_sidebar.html' %}
+{% endblock %}
+
+{# CHANGED: เนื้อหาหลักทั้งหมดต้องย้ายมาอยู่ใน block 'main_content' #}
+{% block main_content %}
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2><i class="bi bi-calendar3"></i> {{ title }}</h2>
+        <div>
+            <a href="{{ url_for('admin.add_academic_year') }}" class="btn btn-primary"><i class="bi bi-plus-lg"></i> เพิ่มปีการศึกษาใหม่</a>
+            <a href="{{ url_for('admin.add_semester') }}" class="btn btn-info"><i class="bi bi-plus-circle-dotted"></i> เพิ่มภาคเรียนใหม่</a>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>ปีการศึกษา</th>
+                            <th>ภาคเรียน (คลิกเพื่อแก้ไข)</th>
+                            <th class="text-end">การกระทำ</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for year in years %}
+                        <tr>
+                            <td><strong>{{ year.year }}</strong></td>
+                            <td>
+                                {% for semester in year.semesters|sort(attribute='term') %}
+                                    <div class="d-flex justify-content-between align-items-center mb-1">
+                                        <span>
+                                            <a href="{{ url_for('admin.edit_semester', semester_id=semester.id) }}">เทอม {{ semester.term }}</a>
+                                            {% if semester.is_current %}<span class="badge bg-success ms-1">✅ปัจจุบัน</span>{% endif %}
+                                        </span>
+                                        <form action="{{ url_for('admin.delete_semester', semester_id=semester.id) }}" method="POST" class="d-inline" onsubmit="return confirm('ยืนยันการลบภาคเรียน? การกระทำนี้ไม่สามารถย้อนกลับได้');">
+                                            <button type="submit" class="btn btn-link text-danger p-0 ms-2" style="font-size: 0.8em;"><i class="bi bi-trash-fill"></i></button>
+                                        </form>
+                                    </div>
+                                {% else %}
+                                    <span class="text-muted">(ยังไม่มีภาคเรียน)</span>
+                                {% endfor %}
+                            </td>
+                            <td class="text-end">
+                                <a href="{{ url_for('admin.edit_academic_year', year_id=year.id) }}" class="btn btn-sm btn-warning"><i class="bi bi-pencil-fill"></i> แก้ไขปี</a>
+                                <form action="{{ url_for('admin.delete_academic_year', year_id=year.id) }}" method="POST" class="d-inline" onsubmit="return confirm('การลบปีการศึกษาจะลบภาคเรียนทั้งหมดที่เกี่ยวข้องด้วย! ยืนยันหรือไม่?');">
+                                    <button type="submit" class="btn btn-sm btn-danger"><i class="bi bi-trash-fill"></i> ลบปี</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="3" class="text-center">ยังไม่มีข้อมูลปีการศึกษา</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+{% endblock %}

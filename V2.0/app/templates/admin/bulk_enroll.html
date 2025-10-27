@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="h3">🛠️ จัดการนักเรียนเข้าห้องเรียน (Bulk Management)</h1>
+        {% if active_year %}
+            <span class="badge bg-primary fs-6">ปีการศึกษา: {{ active_year.year }}/{{ active_year.semester }}</span>
+        {% endif %}
+    </div>
+
+    <div class="card bg-light mb-4">
+        <div class="card-body">
+            <h5 class="card-title">ย้ายนักเรียนที่เลือก</h5>
+            <div class="row align-items-end">
+                <div class="col-md-8">
+                    <label for="targetClassroom" class="form-label">ไปที่ห้องเรียน:</label>
+                    <select id="targetClassroom" class="form-select">
+                        <option selected disabled>-- กรุณาเลือกห้องเรียนปลายทาง --</option>
+                        {% for grade in grade_levels %}
+                            <optgroup label="{{ grade.name }}">
+                                {% for classroom in grade.classrooms | sort(attribute='name') %}
+                                <option value="{{ classroom.id }}">{{ classroom.name }}</option>
+                                {% endfor %}
+                            </optgroup>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <button id="moveStudentsBtn" class="btn btn-primary w-100">ดำเนินการย้าย</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="accordion" id="gradeLevelsAccordion">
+        {% for grade in grade_levels %}
+        <div class="accordion-item">
+            <h2 class="accordion-header" id="heading-{{ grade.id }}">
+                <button class="accordion-button {% if not loop.first %}collapsed{% endif %}" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-{{ grade.id }}">
+                    <strong>{{ grade.name }}</strong>
+                </button>
+            </h2>
+            <div id="collapse-{{ grade.id }}" class="accordion-collapse collapse {% if loop.first %}show{% endif %}" data-bs-parent="#gradeLevelsAccordion">
+                <div class="accordion-body">
+                    {% for classroom in grade.classrooms | sort(attribute='name') %}
+                    <div class="card mb-3">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">ห้อง {{ classroom.name }}</h5>
+                            <span class="badge bg-secondary">จำนวน: {{ classroom.enrolled_students | length }} คน</span>
+                        </div>
+                        <div class="card-body p-0">
+                            <table class="table table-sm table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th class="text-center" style="width: 5%;"><input type="checkbox" class="form-check-input" onchange="toggleAll(this, '{{ classroom.id }}')"></th>
+                                        <th style="width: 20%;">Username</th>
+                                        <th>ชื่อ-นามสกุล</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for student in classroom.enrolled_students %}
+                                    <tr>
+                                        <td class="text-center"><input type="checkbox" class="form-check-input student-checkbox" data-classroom="{{ classroom.id }}" value="{{ student.id }}"></td>
+                                        <td>{{ student.username }}</td>
+                                        <td>{{ student.full_name }}</td>
+                                    </tr>
+                                    {% else %}
+                                    <tr>
+                                        <td colspan="3" class="text-center text-muted py-3">-- ยังไม่มีนักเรียนในห้องนี้ --</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function toggleAll(source, classroomId) {
+        const checkboxes = document.querySelectorAll(`.student-checkbox[data-classroom='${classroomId}']`);
+        for (const checkbox of checkboxes) {
+            checkbox.checked = source.checked;
+        }
+    }
+
+    document.getElementById('moveStudentsBtn').addEventListener('click', function() {
+        const selectedStudents = document.querySelectorAll('.student-checkbox:checked');
+        const studentIds = Array.from(selectedStudents).map(cb => cb.value);
+        const targetClassroomId = document.getElementById('targetClassroom').value;
+
+        if (studentIds.length === 0) {
+            alert('กรุณาเลือกนักเรียนที่ต้องการย้าย');
+            return;
+        }
+        if (targetClassroomId === '-- กรุณาเลือกห้องเรียนปลายทาง --') {
+            alert('กรุณาเลือกห้องเรียนปลายทาง');
+            return;
+        }
+
+        const payload = {
+            student_ids: studentIds,
+            target_classroom_id: targetClassroomId,
+            active_year_id: {{ active_year.id }}
+        };
+
+        fetch("{{ url_for('admin.api_bulk_enroll') }}", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                // รีโหลดหน้าเพื่อให้เห็นการเปลี่ยนแปลง
+                window.location.reload();
+            } else {
+                alert('เกิดข้อผิดพลาด: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('เกิดข้อผิดพลาดในการเชื่อมต่อ');
+        });
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+
+{% block sidebar %}
+    {% include 'admin/_sidebar.html' %}
+{% endblock %}
+
+{% block main_content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2>{{ title }}</h2>
+    <a href="{{ url_for('admin.list_semesters_for_timeslots') }}" class="btn btn-secondary">
+        <i class="bi bi-arrow-left"></i> กลับไปเลือกภาคเรียน
+    </a>
+</div>
+
+<div class="row">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 id="form-title" class="mb-0">เพิ่มคาบเรียนใหม่</h5>
+            </div>
+            <div class="card-body">
+                <form id="timeslot-form" method="POST">
+                    <input type="hidden" name="action" id="form-action" value="add">
+                    <input type="hidden" name="slot_id" id="form-slot-id">
+                    <div class="mb-3">
+                        <label for="period_number" class="form-label">คาบที่</label>
+                        <input type="number" class="form-control" id="period_number" name="period_number" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="start_time" class="form-label">เวลาเริ่มต้น</label>
+                        <input type="time" class="form-control" id="start_time" name="start_time" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="end_time" class="form-label">เวลาสิ้นสุด</label>
+                        <input type="time" class="form-control" id="end_time" name="end_time" required>
+                    </div>
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" role="switch" id="is_teaching_period" name="is_teaching_period" checked>
+                        <label class="form-check-label" for="is_teaching_period">เป็นคาบเรียนการสอน</label>
+                    </div>
+                    <div class="mb-3" id="activity-name-group" style="display: none;">
+                        <label for="activity_name" class="form-label">ชื่อกิจกรรม (เช่น พักกลางวัน)</label>
+                        <input type="text" class="form-control" id="activity_name" name="activity_name">
+                    </div>
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary">บันทึก</button>
+                        <button type="button" id="cancel-edit-btn" class="btn btn-outline-secondary" style="display: none;">ยกเลิกการแก้ไข</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-body">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>คาบที่</th>
+                            <th>เวลา</th>
+                            <th>ประเภท</th>
+                            <th>การกระทำ</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for slot in time_slots %}
+                        <tr>
+                            <td>{{ slot.period_number }}</td>
+                            <td>{{ slot.start_time.strftime('%H:%M') }} - {{ slot.end_time.strftime('%H:%M') }}</td>
+                            <td>
+                                {% if slot.is_teaching_period %}
+                                    <span class="badge bg-success">คาบสอน</span>
+                                {% else %}
+                                    <span class="badge bg-info">{{ slot.activity_name }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <button class="btn btn-sm btn-warning edit-btn" 
+                                        data-id="{{ slot.id }}"
+                                        data-period="{{ slot.period_number }}"
+                                        data-start="{{ slot.start_time.strftime('%H:%M') }}"
+                                        data-end="{{ slot.end_time.strftime('%H:%M') }}"
+                                        data-is-teaching="{{ 'true' if slot.is_teaching_period else 'false' }}"
+                                        data-activity="{{ slot.activity_name or '' }}">
+                                    <i class="bi bi-pencil-fill"></i> แก้ไข
+                                </button>
+                                <form method="POST" class="d-inline" onsubmit="return confirm('ยืนยันการลบ?');">
+                                    <input type="hidden" name="action" value="delete">
+                                    <input type="hidden" name="slot_id" value="{{ slot.id }}">
+                                    <button type="submit" class="btn btn-sm btn-danger"><i class="bi bi-trash-fill"></i> ลบ</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" class="text-center text-muted">ยังไม่มีการตั้งค่าคาบเรียน</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const teachingSwitch = document.getElementById('is_teaching_period');
+        const activityGroup = document.getElementById('activity-name-group');
+        const activityInput = document.getElementById('activity_name');
+
+        function toggleActivityField() {
+            if (teachingSwitch.checked) {
+                activityGroup.style.display = 'none';
+                activityInput.required = false;
+            } else {
+                activityGroup.style.display = 'block';
+                activityInput.required = true;
+            }
+        }
+        teachingSwitch.addEventListener('change', toggleActivityField);
+
+        const form = document.getElementById('timeslot-form');
+        const formTitle = document.getElementById('form-title');
+        const actionInput = document.getElementById('form-action');
+        const slotIdInput = document.getElementById('form-slot-id');
+        const cancelBtn = document.getElementById('cancel-edit-btn');
+
+        document.querySelectorAll('.edit-btn').forEach(button => {
+            button.addEventListener('click', function() {
+                formTitle.textContent = 'แก้ไขคาบเรียน';
+                actionInput.value = 'edit';
+                slotIdInput.value = this.dataset.id;
+
+                document.getElementById('period_number').value = this.dataset.period;
+                document.getElementById('start_time').value = this.dataset.start;
+                document.getElementById('end_time').value = this.dataset.end;
+
+                const isTeaching = this.dataset.isTeaching === 'true';
+                teachingSwitch.checked = isTeaching;
+                activityInput.value = this.dataset.activity;
+
+                toggleActivityField();
+                cancelBtn.style.display = 'block';
+                window.scrollTo(0, 0);
+            });
+        });
+
+        cancelBtn.addEventListener('click', function() {
+            formTitle.textContent = 'เพิ่มคาบเรียนใหม่';
+            actionInput.value = 'add';
+            form.reset();
+            teachingSwitch.checked = true;
+            toggleActivityField();
+            this.style.display = 'none';
+        });
+    });
+</script>
+{% endblock %}

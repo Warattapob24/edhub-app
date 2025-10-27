@@ -1,0 +1,273 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+{% block sidebar %}
+    {% include 'grade_level_head/_sidebar.html' %}
+{% endblock %}
+
+{% block main_content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="h2"><i class="bi bi-inbox-fill me-2"></i> {{ title }}</h1>
+    </div>
+<div class="card shadow-sm">
+    <div class="card-body">
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center bg-light">
+                <h6 class="mb-0">ภาพรวมผลการประเมินทั้งหมด</h6>
+                {% if assessment_stats|length > 1 %}<select class="form-select form-select-sm w-auto" id="chart-template-selector">
+                    {% for stat in assessment_stats.values() %}<option value="{{ stat.id }}">{{ stat.name }}</option>{% endfor %}
+                </select>{% endif %}
+            </div>
+            <div class="card-body" style="min-height: 400px; max-height: 50vh;"><canvas id="assessmentChart"></canvas></div>
+        </div>    
+    <div>
+        <button class="btn btn-lg btn-primary" id="forward-all-btn" {% if total_pending == 0 %}disabled{% endif %}>
+            <i class="bi bi-send-check-fill me-2"></i> ส่งต่อทั้งหมดให้ฝ่ายวิชาการ ({{ total_pending }} คน)
+        </button>
+    </div>
+</div>
+
+{% if records_by_classroom %}
+    {% if total_pending > 0 %}
+    <div class="card shadow-sm mb-5">
+        <div class="card-header"><h5 class="mb-0">ภาพรวมผลการประเมินที่รอตรวจสอบ</h5></div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <h6>ตารางสรุป</h6>
+                    <table class="table table-sm table-bordered">
+                        <thead class="table-light">
+                            <tr>
+                                <th>หัวข้อ</th>
+                                {% for label in chart_labels %}<th class="text-center">{{ label }}</th>{% endfor %}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for topic, distribution in stats_data.items() %}
+                            <tr>
+                                <td>{{ topic }}</td>
+                                {% for label in chart_labels %}<td class="text-center">{{ distribution.get(label, 0) }}</td>{% endfor %}
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="col-md-6"><canvas id="assessmentChart"></canvas></div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="accordion" id="classroomAccordion">
+    {% for classroom_name, data in records_by_classroom|dictsort %}
+        <div class="accordion-item">
+            <h2 class="accordion-header">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-{{ classroom_name|replace('/', '-') }}">
+                    <strong>ห้องเรียน {{ classroom_name }}</strong>
+                    {% if data.pending %}<span class="badge bg-primary rounded-pill ms-3">{{ data.pending|length }} รายการรอตรวจสอบ</span>{% endif %}
+                </button>
+            </h2>
+            <div id="collapse-{{ classroom_name|replace('/', '-') }}" class="accordion-collapse collapse" data-bs-parent="#classroomAccordion">
+                <div class="accordion-body p-0">
+                    {% if data.pending %}
+                    <div class="table-responsive"><table class="table table-hover align-middle mb-0">
+                        <thead class="table-light"><tr><th class="ps-3">นักเรียน</th><th>ผู้ส่ง</th><th class="text-end pe-3">การกระทำ</th></tr></thead>
+                        <tbody>
+                            {% for record, enrollment in data.pending %}
+                            <tr>
+                                <td class="ps-3">{{ enrollment.roll_number }}. {{ record.student.full_name }}</td>
+                                <td>{{ record.advisor.full_name }}</td>
+                                <td class="text-end pe-3"><button class="btn btn-sm btn-outline-primary review-btn" data-record-id="{{ record.id }}" data-student-name="{{ record.student.full_name }}" data-bs-toggle="modal" data-bs-target="#reviewModal">ตรวจสอบ</button></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table></div>
+                    {% endif %}
+                    {% if data.forwarded %}
+                    <div class="p-3"><h6 class="text-info small"><i class="bi bi-send-check"></i> รายการที่ส่งต่อไปแล้ว</h6><ul class="list-group list-group-flush">
+                    {% for record, enrollment in data.forwarded %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center text-muted ps-1">{{ enrollment.roll_number }}. {{ record.student.full_name }}<small>โดย {{ record.advisor.full_name }}</small></li>
+                    {% endfor %}
+                    </ul></div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    {% endfor %}
+    </div>
+{% else %}
+<div class="card card-body text-center text-muted p-5"><i class="bi bi-check2-circle fs-1 text-success"></i><h4 class="mt-2">ไม่มีรายการรอตรวจสอบ</h4></div>
+{% endif %}
+
+<div class="modal fade" id="reviewModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title" id="reviewModalLabel"></h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body" id="reviewModalBody"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const forwardBtn = document.getElementById('forward-all-btn');
+    if (forwardBtn) {
+        forwardBtn.addEventListener('click', function() {
+            Swal.fire({
+                title: 'ยืนยันการส่งต่อ?',
+                text: "ระบบจะส่งต่อผลการประเมินทั้งหมดให้ฝ่ายวิชาการ",
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: 'ยืนยันและส่งต่อ'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    fetch("{{ url_for('grade_level_head.forward_to_academic') }}", {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}' }
+                    }).then(res => res.json()).then(data => {
+                        if (data.status === 'success') {
+                            Swal.fire('สำเร็จ!', data.message, 'success').then(() => location.reload());
+                        } else { Swal.fire('ผิดพลาด!', data.message, 'error'); }
+                    });
+                }
+            });
+        });
+    }
+
+    // --- REVISED: Review Modal with Tabs & Radar Chart ---
+    let modalRadarChartInstances = {}; // Use an object to store multiple chart instances
+    const reviewModal = document.getElementById('reviewModal');
+    if (reviewModal) {
+        reviewModal.addEventListener('show.bs.modal', async function(event) {
+            const button = event.relatedTarget;
+            reviewModal.querySelector('.modal-title').textContent = 'ผลการประเมิน: ' + button.dataset.studentName;
+            const modalBody = reviewModal.querySelector('.modal-body');
+            modalBody.innerHTML = '<div class="text-center p-5"><div class="spinner-border"></div></div>'; // Loading indicator
+
+            // Clear previous chart instances for this modal
+            Object.values(modalRadarChartInstances).forEach(chart => chart.destroy());
+            modalRadarChartInstances = {};
+
+            try {
+                // Fetch data using the correct API endpoint
+                const data = await fetch(`/grade_level_head/api/assessment-record/${button.dataset.recordId}/details`).then(res => res.ok ? res.json() : Promise.reject('Could not load data'));
+                
+                if (!data || data.length === 0) {
+                    modalBody.innerHTML = '<p class="text-muted text-center p-3">ไม่พบข้อมูลการประเมิน</p>';
+                    return;
+                }
+
+                let navTabs = '';
+                let tabContent = '';
+
+                // --- Generate Tabs and Content Panes ---
+                data.forEach((template, index) => {
+                    const isActive = index === 0;
+                    navTabs += `<li class="nav-item" role="presentation"><button class="nav-link ${isActive ? 'active' : ''}" data-bs-toggle="tab" data-bs-target="#modal-pane-${template.id}" type="button">${template.name}</button></li>`;
+                    
+                    // Generate table rows for the summary table
+                    const tableRows = template.table_data.map(item => `<tr><td>${item.name}</td><td class="text-center">${item.label}</td></tr>`).join('');
+                    
+                    // Create content pane with placeholders for chart and table
+                    tabContent += `
+                        <div class="tab-pane fade ${isActive ? 'show active' : ''}" id="modal-pane-${template.id}" role="tabpanel">
+                            <div class="row mt-3 g-4">
+                                <div class="col-lg-6" style="min-height: 350px;">
+                                    <canvas id="modalRadarChart-${template.id}"></canvas> 
+                                </div>
+                                <div class="col-lg-6">
+                                    <div class="table-responsive">
+                                        <table class="table table-sm table-bordered mb-0">
+                                            <thead class="table-light"><tr><th>หัวข้อ</th><th class="text-center">ผลสรุป</th></tr></thead>
+                                            <tbody>${tableRows}</tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>`;
+                });
+
+                // --- Inject HTML into Modal ---
+                modalBody.innerHTML = `
+                    <ul class="nav nav-tabs">${navTabs}</ul>
+                    <div class="tab-content">${tabContent}</div>
+                `;
+                
+                // --- Create Charts AFTER HTML is in the DOM ---
+                // Use a short delay to ensure elements are ready
+                setTimeout(() => {
+                    data.forEach(template => {
+                        const radarCtx = document.getElementById(`modalRadarChart-${template.id}`);
+                        if (radarCtx) {
+                           // Store the new chart instance
+                           modalRadarChartInstances[template.id] = new Chart(radarCtx, {
+                                type: 'radar',
+                                data: { 
+                                    labels: template.labels, 
+                                    datasets: [{ 
+                                        data: template.data, 
+                                        backgroundColor: 'rgba(54, 162, 235, 0.2)', 
+                                        borderColor: 'rgb(54, 162, 235)',
+                                        pointRadius: 4, // Make points slightly larger
+                                        pointHoverRadius: 6
+                                    }] 
+                                },
+                                options: { 
+                                    responsive: true, 
+                                    maintainAspectRatio: false, // Allow chart to fill container height
+                                    scales: { 
+                                        r: { 
+                                            suggestedMin: 0, 
+                                            suggestedMax: 3, 
+                                            ticks: { stepSize: 1, backdropColor: 'rgba(255, 255, 255, 0.75)' } // Improve tick readability
+                                        } 
+                                    }, 
+                                    plugins: { 
+                                        legend: { display: false } 
+                                    } 
+                                }
+                            });
+                        } else {
+                             console.error(`Canvas element 'modalRadarChart-${template.id}' not found after timeout.`);
+                        }
+                    });
+                }, 150); // 150ms delay might be needed for complex DOM updates
+
+            } catch (err) {
+                console.error("Error loading/rendering modal details:", err);
+                modalBody.innerHTML = `<div class="alert alert-danger">เกิดข้อผิดพลาดในการโหลดข้อมูล: ${err.message}</div>`;
+            }
+        });
+
+        // Ensure charts are destroyed when modal is hidden to prevent memory leaks
+        reviewModal.addEventListener('hidden.bs.modal', function () {
+            Object.values(modalRadarChartInstances).forEach(chart => chart.destroy());
+            modalRadarChartInstances = {};
+        });
+    }
+
+    const ctx = document.getElementById('assessmentChart');
+    if (ctx && {{ chart_datasets|tojson }} && {{ chart_datasets|tojson }}.length > 0) {
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: {{ chart_labels|tojson }},
+                datasets: {{ chart_datasets|tojson }}
+            },
+            options: {
+                scales: {
+                    y: { beginAtZero: true, ticks: { stepSize: 1 } }
+                },
+                responsive: true,
+                maintainAspectRatio: false
+            }
+        });
+    }    
+});
+</script>
+{% endblock %}

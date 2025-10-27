@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <h1 class="h3 mb-4 text-gray-800">{{ title }}</h1>
+
+    <div class="card shadow mb-4">
+        <div class="card-body">
+            <form action="" method="post" novalidate>
+                {{ form.hidden_tag() }}
+
+                <div class="mb-3">
+                    {{ form.full_name.label(class="form-label") }}
+                    {{ form.full_name(class="form-control") }}
+                    {% for error in form.full_name.errors %}
+                        <span class="text-danger small">{{ error }}</span>
+                    {% endfor %}
+                </div>
+                
+                <div class="mb-3">
+                    {{ form.username.label(class="form-label") }}
+                    {{ form.username(class="form-control") }}
+                    {% for error in form.username.errors %}
+                        <span class="text-danger small">{{ error }}</span>
+                    {% endfor %}
+                </div>
+
+                <div class="mb-3">
+                    {{ form.password.label(class="form-label") }}
+                    <small class="text-muted">(เว้นว่างไว้หากไม่ต้องการเปลี่ยนรหัสผ่าน)</small>
+                    {{ form.password(class="form-control") }}
+                    {% for error in form.password.errors %}
+                        <span class="text-danger small">{{ error }}</span>
+                    {% endfor %}
+                </div>
+                
+                <div class="mb-3">
+                    {{ form.password2.label(class="form-label") }}
+                    {{ form.password2(class="form-control") }}
+                    {% for error in form.password2.errors %}
+                        <span class="text-danger small">{{ error }}</span>
+                    {% endfor %}
+                </div>
+
+                <hr>
+
+                <div class="mb-3">
+                    {{ form.roles.label(class="form-label") }}
+                    <div class="border rounded p-2">
+                        {% for subfield in form.roles %}
+                            <div class="form-check form-check-inline">
+                                {{ subfield(class="form-check-input") }}
+                                {{ subfield.label(class="form-check-label") }}
+                            </div>
+                        {% endfor %}
+                    </div>
+                    {% for error in form.roles.errors %}
+                        <span class="text-danger small">{{ error }}</span>
+                    {% endfor %}
+                </div>
+
+                <div class="mb-3">
+                    {{ form.learning_area.label(class="form-label") }}
+                    {{ form.learning_area(class="form-select") }}
+                    {% for error in form.learning_area.errors %}
+                        <span class="text-danger small">{{ error }}</span>
+                    {% endfor %}
+                </div>
+
+                <hr>
+
+                {{ form.submit(class="btn btn-primary") }}
+                <a href="{{ url_for('admin.manage_users') }}" class="btn btn-secondary">ยกเลิก</a>
+            </form>
+        </div>
+    </div>
+
+{% endblock %}

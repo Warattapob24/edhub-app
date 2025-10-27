@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1>สร้างคลาสเรียนใหม่</h1>
+    <p>เลือกรายวิชา, กลุ่มเรียน และสถานที่เรียน เพื่อสร้างคลาสเรียนสำหรับ 1 ห้อง</p>
+
+    <form method="POST">
+        {{ form.hidden_tag() }}
+        {{ rule_form.hidden_tag() }}
+
+        <div class="row">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header">ข้อมูลคลาสเรียน</div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            {{ form.subject.label(class="form-label") }}
+                            {{ form.subject(class="form-select", id="subject_select") }}
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">หน่วยกิต / คาบต่อสัปดาห์</label>
+                            <div id="subject-details" class="form-control-plaintext"><em>กรุณาเลือกรายวิชา...</em></div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                {# เปลี่ยนจาก class_groups เป็น class_group (เลือกอันเดียว) #}
+                                {{ form.class_group.label(class="form-label") }}
+                                {{ form.class_group(class="form-select") }}
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                {# เพิ่มช่องสำหรับเลือกสถานที่เรียน (Room) #}
+                                {{ form.room.label(class="form-label") }}
+                                {{ form.room(class="form-control") }}
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">{{ form.academic_year.label(class="form-label") }}{{ form.academic_year(class="form-control") }}</div>
+                            <div class="col-md-6 mb-3">{{ form.semester.label(class="form-label") }}{{ form.semester(class="form-select") }}</div>
+                         </div>
+                         <div class="row">
+                             <div class="col-md-6 mb-3">{{ form.coursework_ratio.label(class="form-label") }}{{ form.coursework_ratio(class="form-control", id="coursework_ratio_input") }}</div>
+                             <div class="col-md-6 mb-3"><label class="form-label">สัดส่วนปลายภาค</label><input type="text" class="form-control" disabled id="final_ratio_display"></div>
+                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header">เงื่อนไขพิเศษในการจัดตาราง (ถ้ามี)</div>
+                    <div class="card-body">
+                        <div class="mb-3">{{ rule_form.rule_type.label(class="form-label") }}{{ rule_form.rule_type(class="form-select") }}</div>
+                        <div class="mb-3">
+                            {{ rule_form.value.label(class="form-label") }}
+                            {{ rule_form.value(class="form-control", placeholder=rule_form.value.description) }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-4">
+            {{ form.submit_course(class="btn btn-primary btn-lg") }} 
+            <a href="{{ url_for('course.my_courses') }}" class="btn btn-secondary btn-lg">ยกเลิก</a>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // คาถา JavaScript สำหรับดึงข้อมูลหน่วยกิต (เหมือนเดิม)
+    const subjectSelect = document.getElementById('subject_select');
+    const detailsDiv = document.getElementById('subject-details');
+    function fetchSubjectDetails() {
+        const subjectId = subjectSelect.value;
+        if (!subjectId) {
+            detailsDiv.innerHTML = '<em>กรุณาเลือกรายวิชา...</em>';
+            return;
+        }
+        fetch(`/course/api/subject/${subjectId}/details`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    detailsDiv.textContent = `${data.credits} หน่วยกิต / ${data.hours_per_week} คาบต่อสัปดาห์`;
+                } else {
+                    detailsDiv.textContent = 'ไม่สามารถโหลดข้อมูลได้';
+                }
+            });
+    }
+    subjectSelect.addEventListener('change', fetchSubjectDetails);
+    fetchSubjectDetails();
+
+    // คาถาสำหรับคำนวณสัดส่วนคะแนน (เหมือนเดิม)
+    const courseworkInput = document.getElementById('coursework_ratio_input');
+    const finalDisplay = document.getElementById('final_ratio_display');
+    function updateFinalRatio() {
+        const courseworkValue = parseInt(courseworkInput.value) || 0;
+        const validCoursework = Math.min(Math.max(courseworkValue, 0), 100);
+        finalDisplay.value = 100 - validCoursework;
+    }
+    courseworkInput.addEventListener('input', updateFinalRatio);
+    updateFinalRatio();
+});
+</script>
+{% endblock %}

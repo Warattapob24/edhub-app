@@ -1,0 +1,79 @@
+{% extends "admin/layout_standalone.html" %} {# ใช้ layout พิเศษที่ไม่มี Sidebar #}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-8 col-lg-7">
+            <div class="card shadow-lg border-0 rounded-lg mt-5 mb-5">
+                <div class="card-header">
+                    <h3 class="text-center font-weight-light my-4">{{ title }}</h3>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted text-center">ยินดีต้อนรับ! เพื่อความปลอดภัย กรุณาตั้งค่าบัญชีของคุณให้เสร็จสมบูรณ์</p>
+                    <form method="POST" action="">
+                        {{ form.hidden_tag() }}
+
+                        <fieldset class="border p-3 rounded-3 mb-4">
+                            <legend class="fs-6 fw-bold">ส่วนที่ 1: ตั้งค่าการเข้าสู่ระบบ</legend>
+                            <div class="form-floating mb-3">
+                                {{ form.username(class="form-control", placeholder="Username") }}
+                                {{ form.username.label() }}
+                                {% for error in form.username.errors %}<small class="text-danger">{{ error }}</small>{% endfor %}
+                            </div>
+                             <div class="form-floating mb-3">
+                                {{ form.password(class="form-control", placeholder="Password") }}
+                                {{ form.password.label() }}
+                                {% for error in form.password.errors %}<small class="text-danger">{{ error }}</small>{% endfor %}
+                            </div>
+                             <div class="form-floating mb-3">
+                                {{ form.password2(class="form-control", placeholder="Confirm Password") }}
+                                {{ form.password2.label() }}
+                                {% for error in form.password2.errors %}<small class="text-danger">{{ error }}</small>{% endfor %}
+                            </div>
+                        </fieldset>
+
+                        <fieldset class="border p-3 rounded-3 mb-4">
+                            <legend class="fs-6 fw-bold">ส่วนที่ 2: ข้อมูลส่วนตัวและการมอบหมายหน้าที่</legend>
+                            <div class="form-floating mb-3">
+                                {{ form.job_title(class="form-control", placeholder="Job Title") }}
+                                {{ form.job_title.label() }}
+                            </div>
+                            <div class="form-floating mb-3">
+                                {{ form.email(class="form-control", placeholder="Email") }}
+                                {{ form.email.label() }}
+                                {% for error in form.email.errors %}<small class="text-danger">{{ error }}</small>{% endfor %}
+                            </div>
+                            <div class="mb-3">
+                                {{ form.member_of_groups.label(class="form-label") }}
+                                {{ form.member_of_groups(class="form-select tom-select-multiple") }}
+                            </div>
+                            <div class="mb-3">
+                                {{ form.advised_classrooms.label(class="form-label") }}
+                                {{ form.advised_classrooms(class="form-select tom-select-multiple") }}
+                            </div>
+                        </fieldset>
+
+                        <div class="d-grid">
+                            {{ form.submit(class="btn btn-primary btn-lg") }}
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('.tom-select-multiple').forEach((el)=>{
+            new TomSelect(el,{
+                plugins: ['remove_button'],
+            });
+        });
+    });
+</script>
+{% endblock %}

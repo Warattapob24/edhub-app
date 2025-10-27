@@ -1,0 +1,243 @@
+{% extends "base.html" %}
+{% block title %}EdHub คลังมาตรฐานและตัวชี้วัด{% endblock %}
+{% block sidebar %}
+    {% include 'admin/_sidebar.html' %}
+{% endblock %}
+
+{% block main_content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="bi bi-journal-bookmark-fill"> คลังมาตรฐานและตัวชี้วัด</h2>
+    <div>
+        <a href="{{ url_for('admin.import_standards') }}" class="btn btn-success">
+            <i class="bi bi-file-earmark-arrow-up-fill"></i> นำเข้าข้อมูล (Import)
+        </a>
+    </div>
+</div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+        {% for category, message in messages %}
+        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+        {% endfor %}
+    {% endif %}
+{% endwith %}
+
+{% for group in subject_groups %}
+<div class="card mb-3">
+    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+        <h4 class="mb-0">{{ group.name }}</h4>
+        <button class="btn btn-light btn-sm" data-bs-toggle="modal" data-bs-target="#strandModal" data-group-id="{{ group.id }}" data-group-name="{{ group.name }}">
+            <i class="bi bi-plus-circle-fill"></i> เพิ่มสาระฯ
+        </button>
+    </div>
+    <div class="card-body">
+        {% for strand in group.learning_strands %}
+        <div class="card mb-2">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <strong>{{ strand.name }}</strong>
+                <div>
+                    <button class="btn btn-outline-success btn-sm" data-bs-toggle="modal" data-bs-target="#standardModal" data-strand-id="{{ strand.id }}" data-strand-name="{{ strand.name }}">
+                        <i class="bi bi-plus-circle"></i> เพิ่มมาตรฐานฯ
+                    </button>
+                    <button class="btn btn-outline-danger btn-sm delete-btn" data-url="{{ url_for('admin.delete_strand', strand_id=strand.id) }}" data-item-name="{{ strand.name }}">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="accordion accordion-flush" id="accordion-strand-{{ strand.id }}">
+                {% for standard in strand.standards %}
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-standard-{{ standard.id }}">
+                            <strong>{{ standard.code }}:</strong> {{ standard.description }}
+                            <span class="badge bg-info text-dark ms-auto me-2">{{ standard.indicators|length }} ตัวชี้วัด</span>
+                        </button>
+                    </h2>
+                    <div id="collapse-standard-{{ standard.id }}" class="accordion-collapse collapse" data-bs-parent="#accordion-strand-{{ strand.id }}">
+                        <div class="accordion-body p-0">
+                            <div class="d-flex justify-content-end p-2 border-bottom">
+                                 <button class="btn btn-outline-danger btn-sm delete-btn" data-url="{{ url_for('admin.delete_standard', standard_id=standard.id) }}" data-item-name="{{ standard.code }}">
+                                    <i class="bi bi-trash"></i> ลบมาตรฐานนี้
+                                </button>
+                            </div>
+                            <ul class="list-group list-group-flush">
+                                {% for indicator in standard.indicators %}
+                                <li class="list-group-item">
+                                    <strong>{{ indicator.code }}:</strong> {{ indicator.description }}
+                                </li>
+                                {% else %}
+                                <li class="list-group-item text-muted">ยังไม่มีตัวชี้วัด</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% else %}
+        <p class="text-muted">ยังไม่มีสาระการเรียนรู้ในกลุ่มสาระนี้</p>
+        {% endfor %}
+    </div>
+</div>
+{% else %}
+<div class="alert alert-info">ยังไม่มีข้อมูลในระบบ กรุณานำเข้าข้อมูล</div>
+{% endfor %}
+
+<div class="modal fade" id="strandModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">เพิ่มสาระการเรียนรู้ใหม่ในกลุ่มสาระ: <span id="groupName"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="strandForm">
+          <input type="hidden" id="groupId" name="subject_group_id">
+          <div class="mb-3">
+            <label for="strandName" class="form-label">ชื่อสาระการเรียนรู้ (เช่น สาระที่ 1: ทัศนศิลป์)</label>
+            <input type="text" class="form-control" id="strandName" name="name" required>
+          </div>
+          <button type="submit" class="btn btn-primary">บันทึก</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="standardModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">เพิ่มมาตรฐานใหม่ใน: <span id="strandNameTitle"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="standardForm">
+          <input type="hidden" id="strandId" name="learning_strand_id">
+          <div class="mb-3">
+            <label for="standardCode" class="form-label">รหัสมาตรฐาน (เช่น ศ 1.1)</label>
+            <input type="text" class="form-control" id="standardCode" name="code" required>
+          </div>
+          <div class="mb-3">
+            <label for="standardDesc" class="form-label">รายละเอียดมาตรฐานการเรียนรู้</label>
+            <textarea class="form-control" id="standardDesc" name="description" rows="3" required></textarea>
+          </div>
+          <button type="submit" class="btn btn-primary">บันทึก</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+
+    // Strand Modal Logic
+    const strandModalEl = document.getElementById('strandModal');
+    const strandModal = new bootstrap.Modal(strandModalEl);
+    strandModalEl.addEventListener('show.bs.modal', function (event) {
+        const button = event.relatedTarget;
+        const groupId = button.getAttribute('data-group-id');
+        const groupName = button.getAttribute('data-group-name');
+        
+        strandModalEl.querySelector('#groupName').textContent = groupName;
+        strandModalEl.querySelector('#groupId').value = groupId;
+        strandModalEl.querySelector('#strandName').value = '';
+    });
+
+    document.getElementById('strandForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        const data = Object.fromEntries(formData.entries());
+
+        const response = await fetch('{{ url_for("admin.add_strand") }}', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+            body: JSON.stringify(data)
+        });
+        if (response.ok) { 
+            strandModal.hide();
+            window.location.reload(); 
+        } else {
+            Swal.fire('Error!', 'Could not add the item.', 'error');
+        }
+    });
+
+    // Standard Modal Logic
+    const standardModalEl = document.getElementById('standardModal');
+    const standardModal = new bootstrap.Modal(standardModalEl);
+    standardModalEl.addEventListener('show.bs.modal', function (event) {
+        const button = event.relatedTarget;
+        const strandId = button.getAttribute('data-strand-id');
+        const strandName = button.getAttribute('data-strand-name');
+
+        standardModalEl.querySelector('#strandNameTitle').textContent = strandName;
+        standardModalEl.querySelector('#strandId').value = strandId;
+        standardModalEl.querySelector('#standardCode').value = '';
+        standardModalEl.querySelector('#standardDesc').value = '';
+    });
+
+    document.getElementById('standardForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        const data = Object.fromEntries(formData.entries());
+
+        const response = await fetch('{{ url_for("admin.add_standard") }}', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+            body: JSON.stringify(data)
+        });
+        if (response.ok) { 
+            standardModal.hide();
+            window.location.reload(); 
+        } else {
+            Swal.fire('Error!', 'Could not add the item.', 'error');
+        }
+    });
+
+    // General Delete Button Logic
+    document.querySelectorAll('.delete-btn').forEach(button => {
+        button.addEventListener('click', function(e) {
+            e.preventDefault();
+            const url = this.dataset.url;
+            const itemName = this.dataset.itemName;
+            
+            Swal.fire({
+                title: `ยืนยันการลบ "${itemName}"?`,
+                text: "ข้อมูลทั้งหมดที่อยู่ภายใต้รายการนี้จะถูกลบอย่างถาวร!",
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                cancelButtonText: 'ยกเลิก',
+                confirmButtonText: 'ใช่, ลบเลย!'
+            }).then(async (result) => {
+                if (result.isConfirmed) {
+                    try {
+                        const response = await fetch(url, {
+                            method: 'POST',
+                            headers: {'X-CSRFToken': csrfToken}
+                        });
+                        const resData = await response.json();
+                        if (response.ok && resData.status === 'success') {
+                            window.location.reload();
+                        } else {
+                            Swal.fire('Error!', resData.message || 'Could not delete the item.', 'error');
+                        }
+                    } catch (error) {
+                        Swal.fire('Error!', 'A network error occurred.', 'error');
+                    }
+                }
+            });
+        });
+    });
+});
+</script>
+{% endblock %}

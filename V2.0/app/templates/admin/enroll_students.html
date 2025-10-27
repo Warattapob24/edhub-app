@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">ห้องเรียนทั้งหมด</h5>
+                </div>
+                <div class="list-group list-group-flush" style="max-height: 75vh; overflow-y: auto;">
+                    {% for grade in grade_levels %}
+                        <div class="list-group-item list-group-item-secondary fw-bold">{{ grade.name }}</div>
+                        {% for classroom in grade.classrooms %}
+                            <a href="#" class="list-group-item list-group-item-action classroom-selector" data-classroom-id="{{ classroom.id }}" data-classroom-name="{{ classroom.name }}">
+                                {{ classroom.name }}
+                            </a>
+                        {% endfor %}
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-8">
+            <div class="card" id="student-management-panel" style="display: none;">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">นักเรียนในห้อง <span id="classroom-name-display" class="text-primary"></span></h5>
+                    <button class="btn btn-success" id="add-student-btn" data-bs-toggle="modal" data-bs-target="#addStudentModal">
+                        <i class="fas fa-plus me-1"></i> เพิ่มนักเรียน
+                    </button>
+                </div>
+                <div class="card-body">
+                    <ul id="student-list" class="list-group">
+                        <!-- Student list will be populated by JS -->
+                    </ul>
+                </div>
+            </div>
+            <div id="no-classroom-selected" class="text-center p-5">
+                <h4 class="text-muted">กรุณาเลือกห้องเรียนทางซ้ายเพื่อเริ่ม</h4>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Student Modal -->
+<div class="modal fade" id="addStudentModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">เลือกนักเรียนเพื่อเพิ่มเข้าห้อง</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="text" id="student-search-input" class="form-control mb-3" placeholder="ค้นหาชื่อนักเรียน...">
+                <div id="unassigned-student-list-container" style="max-height: 50vh; overflow-y: auto;">
+                    <ul id="unassigned-student-list" class="list-group">
+                        <!-- Unassigned student list will be populated by JS -->
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    let currentClassroomId = null;
+    const studentManagementPanel = document.getElementById('student-management-panel');
+    const noClassroomSelected = document.getElementById('no-classroom-selected');
+    const classroomNameDisplay = document.getElementById('classroom-name-display');
+    const studentList = document.getElementById('student-list');
+    const addStudentBtn = document.getElementById('add-student-btn');
+    const addStudentModal = new bootstrap.Modal(document.getElementById('addStudentModal'));
+    const unassignedStudentList = document.getElementById('unassigned-student-list');
+    const studentSearchInput = document.getElementById('student-search-input');
+    const csrf_token = "{{ csrf_token() }}";
+
+    // --- Core Functions ---
+    async function fetchAndDisplayClassroomStudents(classroomId) {
+        try {
+            const response = await fetch(`/admin/api/classrooms/${classroomId}/students`);
+            if (!response.ok) throw new Error('Network response was not ok');
+            const students = await response.json();
+            
+            studentList.innerHTML = '';
+            if (students.length > 0) {
+                students.forEach(student => {
+                    const li = document.createElement('li');
+                    li.className = 'list-group-item d-flex justify-content-between align-items-center';
+                    li.innerHTML = `
+                        <span>${student.full_name}</span>
+                        <button class="btn btn-sm btn-outline-danger unenroll-btn" data-enrollment-id="${student.enrollment_id}">นำออก</button>
+                    `;
+                    studentList.appendChild(li);
+                });
+            } else {
+                studentList.innerHTML = '<li class="list-group-item text-center text-muted">ยังไม่มีนักเรียนในห้องนี้</li>';
+            }
+        } catch (error) {
+            console.error('Failed to fetch classroom students:', error);
+            studentList.innerHTML = '<li class="list-group-item text-center text-danger">เกิดข้อผิดพลาดในการโหลดข้อมูล</li>';
+        }
+    }
+
+    async function fetchAndDisplayUnassignedStudents() {
+        try {
+            const response = await fetch('/admin/api/unassigned-students');
+            if (!response.ok) throw new Error('Network response was not ok');
+            const students = await response.json();
+
+            unassignedStudentList.innerHTML = '';
+            students.forEach(student => {
+                const li = document.createElement('li');
+                li.className = 'list-group-item list-group-item-action d-flex justify-content-between align-items-center';
+                li.dataset.studentId = student.id;
+                li.dataset.studentName = student.full_name.toLowerCase();
+                li.innerHTML = `
+                    <span>${student.full_name}</span>
+                    <button class="btn btn-sm btn-primary enroll-btn">เพิ่ม</button>
+                `;
+                unassignedStudentList.appendChild(li);
+            });
+        } catch (error) {
+            console.error('Failed to fetch unassigned students:', error);
+            unassignedStudentList.innerHTML = '<li class="list-group-item text-center text-danger">เกิดข้อผิดพลาดในการโหลดข้อมูล</li>';
+        }
+    }
+
+    // --- Event Listeners ---
+    document.querySelectorAll('.classroom-selector').forEach(selector => {
+        selector.addEventListener('click', function(e) {
+            e.preventDefault();
+            document.querySelectorAll('.classroom-selector').forEach(el => el.classList.remove('active'));
+            this.classList.add('active');
+            
+            currentClassroomId = this.dataset.classroomId;
+            const classroomName = this.dataset.classroomName;
+
+            studentManagementPanel.style.display = 'block';
+            noClassroomSelected.style.display = 'none';
+            classroomNameDisplay.textContent = classroomName;
+            fetchAndDisplayClassroomStudents(currentClassroomId);
+        });
+    });
+
+    addStudentBtn.addEventListener('click', () => {
+        studentSearchInput.value = '';
+        fetchAndDisplayUnassignedStudents();
+    });
+
+    studentSearchInput.addEventListener('keyup', function() {
+        const filter = this.value.toLowerCase();
+        unassignedStudentList.querySelectorAll('li').forEach(li => {
+            if (li.dataset.studentName.includes(filter)) {
+                li.style.display = '';
+            } else {
+                li.style.display = 'none';
+            }
+        });
+    });
+
+    unassignedStudentList.addEventListener('click', async function(e) {
+        if (e.target && e.target.classList.contains('enroll-btn')) {
+            e.target.disabled = true; // Prevent double clicks
+            const studentId = e.target.closest('li').dataset.studentId;
+            try {
+                const response = await fetch('/admin/api/enroll-student', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf_token },
+                    body: JSON.stringify({ student_id: studentId, classroom_id: currentClassroomId })
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    e.target.closest('li').remove();
+                    fetchAndDisplayClassroomStudents(currentClassroomId);
+                } else {
+                    alert('Error: ' + result.message);
+                    e.target.disabled = false;
+                }
+            } catch (error) {
+                console.error('Enrollment failed:', error);
+                alert('An unexpected error occurred during enrollment.');
+                e.target.disabled = false;
+            }
+        }
+    });
+
+    studentList.addEventListener('click', async function(e) {
+        if (e.target && e.target.classList.contains('unenroll-btn')) {
+            if (confirm('คุณแน่ใจหรือไม่ว่าต้องการนำนักเรียนคนนี้ออกจากห้องเรียน?')) {
+                e.target.disabled = true;
+                const enrollmentId = e.target.dataset.enrollmentId;
+                try {
+                    const response = await fetch('/admin/api/unenroll-student', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf_token },
+                        body: JSON.stringify({ enrollment_id: enrollmentId })
+                    });
+                    if (response.ok) {
+                        fetchAndDisplayClassroomStudents(currentClassroomId);
+                    } else {
+                        alert('เกิดข้อผิดพลาดในการนำนักเรียนออก');
+                        e.target.disabled = false;
+                    }
+                } catch (error) {
+                    console.error('Unenrollment failed:', error);
+                    alert('An unexpected error occurred during unenrollment.');
+                    e.target.disabled = false;
+                }
+            }
+        }
+    });
+});
+</script>
+{% endblock %}

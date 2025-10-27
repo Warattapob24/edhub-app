@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-3">
+        {% include 'admin/_admin_menu.html' %}
+    </div>
+    <div class="col-md-9">
+        <h1>เพิ่มผู้ใช้ใหม่</h1>
+        
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+            <div class="alert alert-{{ 'danger' if category == 'error' else 'info' }}" role="alert">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+        {% endwith %}
+        
+        <form method="POST" action="">
+            {{ form.hidden_tag() }}
+            <div class="mb-3">
+                {{ form.username.label(class="form-label") }}
+                {{ form.username(class="form-control") }}
+            </div>
+            <div class="mb-3">
+                {{ form.full_name.label(class="form-label") }}
+                {{ form.full_name(class="form-control") }}
+            </div>
+            <div class="mb-3">
+                {{ form.department.label(class="form-label") }}
+                {{ form.department(class="form-select") }}
+            </div>            
+            <div class="mb-3">
+                {{ form.roles.label(class="form-label") }}
+                {{ form.roles(class="form-select", size=5) }}
+            </div>
+            <div class="mb-3">
+                {{ form.password.label(class="form-label") }}
+                {{ form.password(class="form-control") }}
+            </div>
+            <div class="mb-3">
+                {{ form.password2.label(class="form-label") }}
+                {{ form.password2(class="form-control") }}
+                {% for error in form.password2.errors %}
+                <span class="text-danger">[{{ error }}]</span>
+                {% endfor %}
+            </div>
+            <div class="mb-3">
+                {{ form.submit(class="btn btn-primary") }}
+                <a href="{{ url_for('admin.manage_users') }}" class="btn btn-secondary">ยกเลิก</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,21 @@
+{% macro render_field(field) %}
+  <div class="mb-3">
+    {{ field.label(class="form-label") }}
+
+    {% if field.type == 'MultiCheckboxField' %}
+        <div class="border rounded p-2" style="height: auto; max-height: 150px; overflow-y: auto;">
+          {{ field(**kwargs) }}
+        </div>
+    {% else %}
+        {{ field(class="form-control" + (" is-invalid" if field.errors else ""), **kwargs) }}
+    {% endif %}
+
+    {% if field.errors %}
+      <div class="invalid-feedback d-block">
+        {% for error in field.errors %}
+          <span>{{ error }}</span>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+{% endmacro %}

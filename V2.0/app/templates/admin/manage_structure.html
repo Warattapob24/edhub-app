@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+{% from "_form_helpers.html" import render_field %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>จัดการโครงสร้างสายชั้นและห้องเรียน</h1>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addGradeModal">+ เพิ่มสายชั้นใหม่</button>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+            <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    {% for grade in grade_levels %}
+    <div class="card mb-4 shadow-sm">
+        <div class="card-header d-flex justify-content-between align-items-center bg-light">
+            <h5 class="mb-0">{{ grade.name }}</h5>
+            <button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#addClassroomModal" data-grade-id="{{ grade.id }}" data-grade-name="{{ grade.name }}">
+                <i class="fas fa-plus me-1"></i> เพิ่มห้องเรียนใหม่
+            </button>
+        </div>
+        <div class="card-body">
+            {% if grade.classrooms.count() > 0 %}
+            <ul class="list-group list-group-flush">
+                {% for classroom in grade.classrooms %}
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                    <div>
+                        <strong>{{ classroom.name }}</strong>
+                        <br>
+                        <small class="text-muted">ครูที่ปรึกษา: 
+                            {% if classroom.advisors %}
+                                {{ classroom.advisors|map(attribute='full_name')|join(', ') }}
+                            {% else %}
+                                <span class="text-danger">ยังไม่ได้กำหนด</span>
+                            {% endif %}
+                        </small>
+                    </div>
+                    <div>
+                        <button class="btn btn-warning btn-sm me-2 edit-classroom-btn" 
+                                data-bs-toggle="modal" 
+                                data-bs-target="#editClassroomModal"
+                                data-classroom-id="{{ classroom.id }}"
+                                data-classroom-name="{{ classroom.name }}"
+                                data-classroom-advisors="{{ classroom.advisors|map(attribute='id')|list|tojson }}">
+                            <i class="fas fa-edit"></i> แก้ไข
+                        </button>
+                        <form action="{{ url_for('admin.delete_classroom', classroom_id=classroom.id) }}" method="POST" class="d-inline" onsubmit="return confirm('คุณแน่ใจหรือไม่ว่าต้องการลบห้องเรียนนี้?');">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-danger btn-sm"><i class="fas fa-trash"></i> ลบ</button>
+                        </form>
+                    </div>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p class="text-center text-muted">-- ยังไม่มีห้องเรียนในสายชั้นนี้ --</p>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Add Classroom Modal -->
+<div class="modal fade" id="addClassroomModal" tabindex="-1" aria-labelledby="addClassroomModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form id="addClassroomForm" action="{{ url_for('admin.add_classroom') }}" method="POST">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="addClassroomModalLabel">เพิ่มห้องเรียนใหม่</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" id="gradeLevelIdInput" name="grade_level_id">
+                    <p>กำลังเพิ่มห้องเรียนสำหรับสายชั้น: <strong id="gradeLevelName"></strong></p>
+                    <div class="mb-3">
+                        <label for="classroomName" class="form-label">ชื่อห้องเรียน</label>
+                        <input type="text" class="form-control" id="classroomName" name="name" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+                    <button type="submit" class="btn btn-primary">บันทึก</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Classroom Modal -->
+<div class="modal fade" id="editClassroomModal" tabindex="-1" aria-labelledby="editClassroomModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form id="editClassroomForm" method="POST"> {# Action will be set by JS #}
+                <div class="modal-header">
+                    <h5 class="modal-title" id="editClassroomModalLabel">แก้ไขห้องเรียน</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    {{ render_field(form.name, class="form-control", id="edit_name") }}
+                    {{ render_field(form.advisors, class="form-select", id="edit_advisors", multiple="multiple", style="height: 150px;") }}
+                    <small class="form-text text-muted">กด CTRL หรือ Command ค้างไว้เพื่อเลือกหลายคน</small>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+                    {{ form.submit(class="btn btn-primary") }}
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- NEW: Add Grade Level Modal -->
+<div class="modal fade" id="addGradeModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form action="{{ url_for('admin.add_grade_level') }}" method="POST">
+                <div class="modal-header">
+                    <h5 class="modal-title">เพิ่มสายชั้นใหม่</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <div class="mb-3">
+                        <label for="gradeName" class="form-label">ชื่อสายชั้น</label>
+                        <input type="text" class="form-control" id="gradeName" name="name" required placeholder="เช่น มัธยมศึกษาปีที่ 4">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+                    <button type="submit" class="btn btn-primary">บันทึก</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    // For Add Classroom Modal
+    var addClassroomModal = document.getElementById('addClassroomModal');
+    addClassroomModal.addEventListener('show.bs.modal', function (event) {
+        var button = event.relatedTarget;
+        var gradeId = button.getAttribute('data-grade-id');
+        var gradeName = button.getAttribute('data-grade-name');
+
+        var modalTitle = addClassroomModal.querySelector('.modal-title');
+        var gradeLevelNameSpan = addClassroomModal.querySelector('#gradeLevelName');
+        var gradeLevelIdInput = addClassroomModal.querySelector('#gradeLevelIdInput');
+
+        modalTitle.textContent = 'เพิ่มห้องเรียนใหม่สำหรับ ' + gradeName;
+        gradeLevelNameSpan.textContent = gradeName;
+        gradeLevelIdInput.value = gradeId;
+    });
+
+    // For Edit Classroom Modal
+    var editClassroomModal = document.getElementById('editClassroomModal');
+    editClassroomModal.addEventListener('show.bs.modal', function (event) {
+        var button = event.relatedTarget;
+        var classroomId = button.getAttribute('data-classroom-id');
+        var classroomName = button.getAttribute('data-classroom-name');
+        var advisorIds = JSON.parse(button.getAttribute('data-classroom-advisors'));
+
+        var form = editClassroomModal.querySelector('#editClassroomForm');
+        var nameInput = editClassroomModal.querySelector('#edit_name');
+        var advisorsSelect = editClassroomModal.querySelector('#edit_advisors');
+        
+        // Set form action URL
+        form.action = '/admin/classroom/edit/' + classroomId;
+
+        // Populate form fields
+        nameInput.value = classroomName;
+        
+        // Set selected advisors
+        for (var i = 0; i < advisorsSelect.options.length; i++) {
+            var option = advisorsSelect.options[i];
+            // Convert option value to number for comparison
+            if (advisorIds.includes(parseInt(option.value))) {
+                option.selected = true;
+            } else {
+                option.selected = false;
+            }
+        }
+    });
+});
+</script>
+{% endblock %}

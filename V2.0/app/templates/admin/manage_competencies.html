@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <h2>จัดการคลังสมรรถนะ</h2>
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>ชื่อสมรรถนะ</th>
+                    <th class="text-end">ดำเนินการ</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in competencies %}
+                <tr>
+                    <td>{{ item.name }}</td>
+                    <td class="text-end">
+                        <form action="{{ url_for('admin.delete_competency', id=item.id) }}" method="POST" onsubmit="return confirm('คุณแน่ใจหรือไม่?');" class="d-inline">
+                            {{ form.hidden_tag() }} <button type="submit" class="btn btn-danger btn-sm"><i class="bi bi-trash"></i> ลบ</button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="2" class="text-center text-muted">ยังไม่มีข้อมูลสมรรถนะ</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <strong>เพิ่มสมรรถนะใหม่</strong>
+            </div>
+            <div class="card-body">
+                <form action="{{ url_for('admin.add_competency') }}" method="POST">
+                    {{ form.hidden_tag() }}
+                    <div class="mb-3">
+                        {{ form.name.label(class="form-label") }}
+                        {{ form.name(class="form-control") }}
+                    </div>
+                    {{ form.submit(class="btn btn-primary w-100") }}
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

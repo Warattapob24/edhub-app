@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="h3">แดชบอร์ดนักเรียน</h1>
+<p>สวัสดี, {{ current_user.prefix }}{{ current_user.first_name }} {{ current_user.last_name }}</p>
+<p class="text-muted">รหัสนักเรียน: {{ current_user.student_id }} | ห้อง: {{ current_user.class_group.grade_level.name }}/{{ current_user.class_group.room_number }}</p>
+<hr>
+
+<h5 class="mt-4">ผลการเรียนภาคเรียนปัจจุบัน</h5>
+<table class="table table-hover">
+    <thead class="table-light">
+        <tr>
+            <th>รหัสวิชา</th>
+            <th>รายวิชา</th>
+            <th>หน่วยกิต</th>
+            <th>ครูผู้สอน</th>
+            <th class="text-center">คะแนนรวม (100)</th>
+            <th class="text-center">เกรด</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for course in courses %}
+        {% set summary = grade_summary.get(course.id, {}) %}
+        <tr>
+            <td>{{ course.subject.subject_code }}</td>
+            <td>{{ course.subject.name }}</td>
+            <td class="text-center">{{ course.subject.default_credits }}</td>
+            <td>{{ course.teacher.full_name }}</td>
+            <td class="text-center">{{ summary.get('total_score', '--') }}</td>
+            <td class="text-center fw-bold">{{ summary.get('grade', '--') }}</td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="6" class="text-center text-muted">ยังไม่มีรายวิชาที่ลงทะเบียนในภาคเรียนนี้</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

@@ -1,0 +1,48 @@
+{% extends "admin/layout.html" %}
+
+{% block admin_content %}
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="bi bi-calendar-check-fill me-2"></i>ตั้งค่าภาคเรียนปัจจุบันของระบบ</h5>
+    </div>
+    <div class="card-body">
+        <div class="alert alert-info" role="alert">
+            <h4 class="alert-heading">สำคัญ!</h4>
+            <p>การตั้งค่านี้จะส่งผลต่อข้อมูลที่แสดงใน Dashboard และรายงานทั้งหมดของระบบ โปรดเลือกภาคเรียนที่ต้องการให้เป็น "ภาคเรียนปัจจุบัน" เพื่อให้ข้อมูลถูกต้อง</p>
+        </div>
+
+        <form action="{{ url_for('admin.set_current_semester') }}" method="POST" class="mt-4">
+            
+            <div class="mb-3">
+                <label for="semester_id" class="form-label fs-5">เลือกภาคเรียน:</label>
+                <select class="form-select form-select-lg" id="semester_id" name="semester_id" required>
+                    <option value="" disabled {% if not current_semester %}selected{% endif %}>
+                        -- กรุณาเลือกภาคเรียน --
+                    </option>
+                    {% for semester in all_semesters %}
+                        <option value="{{ semester.id }}" {% if current_semester and current_semester.id == semester.id %}selected{% endif %}>
+                            ปีการศึกษา {{ semester.academic_year.year }} / ภาคเรียนที่ {{ semester.term }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <hr>
+
+            <button type="submit" class="btn btn-primary btn-lg">
+                <i class="bi bi-save me-2"></i>บันทึกการตั้งค่า
+            </button>
+        </form>
+    </div>
+
+    <div class="card-footer text-muted">
+        {% if current_semester %}
+            <i class="bi bi-info-circle-fill"></i>
+            สถานะปัจจุบัน: <strong>ปีการศึกษา {{ current_semester.academic_year.year }} / ภาคเรียนที่ {{ current_semester.term }}</strong>
+        {% else %}
+            <i class="bi bi-exclamation-triangle-fill text-warning"></i>
+            สถานะปัจจุบัน: <strong class="text-danger">ยังไม่มีการตั้งค่าภาคเรียนปัจจุบัน</strong>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>มอบหมายรายวิชาในกลุ่มสาระฯ</h2>
+    <p>เลือกครูผู้สอนสำหรับแต่ละรายวิชาตามหลักสูตรที่กำหนด</p>
+    <div class="card mb-4">
+        <div class="card-body">
+            <form method="GET" class="row g-3 align-items-center">
+                <div class="col-auto">
+                    <label for="year" class="form-label">ปีการศึกษา:</label>
+                    <select name="year" id="year" class="form-select" onchange="this.form.submit()">
+                        {% for year in available_years %}
+                        <option value="{{ year }}" {% if year == selected_year %}selected{% endif %}>{{ year }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <label for="semester" class="form-label">ภาคเรียน:</label>
+                    <select name="semester" id="semester" class="form-select" onchange="this.form.submit()">
+                        <option value="1" {% if 1 == selected_semester %}selected{% endif %}>1</option>
+                        <option value="2" {% if 2 == selected_semester %}selected{% endif %}>2</option>
+                    </select>
+                </div>
+            </form>
+        </div>
+    </div>
+    <form action="{{ url_for('manager.execute_bulk_assignment') }}" method="POST">
+        <table class="table table-hover align-middle">
+            <thead class="table-light">
+                <tr>
+                <th>ปี/เทอม</th>
+                <th>สายชั้น</th>
+                <th>รายวิชา</th>
+                <th>ผู้สอนที่ได้รับมอบหมาย</th>
+            </tr>
+        </thead>
+            <tbody>
+                {% for curriculum in curriculums %}
+                <tr>
+                    <td>
+                        <input type="hidden" name="curriculum-{{ curriculum.id }}" value="{{ curriculum.id }}">
+                        {{ curriculum.academic_year }}/{{ curriculum.semester }}
+                    </td>
+                    <td>{{ curriculum.grade_level.name }}</td>
+                    <td>{{ curriculum.subject.name }}</td>
+                    <td>
+                        <div class="d-flex">
+                        <select name="teacher-{{ curriculum.id }}" class="form-select">
+                            <option value="0">-- ยังไม่มอบหมาย --</option>
+                            {% for teacher in teachers %}
+                            <option value="{{ teacher.id }}" {% if assigned_teachers.get(curriculum.id) == teacher.id %}selected{% endif %}>
+                                {{ teacher.full_name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+            <a href="{{ url_for('manager.assign_courses_detailed', curriculum_id=curriculum.id) }}" class="btn btn-outline-secondary ms-2" title="จัดการรายห้อง">
+                <i class="fas fa-sitemap"></i>
+            </a>
+                        </div>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4" class="text-center text-muted">ไม่พบหลักสูตรที่ต้องมอบหมายในกลุ่มสาระของท่าน</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <div class="text-end mt-3">
+            <button type="submit" class="btn btn-primary btn-lg">บันทึกการเปลี่ยนแปลงทั้งหมด</button>
+        </div>
+    </form>
+
+    <div class="alert alert-info mt-4">
+        <strong>หมายเหตุ:</strong> หากต้องการแบ่งห้องสอน (เช่น ให้ครู 2 คนสอนวิชาเดียวกันในสายชั้นเดียวกัน) กรุณาติดต่อฝ่ายวิชาการเพื่อดำเนินการในขั้นสูงต่อไป
+    </div>
+</div>
+{% endblock %}

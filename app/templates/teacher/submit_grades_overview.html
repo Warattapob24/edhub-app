@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+
+{% block sidebar %}
+    {% include 'teacher/_sidebar.html' %}
+{% endblock %}
+
+{% block main_content %}
+    <h2 class="bi bi-send-check-fill"> {{ title }} (ภาคเรียน {{ semester.term }}/{{ semester.academic_year.year }})</h2>
+    <p class="text-muted">หน้านี้แสดงภาพรวมสถานะการส่งผลการเรียนของรายวิชาที่คุณรับผิดชอบในภาคเรียนปัจจุบัน</p>
+    <hr>
+
+    <div class="card">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>รายวิชา</th>
+                            <th>ห้องเรียน</th>
+                            <th class="text-center">สถานะ</th>
+                            <th class="text-end">การกระทำ</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for course in courses %}
+                        <tr>
+                            <td>{{ course.subject.subject_code }} - {{ course.subject.name }}</td>
+                            <td>{{ course.classroom.name }}</td>
+                            <td class="text-center">
+                                {% set status_text = course.grade_submission_status %}
+                                {% set status_color = 'light text-dark' %} {# สีพื้นฐาน #}
+
+                                {% if course.grade_submission_status in ['ยังไม่ส่ง', 'pending'] %}
+                                    {% set status_text = 'ยังไม่ส่ง' %}
+                                    {% set status_color = 'secondary' %}
+                                {% elif course.grade_submission_status == 'รอตรวจสอบ (หน.กลุ่มสาระ)' %}
+                                    {% set status_text = 'รอตรวจสอบ' %}
+                                    {% set status_color = 'info text-dark' %}
+                                {% elif course.grade_submission_status == 'ต้องการการแก้ไข' %}
+                                    {% set status_text = 'ต้องแก้ไข' %}
+                                    {% set status_color = 'danger' %}
+                                {% elif course.grade_submission_status == 'อนุมัติแล้ว' %}
+                                    {% set status_text = 'อนุมัติแล้ว' %}
+                                    {% set status_color = 'success' %}
+                                {% endif %}
+                                <span class="badge bg-{{ status_color }}">{{ status_text }}</span>
+                            </td>
+                            <td class="text-end">
+                                {# --- Existing Button --- #}
+                                <a href="{{ url_for('teacher.submit_course_grades', course_id=course.id) }}" class="btn btn-sm btn-primary">
+                                    <i class="bi bi-search"></i> ตรวจสอบผลการเรียน
+                                </a>
+                                {# --- [NEW] Export Pator05 Button --- #}
+                                <a href="{{ url_for('teacher.export_pator05', course_id=course.id) }}"
+                                class="btn btn-sm btn-outline-danger me-1" target="_blank"
+                                data-bs-toggle="tooltip" title="Export ปถ.05 (PDF)">
+                                    <i class="bi bi-file-earmark-pdf"></i> PDF
+                                </a>
+
+                                <a href="{{ url_for('teacher.export_pator05_excel', course_id=course.id) }}"
+                                class="btn btn-sm btn-outline-success"
+                                data-bs-toggle="tooltip" title="Export ปถ.05 (Excel)">
+                                    <i class="bi bi-file-earmark-excel"></i> Excel
+                                </a>                              
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="4" class="text-center text-muted p-4">ไม่พบรายวิชาที่ท่านรับผิดชอบในภาคเรียนนี้</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+{% endblock %}

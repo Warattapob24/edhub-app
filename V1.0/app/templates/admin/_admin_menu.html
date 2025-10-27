@@ -1,0 +1,53 @@
+<div class="list-group mb-4">
+    <a href="{{ url_for('admin.school_settings') }}" class="list-group-item list-group-item-action {% if 'settings' in request.path %}active{% endif %}">
+      ตั้งค่าโรงเรียน
+    </a>
+    <a href="{{ url_for('admin.grading_settings') }}" class="list-group-item list-group-item-action {% if 'grading' in request.path %}active{% endif %}">
+      ตั้งค่าเกณฑ์การตัดเกรด
+    </a>
+    <a href="{{ url_for('admin.manage_evaluations') }}" class="list-group-item list-group-item-action {% if 'evaluations' in request.path %}active{% endif %}">
+      ตั้งค่าการประเมิน
+    </a>
+    <a href="{{ url_for('admin.manage_roles') }}" class="list-group-item list-group-item-action {% if 'roles' in request.path %}active{% endif %}">
+      จัดการบทบาท
+    </a>
+    <a href="{{ url_for('admin.manage_users') }}" class="list-group-item list-group-item-action {% if 'users' in request.path %}active{% endif %}">
+      จัดการผู้ใช้งาน
+    </a>
+    <a href="{{ url_for('admin.manage_class_groups') }}" class="list-group-item list-group-item-action {% if 'class_groups' in request.path %}active{% endif %}">
+      จัดการชั้นเรียน
+    </a>    
+    <a href="{{ url_for('admin.manage_rooms') }}" class="list-group-item list-group-item-action {% if 'rooms' in request.path %}active{% endif %}">
+      จัดการสถานที่ห้องเรียน
+    </a>    
+    <a href="{{ url_for('admin.manage_students') }}" class="list-group-item list-group-item-action {% if 'students' in request.path %}active{% endif %}">
+      จัดการนักเรียน
+    </a>
+    <a href="{{ url_for('admin.promote_students_page') }}" class="list-group-item list-group-item-action {% if 'promote' in request.path %}active{% endif %}">
+      เครื่องมือเลื่อนชั้น
+    </a>    
+    <a href="{{ url_for('admin.manage_subjects') }}" class="list-group-item list-group-item-action {% if 'subjects' in request.path %}active{% endif %}">
+      จัดการรายวิชา
+    </a>    
+    <a href="{{ url_for('admin.manage_curriculum') }}" class="list-group-item list-group-item-action {% if 'curriculum' in request.path %}active{% endif %}">
+      จัดการหลักสูตรสถานศึกษา
+    </a>    
+    <a href="{{ url_for('admin.manage_school_periods') }}" class="list-group-item list-group-item-action {% if 'periods' in request.path %}active{% endif %}">
+      จัดการเวลาตารางเรียน
+    </a>
+    <a href="{{ url_for('admin.manage_time_blocks') }}" class="list-group-item list-group-item-action {% if 'time-blocks' in request.path %}active{% endif %}">
+      จัดการกิจกรรมประจำวัน
+    </a>    
+    <a href="{{ url_for('admin.scheduler_dashboard') }}" class="list-group-item list-group-item-action list-group-item-primary {% if 'scheduler' in request.path %}active{% endif %}">
+      <i class="fas fa-brain"></i> จัดตารางสอนอัตโนมัติ
+    </a>    
+    <a href="{{ url_for('admin.manage_approvals') }}" class="list-group-item list-group-item-action {% if 'approvals' in request.path %}active{% endif %}">
+      อนุมัติผลการเรียน
+    </a>    
+    <a href="{{ url_for('admin.view_logs') }}" class="list-group-item list-group-item-action {% if 'logs' in request.path %}active{% endif %}">
+      ดูบันทึกกิจกรรม
+    </a>    
+    <a href="{{ url_for('admin.backup_restore_page') }}" class="list-group-item list-group-item-action list-group-item-danger {% if 'backup' in request.path %}active{% endif %}">
+      <i class="fas fa-database"></i> <strong>สำรองข้อมูล</strong>
+    </a>    
+</div>

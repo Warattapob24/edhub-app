@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-3">
+        {% include 'admin/_admin_menu.html' %}
+    </div>
+    <div class="col-md-9">
+        <h1>แก้ไขผู้ใช้งาน: {{ user.full_name }}</h1>
+        <hr>
+        <form method="POST">
+            {{ form.hidden_tag() }}
+            <div class="mb-3">
+                {{ form.username.label(class="form-label") }}
+                {{ form.username(class="form-control") }}
+            </div>
+            <div class="mb-3">
+                {{ form.full_name.label(class="form-label") }}
+                {{ form.full_name(class="form-control") }}
+            </div>
+            <div class="mb-3">
+                {{ form.department.label(class="form-label") }}
+                {{ form.department(class="form-select") }}
+            </div>
+            <div class="mb-3">
+                {{ form.roles.label(class="form-label") }}
+                {{ form.roles(class="form-select", size=5) }}
+            </div>
+            <div class="mb-3">
+                {{ form.status.label(class="form-label") }}
+                {{ form.status(class="form-select") }}
+            </div>
+<div class="row">
+    <div class="col-md-6 mb-3">
+        {{ form.max_periods_per_day.label(class="form-label") }}
+        {{ form.max_periods_per_day(class="form-control") }}
+    </div>
+    <div class="col-md-6 mb-3">
+        {{ form.max_periods_per_week.label(class="form-label") }}
+        {{ form.max_periods_per_week(class="form-control") }}
+    </div>
+</div>            
+            <hr>
+            <hr>
+            <p class="text-muted">กรอกรหัสผ่านใหม่เฉพาะกรณีที่ต้องการเปลี่ยนแปลง</p>
+            <div class="mb-3">
+                {{ form.password.label(class="form-label") }}
+                {{ form.password(class="form-control") }}
+            </div>
+            <div class="mb-3">
+                {{ form.password2.label(class="form-label") }}
+                {{ form.password2(class="form-control") }}
+            </div>
+            <div class="mt-4">
+                {{ form.submit(class="btn btn-primary") }}
+                <a href="{{ url_for('admin.manage_users') }}" class="btn btn-secondary">ยกเลิก</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

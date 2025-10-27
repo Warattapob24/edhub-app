@@ -1,0 +1,18 @@
+<div class="card mt-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h6 class="mb-0"><i class="bi bi-collection-fill"></i> หน่วยการเรียนรู้</h6>
+        <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#unitFormModal" data-bs-action="add">
+            <i class="bi bi-plus-lg"></i> เพิ่ม
+        </button>
+    </div>
+    <div class="list-group list-group-flush" id="unitList" data-create-unit-url="{{ url_for('teacher.create_learning_unit', plan_id=plan.id) }}" data-plan-id="{{ plan.id }}" data-add-indicator-url="{{ url_for('teacher.add_custom_indicator') }}" data-groups-url="{{ url_for('teacher.manage_student_groups') }}">
+        {% for unit in units %}
+            <a href="#" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" data-unit-id="{{ unit.id }}" data-delete-url="{{ url_for('teacher.delete_learning_unit', unit_id=unit.id) }}">
+                <span class="unit-title">{{ unit.title }}</span>
+                <button class="btn btn-sm btn-outline-danger delete-unit-btn border-0" title="ลบหน่วยการเรียนรู้"><i class="bi bi-trash"></i></button>
+            </a>
+        {% else %}
+            <div id="no-units-placeholder" class="list-group-item text-muted text-center">ยังไม่มีหน่วย</div>
+        {% endfor %}
+    </div>
+</div>

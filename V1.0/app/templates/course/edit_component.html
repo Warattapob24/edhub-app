@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <h1 class="h3">{{ title }}</h1>
+    <p class="text-muted">รายวิชา: {{ course.subject.name }}</p>
+    <hr>
+    <div class="row">
+        <div class="col-md-8">
+            <form method="POST" action="" id="component-form">
+                {{ form.hidden_tag() }}
+                <div class="mb-2">
+                    {{ form.name.label(class="form-label") }}
+                    {{ form.name(class="form-control") }}
+                </div>
+                <div class="mb-2">
+                    {{ form.indicator.label(class="form-label") }}
+                    {{ form.indicator(class="form-control", rows=2) }}
+                </div>
+                <div class="mb-3">
+                    {{ form.component_type.label(class="form-label") }}
+                    {{ form.component_type(class="form-select") }}
+                </div>
+                <div class="mb-3">
+                    {{ form.exam_type.label(class="form-label") }}
+                    {{ form.exam_type(class="form-select", id="exam_type_select") }}
+                </div>
+
+                <label class="form-label mb-1">คะแนนเต็ม (ส่วนงาน K/P/A)</label>
+                <div class="row mb-3 align-items-end">
+                    <div class="col">
+                        {{ form.max_score_k(class="form-control", placeholder="K") }}
+                    </div>
+                    <div class="col">
+                        {{ form.max_score_p(class="form-control", placeholder="P") }}
+                    </div>
+                    <div class="col">
+                        {{ form.max_score_a(class="form-control", placeholder="A") }}
+                    </div>
+                </div>
+
+                <div class="mb-3" id="total_max_score_div">
+                    {{ form.total_max_score.label(class="form-label") }}
+                    {{ form.total_max_score(class="form-control") }}
+                </div>
+
+                <div class="mt-4">
+                    <button type="submit" class="btn btn-primary">บันทึกการเปลี่ยนแปลง</button>
+                    <a href="{{ url_for('course.manage_course', course_id=course.id) }}" class="btn btn-secondary">ยกเลิก</a>
+                </div>
+            </form>
+        </div>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const examTypeSelect = document.getElementById('exam_type_select');
+    const totalMaxScoreDiv = document.getElementById('total_max_score_div');
+
+    function toggleExamScoreField() {
+        if (examTypeSelect.value === 'midterm' || examTypeSelect.value === 'final') {
+            totalMaxScoreDiv.style.display = 'block';
+        } else {
+            totalMaxScoreDiv.style.display = 'none';
+        }
+    }
+
+    // Run on page load and when selection changes
+    toggleExamScoreField();
+    examTypeSelect.addEventListener('change', toggleExamScoreField);
+});
+</script>
+{% endblock %}

@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+
+{% block sidebar %}
+    {% include 'admin/_sidebar.html' %}
+{% endblock %}
+
+{% block styles %}
+{{ super() }}
+{# --- 1. ADD TOM-SELECT STYLES --- #}
+<link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet">
+{% endblock %}
+
+{% block main_content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h2"><i class="bi bi-person-badge-fill me-2"></i> {{ title }}</h1>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>สายชั้น</th>
+                        <th>หัวหน้าสายชั้นปัจจุบัน</th>
+                        <th style="width: 40%;">เลือกหัวหน้าสายชั้นใหม่</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in data %}
+                    <tr>
+                        <td><strong>{{ item.grade_level.name }}</strong></td>
+                        <td>
+                            {% if item.grade_level.head %}
+                                <span class="badge bg-success-soft text-success">{{ item.grade_level.head.full_name }}</span>
+                            {% else %}
+                                <span class="badge bg-secondary-soft text-secondary">ยังไม่ได้กำหนด</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {# --- 2. THE SELECT ELEMENT IS NOW SEARCHABLE --- #}
+                            <select class="form-select head-selector" data-grade-level-id="{{ item.grade_level.id }}" placeholder="พิมพ์เพื่อค้นหาครู...">
+                                <option value="">-- ไม่กำหนด --</option>
+                                {% for user in item.potential_heads %}
+                                <option value="{{ user.id }}" {% if item.grade_level.head_id == user.id %}selected{% endif %}>
+                                    {{ user.full_name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+{# --- 3. ADD TOM-SELECT SCRIPT --- #}
+<script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+
+    document.querySelectorAll('.head-selector').forEach(selectElement => {
+        // --- 4. INITIALIZE TOM-SELECT FOR EACH DROPDOWN ---
+        new TomSelect(selectElement, {
+            dropdownParent: 'body',
+            create: false,
+            onChange: function(value) {
+                const gradeLevelId = selectElement.dataset.gradeLevelId;
+                const userId = value;
+
+                // --- 5. THE API PATH IS NOW CORRECT ---
+                fetch(`/admin/api/grade-level/${gradeLevelId}/set-head`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: JSON.stringify({ user_id: userId || null })
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`Server responded with ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.status === 'success') {
+                        Swal.fire({
+                            toast: true,
+                            position: 'top-end',
+                            icon: 'success',
+                            title: data.message,
+                            showConfirmButton: false,
+                            timer: 2000
+                        }).then(() => {
+                            location.reload();
+                        });
+                    } else {
+                        Swal.fire('เกิดข้อผิดพลาด!', data.message, 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    Swal.fire('การเชื่อมต่อล้มเหลว!', 'ไม่สามารถอัปเดตข้อมูลได้', 'error');
+                });
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

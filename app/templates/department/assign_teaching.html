@@ -1,0 +1,317 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+{% block sidebar %}
+    {% include 'department/_sidebar.html' %}
+{% endblock %}
+
+{% block styles %}
+<link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet">
+<style>
+    #assignment-grid-container {
+        overflow-x: auto;
+    }
+    .assignment-table {
+        min-width: 1200px;
+        border-collapse: separate;
+        border-spacing: 0;
+    }
+    .assignment-table th, .assignment-table td {
+        text-align: center;
+        vertical-align: middle;
+        white-space: nowrap;
+        padding: 0.5rem;
+    }
+    .assignment-table th.subject-header {
+        text-align: left;
+        position: sticky;
+        left: 0;
+        background-color: #f8f9fa;
+        z-index: 2;
+    }
+    .assignment-table td.subject-cell {
+        text-align: left;
+        position: sticky;
+        left: 0;
+        background-color: #fff;
+        z-index: 1;
+        box-shadow: 2px 0 5px rgba(0,0,0,0.05);
+    }
+    .assignment-table thead th {
+        position: sticky;
+        top: 0;
+        background-color: #e9ecef;
+        z-index: 3;
+    }
+    .ts-control { min-width: 150px; }
+</style>
+{% endblock %}
+
+{% block main_content %}
+<div class="row mb-3 align-items-end">
+    <div class="col-md-4">
+        <label for="semester-select" class="form-label">เลือกภาคการเรียน</label>
+        <select id="semester-select" class="form-select">
+            {% for semester in all_semesters %}
+            <option value="{{ semester.id }}" {% if current_semester and semester.id == current_semester.id %}selected{% endif %}>
+                ภาคเรียนที่ {{ semester.term }} ปีการศึกษา {{ semester.academic_year.year }}
+            </option>
+            {% endfor %}
+        </select>
+    </div>
+    <div id="grid-status" class="col-md-8 text-end text-muted"></div>
+</div>
+<div id="workload-summary" class="mt-4"></div>
+<div id="assignment-grid-container" class="card">
+    <div class="card-body p-0">
+        <div id="grid-loader" class="text-center p-5">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p class="mt-2">กำลังโหลดข้อมูล...</p>
+        </div>
+        <table class="table table-bordered table-hover assignment-table d-none" id="assignment-table">
+            <thead></thead>
+            <tbody></tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script> <script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const semesterSelect = document.getElementById('semester-select');
+    const gridContainer = document.getElementById('assignment-grid-container');
+    const summaryDiv = document.getElementById('workload-summary');
+    const statusDiv = document.getElementById('grid-status');
+    let assignmentsData = {};
+    let tomSelectInstances = {};
+
+    const fetchDataAndRenderUI = async () => {
+        const semesterId = semesterSelect.value;
+        if (!semesterId) return;
+
+        gridContainer.innerHTML = '<div class="text-center p-5"><div class="spinner-border text-primary" role="status"></div><p class="mt-2">กำลังโหลดข้อมูล...</p></div>';
+        summaryDiv.innerHTML = '';
+        Object.values(tomSelectInstances).forEach(ts => ts.destroy());
+        tomSelectInstances = {};
+
+        try {
+            const response = await fetch(`/department/api/assignments-data?semester_id=${semesterId}`);
+            if (!response.ok) throw new Error('Failed to fetch data');
+            assignmentsData = await response.json();
+            renderUI(assignmentsData);
+            updateWorkloadSummary();
+        } catch (error) {
+            gridContainer.innerHTML = '<div class="alert alert-danger">เกิดข้อผิดพลาดในการโหลดข้อมูล</div>';
+            console.error('Error:', error);
+        }
+    };
+
+    const renderUI = (data) => {
+        gridContainer.innerHTML = ''; // Clear previous content
+
+        if (!data.data_by_grade || data.data_by_grade.length === 0) {
+            gridContainer.innerHTML = '<div class="text-center text-muted p-5"><h4><i class="bi bi-info-circle"></i> ไม่พบข้อมูล</h4><p>ไม่พบรายวิชาในหลักสูตรสำหรับภาคเรียนนี้</p></div>';
+            return;
+        }
+
+        const teacherOptions = Object.values(data.teachers_by_group).flat().map(t => ({
+            value: t.id,
+            text: `${t.name} (${t.load.toFixed(1)} นก.)`
+        }));
+        
+        data.data_by_grade.forEach(gradeData => {
+            if (gradeData.subjects.length === 0 || gradeData.classrooms.length === 0) return;
+
+            // Create Grade Header
+            const gradeHeader = document.createElement('h4');
+            gradeHeader.className = 'mt-4 mb-3 ps-2';
+            gradeHeader.textContent = `ระดับชั้น${gradeData.grade_name}`;
+            gridContainer.appendChild(gradeHeader);
+            
+            // Create Table
+            let tableHtml = '<div class="table-responsive"><table class="table table-bordered table-hover align-middle assignment-table">';
+            tableHtml += '<thead><tr class="table-light text-center"><th class="subject-header" style="min-width: 250px;">รายวิชา</th>';
+            gradeData.classrooms.forEach(c => { tableHtml += `<th>${c.name}</th>`; });
+            tableHtml += '</tr></thead><tbody>';
+
+            gradeData.subjects.forEach(s => {
+                tableHtml += `<tr><td class="subject-cell">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div><b>${s.code}</b><br>${s.name}<br><small class="text-muted">${s.credit.toFixed(1)} หน่วยกิต</small></div>
+                                    <button class="btn btn-sm btn-outline-primary ms-2 flex-shrink-0 quick-assign-btn" title="มอบหมายครูคนเดียวทุกห้อง"
+                                            data-subject-id="${s.id}" data-group-id="${s.group_id}" data-grade-id="${gradeData.grade_id}">
+                                        <i class="bi bi-person-fill-add"></i>
+                                    </button>
+                                </div>
+                              </td>`;
+                gradeData.classrooms.forEach(c => {
+                    const cellId = `cell-${s.id}-${c.id}`;
+                    tableHtml += `<td><select id="${cellId}" class="teacher-select" multiple 
+                                    data-subject-id="${s.id}" data-classroom-id="${c.id}"></select></td>`;
+                });
+                tableHtml += '</tr>';
+            });
+            tableHtml += '</tbody></table></div>';
+            gridContainer.insertAdjacentHTML('beforeend', tableHtml);
+        });
+
+        // Initialize TomSelect for all new select elements
+        document.querySelectorAll('.teacher-select').forEach(selectEl => {
+            const selectedTeacherIds = data.assignments[`${selectEl.dataset.subjectId}-${selectEl.dataset.classroomId}`] || [];
+            tomSelectInstances[selectEl.id] = new TomSelect(selectEl, {
+                options: teacherOptions,
+                items: selectedTeacherIds,
+                plugins: ['remove_button'],
+                placeholder: 'เลือกครูผู้สอน...',
+                onChange: (value) => handleAssignmentChange(selectEl, value)
+            });
+        });
+    };
+
+    function updateWorkloadSummary() {
+        const workload = {}; 
+        const allTeachers = Object.values(assignmentsData.teachers_by_group).flat();
+        const allSubjects = assignmentsData.data_by_grade.flatMap(g => g.subjects);
+
+        assignmentsData.data_by_grade.forEach(grade => {
+            grade.subjects.forEach(subject => {
+                grade.classrooms.forEach(classroom => {
+                    const key = `${subject.id}-${classroom.id}`;
+                    const teacherIds = assignmentsData.assignments[key] || [];
+                    teacherIds.forEach(teacherId => {
+                        if (!workload[teacherId]) {
+                            const teacher = allTeachers.find(t => t.id == teacherId);
+                            workload[teacherId] = {
+                                name: teacher ? teacher.name : `Teacher ID: ${teacherId}`,
+                                uniqueSubjectIds: new Set(),
+                                rooms: 0,
+                                periods: 0
+                            };
+                        }
+                        workload[teacherId].uniqueSubjectIds.add(subject.id);
+                        workload[teacherId].rooms += 1;
+                        workload[teacherId].periods += (subject.credit * 2); 
+                    });
+                });
+            });
+        });
+
+        Object.values(workload).forEach(teacherData => {
+            let totalCredits = 0;
+            teacherData.uniqueSubjectIds.forEach(subjectId => {
+                const subject = allSubjects.find(s => s.id === subjectId);
+                if (subject) totalCredits += subject.credit;
+            });
+            teacherData.credits = totalCredits;
+        });
+        
+        renderWorkloadSummary(workload);
+    }
+
+    function renderWorkloadSummary(workload) {
+        if (Object.keys(workload).length === 0) {
+            summaryDiv.innerHTML = '';
+            return;
+        }
+        let html = `<div class="card"><div class="card-header"><h5><i class="bi bi-bar-chart-line-fill"></i> สรุปภาระงานสอน</h5></div><div class="card-body"><div class="row row-cols-1 row-cols-md-2 row-cols-lg-4 g-3">`;
+        const sortedTeachers = Object.values(workload).sort((a, b) => a.name.localeCompare(b.name));
+        sortedTeachers.forEach(teacher => {
+            html += `<div class="col"><div class="card bg-light h-100"><div class="card-body p-2"><h6 class="card-title mb-1">${teacher.name}</h6><ul class="list-unstyled mb-0 small text-muted">
+                        <li><strong>หน่วยกิต:</strong> ${teacher.credits.toFixed(1)}</li>
+                        <li><strong>จำนวนห้อง:</strong> ${teacher.rooms}</li>
+                        <li><strong>ภาระงาน:</strong> ${teacher.periods.toFixed(1)} คาบ/สัปดาห์</li>
+                     </ul></div></div></div>`;
+        });
+        html += `</div></div></div>`;
+        summaryDiv.innerHTML = html;
+    }
+
+    const handleAssignmentChange = async (selectEl, selectedIds) => {
+        const semesterId = semesterSelect.value;
+        const subjectId = selectEl.dataset.subjectId;
+        const classroomId = selectEl.dataset.classroomId;
+        statusDiv.textContent = 'กำลังบันทึก...';
+        
+        try {
+            // Note: This API endpoint is in the 'admin' blueprint but is generic enough to be reused.
+            const response = await fetch("{{ url_for('admin.update_assignment') }}", {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}' },
+                body: JSON.stringify({
+                    semester_id: semesterId,
+                    subject_id: subjectId,
+                    classroom_id: classroomId,
+                    teacher_ids: selectedIds.map(id => parseInt(id))
+                })
+            });
+            if (!response.ok) throw new Error('Failed to save assignment');
+            const result = await response.json();
+            
+            const assignmentKey = `${subjectId}-${classroomId}`;
+            if (result.status === 'deleted') {
+                delete assignmentsData.assignments[assignmentKey];
+            } else {
+                assignmentsData.assignments[assignmentKey] = result.teacher_ids;
+            }
+            
+            updateWorkloadSummary(); // <-- เพิ่มการเรียกใช้ฟังก์ชันนี้
+                        
+            const now = new Date();
+            statusDiv.textContent = `บันทึกล่าสุด ${now.toLocaleTimeString('th-TH')}`;
+
+        } catch (error) {
+            console.error('Save error:', error);
+            statusDiv.textContent = 'เกิดข้อผิดพลาดในการบันทึก';
+            statusDiv.classList.add('text-danger');
+        }
+    };
+
+    gridContainer.addEventListener('click', async function(e) {
+        const btn = e.target.closest('.quick-assign-btn');
+        if (!btn) return;
+
+        const subjectId = btn.dataset.subjectId;
+        const groupId = btn.dataset.groupId;
+        const gradeId = btn.dataset.gradeId;
+        
+        const grade = assignmentsData.data_by_grade.find(g => g.grade_id == gradeId);
+        const teachers = assignmentsData.teachers_by_group[groupId] || [];
+        if (teachers.length === 0) {
+            Swal.fire('ไม่พบครู', 'ไม่พบครูที่สังกัดในกลุ่มสาระฯ นี้', 'warning');
+            return;
+        }
+        const inputOptions = teachers.reduce((acc, t) => { acc[t.id] = t.name; return acc; }, {});
+
+        const { value: selectedTeacherId } = await Swal.fire({
+            title: 'เลือกครูผู้สอนสำหรับทุกห้อง',
+            input: 'select',
+            inputOptions: inputOptions,
+            inputPlaceholder: 'เลือกครู',
+            showCancelButton: true,
+            confirmButtonText: 'มอบหมาย',
+            footer: 'การดำเนินการนี้จะเขียนทับข้อมูลเดิมทั้งหมดของวิชานี้'
+        });
+
+        if (selectedTeacherId) {
+            statusDiv.textContent = 'กำลังดำเนินการ...';
+            const teacherIdArray = [parseInt(selectedTeacherId)];
+            const promises = grade.classrooms.map(c => {
+                const selectEl = document.getElementById(`cell-${subjectId}-${c.id}`);
+                // Manually update TomSelect and trigger save
+                if(selectEl && tomSelectInstances[selectEl.id]) {
+                    tomSelectInstances[selectEl.id].setValue(teacherIdArray);
+                }
+            });
+            await Promise.all(promises);
+            statusDiv.textContent = 'มอบหมายด่วนสำเร็จ';
+        }
+    });
+
+    semesterSelect.addEventListener('change', fetchDataAndRenderUI);
+    
+    // Initial load
+    fetchDataAndRenderUI();
+});
+</script>
+{% endblock %}

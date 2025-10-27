@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <h2>จัดการคลังรายวิชา</h2>
+    <p><a href="{{ url_for('admin.add_course') }}"><button>+ เพิ่มรายวิชาใหม่</button></a></p>
+    <table>
+        <thead>
+            <tr>
+                <th>รหัสวิชา</th>
+                <th>ชื่อวิชา</th>
+                <th>หน่วยกิต</th>
+                <th>ดำเนินการ</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for course in courses %}
+            <tr>
+                <td>{{ course.course_code }}</td>
+                <td>{{ course.name_thai }}</td>
+                <td>{{ course.credits }}</td>
+                <td>
+                    <a href="#">แก้ไข</a>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="4">ยังไม่มีข้อมูลรายวิชา</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+{% endblock %}

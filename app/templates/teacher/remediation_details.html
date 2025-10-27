@@ -1,0 +1,395 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+
+{% block sidebar %}
+    {% include 'teacher/_sidebar.html' %}
+{% endblock %}
+
+{% block main_content %}
+<div class="mb-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ url_for('teacher.remediation_courses') }}">จัดการสอนซ่อม</a></li>
+            <li class="breadcrumb-item active" aria-current="page">{{ course.subject.subject_code }} - ห้อง {{ course.classroom.name }}</li>
+        </ol>
+    </nav>
+    <h1 class="h2"><i class="bi bi-people-fill me-2"></i> {{ title }}</h1>
+    <p class="text-muted">
+        <strong>รายวิชา:</strong> {{ course.subject.name }} ({{ "%.1f"|format(course.subject.credit) }} หน่วยกิต) | 
+        <strong>ห้องเรียน:</strong> {{ course.classroom.name }}
+    </p>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-header">
+        <h5 class="mb-0">รายชื่อนักเรียนที่ต้องดำเนินการแก้ไขผลการเรียน ({{ students|length }} คน)</h5>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0" id="remediation-table">
+            <thead class="table-light">
+                <tr>
+                    <th class="text-center" style="width: 5%;">เลขที่</th>
+                    <th>ชื่อ-สกุล</th>
+                    <th class="text-center">คะแนนเก็บ ({{ "%.2f"|format(max_scores.collected)|replace('.00', '') }})</th>
+                    {% if max_scores.midterm > 0 %}
+                    <th class="text-center">กลางภาค ({{ "%.2f"|format(max_scores.midterm)|replace('.00', '') }})</th>
+                    {% endif %}
+                    {% if max_scores.final > 0 %}
+                    <th class="text-center">ปลายภาค ({{ "%.2f"|format(max_scores.final)|replace('.00', '') }})</th>
+                    {% endif %}
+                    <th class="text-center">รวม ({{ "%.2f"|format(max_scores.grand_total)|replace('.00', '') }})</th>
+                    <th class="text-center">เกรดเดิม</th>
+                    <th class="text-center">สถานะการซ่อม</th>
+                    <th class="text-center">จัดการ</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for student_data in students %}
+                <tr>
+                    <td class="text-center">{{ student_data.student.enrollments.filter_by(classroom_id=course.classroom_id).first().roll_number }}</td>
+                    <td>{{ student_data.full_name }}</td>
+                    <td class="text-center">{{ "%.2f"|format(student_data.collected_score)|replace('.00', '') }}</td>
+                    {% if max_scores.midterm > 0 %}
+                    <td class="text-center">{{ student_data.midterm_score if student_data.midterm_score is not none else '-' }}</td>
+                    {% endif %}
+                    {% if max_scores.final > 0 %}
+                    <td class="text-center">{{ student_data.final_score if student_data.final_score is not none else '-' }}</td>
+                    {% endif %}
+                    <td class="text-center fw-bold">{{ "%.2f"|format(student_data.total_score)|replace('.00', '') }}</td>
+                    <td class="text-center">
+                        {% if student_data.grade == 'มส' %}
+                            <span class="badge fs-6 bg-danger">มส</span>
+                        {% elif student_data.grade == 'ร' %}
+                            <span class="badge fs-6 bg-warning text-dark">ร</span>
+                        {% elif student_data.grade == '0' %}
+                            <span class="badge fs-6 bg-secondary">0</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-center">
+                        <span class="badge bg-light text-dark">ยังไม่ดำเนินการ</span>
+                    </td>
+                    <td class="text-center">
+                        <button class="btn btn-outline-primary btn-sm edit-remediation-btn"
+                                data-course-id="{{ course.id }}"
+                                data-student-id="{{ student_data.student.id }}">
+                            <i class="bi bi-box-arrow-up-right"></i> ซ่อมเสริม
+                        </button>
+                    </td>
+                </tr>
+                {% else %}
+                {% set column_count = 7 %}
+                {% if max_scores.midterm > 0 %}{% set column_count = column_count + 1 %}{% endif %}
+                {% if max_scores.final > 0 %}{% set column_count = column_count + 1 %}{% endif %}                
+                <tr>
+                    <td colspan="{{ column_count }}" class="text-center text-muted py-5">
+                        <i class="bi bi-person-check-fill fs-2"></i>
+                        <h5 class="mt-3">ไม่มีนักเรียนที่ต้องซ่อมในรายวิชานี้</h5>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="modal fade" id="remediationModal" tabindex="-1" aria-labelledby="remediationModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="remediationModalLabel">แก้ไขผลการเรียน</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="remediationModalBody">
+                </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ปิด</button>
+                <button type="button" class="btn btn-primary" id="saveRemediationBtn">บันทึกการซ่อมเสริม</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const remediationModalElement = document.getElementById('remediationModal');
+    const tableBody = document.querySelector('#remediation-table tbody'); 
+    
+    if (!remediationModalElement || !tableBody) {
+        console.error("Remediation script could not find required elements.");
+        return;
+    }
+
+    const remediationModal = bootstrap.Modal.getOrCreateInstance(remediationModalElement);
+    const modalBody = document.getElementById('remediationModalBody');
+    const modalLabel = document.getElementById('remediationModalLabel');
+    const saveButton = document.getElementById('saveRemediationBtn');
+    let studentDataStore = {};
+
+    tableBody.addEventListener('click', async function (event) {
+        const button = event.target.closest('.edit-remediation-btn');
+        if (!button) return;
+
+        const originalButtonHtml = button.innerHTML;
+        button.innerHTML = `<span class="spinner-border spinner-border-sm"></span>`;
+        button.disabled = true;
+        saveButton.disabled = false;
+
+        const courseId = button.dataset.courseId;
+        const studentId = button.dataset.studentId;
+
+        try {
+            const response = await fetch(`/teacher/api/remediation/course/${courseId}/student/${studentId}`);
+            if (!response.ok) throw new Error('ไม่สามารถโหลดข้อมูลได้');
+            
+            studentDataStore = await response.json();
+            studentDataStore.course_id = courseId;
+            
+            modalLabel.textContent = `แก้ไขผลการเรียน: ${studentDataStore.student.full_name}`;
+            renderModalContent(studentDataStore);
+            calculateNewGrade();
+            remediationModal.show();
+        } catch (error) {
+            console.error("Modal Error:", error);
+            Swal.fire('เกิดข้อผิดพลาด', error.message, 'error');
+        } finally {
+            button.innerHTML = originalButtonHtml;
+            button.disabled = false;
+        }
+    });
+
+    modalBody.addEventListener('input', function(event) {
+        if (event.target.classList.contains('remediation-score-input')) {
+            calculateNewGrade();
+        }
+    });
+
+    saveButton.addEventListener('click', async function() {
+        this.disabled = true;
+        this.innerHTML = `<span class="spinner-border spinner-border-sm"></span> กำลังบันทึก...`;
+
+        const scoresToSave = [];
+        modalBody.querySelectorAll('.remediation-score-input').forEach(input => {
+            scoresToSave.push({ id: input.dataset.itemId, score: input.value });
+        });
+
+        const msCheckbox = document.getElementById('ms-remediated-checkbox');
+        const isMsRemediated = msCheckbox ? msCheckbox.checked : false;
+
+        const midtermRemediatedInput = document.getElementById('midterm_remediated_score');
+        const midtermRemediatedScore = midtermRemediatedInput ? midtermRemediatedInput.value : null;
+
+        const payload = {
+            course_id: studentDataStore.course_id,
+            student_id: studentDataStore.student.id,
+            scores: scoresToSave,
+            ms_remediated: isMsRemediated,
+            midterm_remediated_score: midtermRemediatedScore
+        };
+
+        try {
+            const response = await fetch("{{ url_for('teacher.save_remediation_data') }}", {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}' },
+                body: JSON.stringify(payload)
+            });
+
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.message || 'Server error');
+
+            remediationModal.hide();
+            Swal.fire({
+                title: 'สำเร็จ!', text: result.message, icon: 'success', confirmButtonText: 'ตกลง'
+            }).then((res) => {
+                if (res.isConfirmed) location.reload();
+            });
+
+        } catch (error) {
+            Swal.fire({ title: 'เกิดข้อผิดพลาด!', text: 'ไม่สามารถบันทึกข้อมูลได้: ' + error.message, icon: 'error' });
+            this.disabled = false;
+            this.innerHTML = 'บันทึกการแก้ไข';
+        }
+    });
+    
+    // --- REVISED: calculateNewGrade function ---
+    function calculateNewGrade() {
+        if (!studentDataStore.max_scores) return;
+
+        let newCollectedScore = studentDataStore.course_grade.collected_score || 0;
+
+        // 2. แยกคะแนนสอบออกจากคะแนนเก็บ
+        let newMidtermScore = studentDataStore.course_grade.midterm_score;
+        let newFinalScore = studentDataStore.course_grade.final_score;
+
+        // 3. สร้าง Map ของคะแนนเก็บเดิมเพื่อการอ้างอิง
+        const originalScoresMap = new Map();
+        if(studentDataStore.remediation_data.scores) {
+            studentDataStore.remediation_data.scores.forEach(item => {
+                if(!item.id.toString().startsWith('exam_')) {
+                    originalScoresMap.set(item.id.toString(), item.score || 0);
+                }
+            });
+        }
+                        
+        // 4. วนลูปใน Modal เพื่อหา "ส่วนต่าง" ของคะแนนเก็บที่ถูกแก้ไข
+        modalBody.querySelectorAll('.remediation-score-input').forEach(input => {
+            const itemId = input.dataset.itemId;
+            const newScore = input.value === '' ? null : parseFloat(input.value);
+
+            if (itemId === 'exam_midterm') {
+                newMidtermScore = newScore;
+            } else if (itemId === 'exam_final') {
+                newFinalScore = newScore;
+            } else {
+                // ถ้าคะแนนในช่อง input ไม่ใช่ค่าเดิม ให้ปรับค่า newCollectedScore
+                const originalScore = originalScoresMap.get(itemId.toString()) || 0;
+                if (newScore !== originalScore) {
+                    newCollectedScore -= originalScore; // ลบคะแนนเก่าออก
+                    newCollectedScore += (newScore || 0);  // บวกคะแนนใหม่เข้าไป
+                }
+            }
+        });
+        
+        const newTotalScore = newCollectedScore + (newMidtermScore || 0) + (newFinalScore || 0);
+        const grandMax = studentDataStore.max_scores.grand_total;
+        
+        const percentage = (grandMax > 0) ? (newTotalScore / grandMax) * 100 : 0;
+        
+        function mapToGrade(p) {
+            if (p >= 80) return '4'; if (p >= 75) return '3.5'; if (p >= 70) return '3';
+            if (p >= 65) return '2.5'; if (p >= 60) return '2'; if (p >= 55) return '1.5';
+            if (p >= 50) return '1'; return '0';
+        }
+
+        const newGrade = mapToGrade(percentage);
+
+        document.getElementById('new-total-score').textContent = newTotalScore.toFixed(2).replace('.00', '');
+        document.getElementById('new-final-grade').textContent = newGrade;
+    }
+
+    // --- REVISED: renderModalContent function ---
+    function renderModalContent(data) {
+        let contentHtml = '';
+        const finalGrade = data.course_grade.final_grade;
+
+        // Part 1: "มส" Section
+        if (data.remediation_data.ms) {
+            const ms = data.remediation_data.ms;
+            contentHtml += `
+                <div class="card mb-3">
+                    <div class="card-header bg-danger text-white">
+                        <i class="bi bi-calendar-x-fill"></i> <strong>เงื่อนไข "มส" (หมดสิทธิ์สอบ)</strong>
+                    </div>
+                    <div class="card-body">
+                        <p>นักเรียนมีเวลาเรียนไม่ถึงเกณฑ์ 80%</p>
+                        <ul>
+                            <li>จำนวนคาบเรียนทั้งหมด: <strong>${ms.total_periods} คาบ</strong></li>
+                            <li>จำนวนที่ขาดเรียน: <strong class="text-danger">${ms.absent_count} คาบ</strong></li>
+                            <li>คิดเป็น: <strong class="text-danger">${ms.absence_percentage.toFixed(2)}%</strong></li>
+                        </ul>
+                        <hr>
+                        {# --- THE UI FIX IS HERE --- #}
+                        <div class="p-3 border rounded bg-light">
+                            <div class="form-check">
+                              <input class="form-check-input" type="checkbox" id="ms-remediated-checkbox">
+                              <label class="form-check-label fw-bold" for="ms-remediated-checkbox">
+                                ยืนยันว่านักเรียนได้ทำกิจกรรมซ่อมเสริมเวลาเรียนเรียบร้อยแล้ว
+                              </label>
+                            </div>
+                            <small class="form-text text-muted">เมื่อยืนยันแล้ว ระบบจะคำนวณเกรดจากคะแนนเป็นลำดับถัดไป</small>
+                        </div>
+                    </div>
+                </div>`;
+        }
+
+        // Part 2: Scores Section
+        if (data.remediation_data.scores) {
+            const score_items = data.remediation_data.scores;
+            const isDisabled = (finalGrade === 'มส');
+            contentHtml += `
+                <div class="card mb-3">
+                    <div class="card-header bg-info text-white"><i class="bi bi-pencil-square"></i> <strong>สรุปคะแนนและการแก้ไข</strong></div>
+                    <fieldset id="score-remediation-fieldset" ${isDisabled ? 'disabled' : ''}>
+                        <div class="card-body">
+                            <p>กรอกคะแนนที่ได้จากการซ่อมในช่องที่ยังว่าง หรือแก้ไขคะแนนเดิม:</p>
+                            ${isDisabled ? '<div class="alert alert-warning small py-2"><i class="bi bi-exclamation-triangle-fill"></i> ต้องผ่านเงื่อนไข "มส" ก่อนจึงจะแก้ไขส่วนนี้ได้</div>' : ''}
+
+                            {# --- START: เพิ่มโค้ด HTML สำหรับคะแนนซ่อมกลางภาค --- #}
+                            ${data.max_scores && data.max_scores['midterm'] > 0 ? `
+                            <hr>
+                            <h6><i class="bi bi-pencil-fill text-warning me-1"></i> คะแนนสอบกลางภาค</h6>
+                            <div class="row mb-3 align-items-center">
+                                <div class="col-sm-6">
+                                    คะแนนเดิม: <span class="badge bg-secondary">${data.course_grade.midterm_score !== null && data.course_grade.midterm_score !== undefined ? data.course_grade.midterm_score : 'ไม่ได้สอบ'} / ${data.max_scores['midterm']}</span>
+                                </div>
+                                <div class="col-sm-6">
+                                    <label for="midterm_remediated_score" class="form-label mb-0 small">คะแนนซ่อมกลางภาค:</label>
+                                    <input type="number" id="midterm_remediated_score" name="midterm_remediated_score"
+                                        class="form-control form-control-sm remediation-score-input-extra" {# Changed class slightly to avoid conflict if needed #}
+                                        step="0.01" min="0" max="${data.max_scores['midterm']}"
+                                        value="${data.course_grade.midterm_remediated_score !== null && data.course_grade.midterm_remediated_score !== undefined ? data.course_grade.midterm_remediated_score : ''}"
+                                        placeholder="กรอกคะแนนซ่อม (เฉพาะ Export)">
+                                </div>
+                            </div>
+                            <hr>
+                            ` : ''}
+                            {# --- END: เพิ่มโค้ด HTML สำหรับคะแนนซ่อมกลางภาค --- #}
+
+                            <table class="table table-sm"> {/* <-- โค้ด HTML เดิมเริ่มตรงนี้ */}
+                                <thead><tr><th>รายการ</th><th class="text-center">คะแนนเต็ม</th><th class="text-center" style="width: 25%;">คะแนนที่ได้</th></tr></thead>
+                                <tbody>
+                                    ${score_items.map(item => {
+                                        // --- THE FIX IS HERE: Logic to create badges ---
+                                        let badges = '';
+
+                                        if (item.dimension_code) {
+                                            let badgeClass = '';
+                                            switch(item.dimension_code) {
+                                                case 'K': badgeClass = 'bg-primary-subtle text-primary-emphasis'; break;
+                                                case 'P': badgeClass = 'bg-success-subtle text-success-emphasis'; break;
+                                                case 'A': badgeClass = 'bg-info-subtle text-info-emphasis'; break;
+                                                default: badgeClass = 'bg-secondary-subtle text-secondary-emphasis';
+                                            }
+                                            badges += `<span class="badge ${badgeClass} rounded-pill ms-1">${item.dimension_code}</span>`;
+                                        }
+                                        if (item.indicator_type === 'SUMMATIVE') {
+                                            badges += '<span class="badge bg-danger-subtle text-danger-emphasis rounded-pill ms-2">ปลายทาง</span>';
+                                        }
+                                        return `
+                                            <tr>
+                                                <td>${item.name} ${badges}</td>
+                                                <td class="text-center">${item.max_score}</td>
+                                                <td>
+                                                    <input type="number" class="form-control form-control-sm text-center remediation-score-input" 
+                                                        data-item-id="${item.id}"
+                                                        value="${item.score !== null && item.score !== undefined ? item.score : ''}"
+                                                        max="${item.max_score}" min="0">
+                                                </td>
+                                            </tr>`;
+                                    }).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </fieldset>
+                </div>`;
+        }
+        
+        // Part 3: Final Grade Summary
+        contentHtml += `
+            <div class="card">
+                <div class="card-header bg-primary text-white"><i class="bi bi-calculator-fill"></i> <strong>สรุปผลการเรียนหลังแก้ไข</strong></div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col"><div class="h5">คะแนนรวมใหม่</div><div id="new-total-score" class="fs-3 fw-bold text-primary">--</div></div>
+                        <div class="col"><div class="h5">เกรดใหม่</div><div id="new-final-grade" class="fs-3 fw-bold text-success">--</div></div>
+                    </div>
+                </div>
+            </div>`;
+        modalBody.innerHTML = contentHtml;
+    }
+});
+</script>
+{% endblock %}

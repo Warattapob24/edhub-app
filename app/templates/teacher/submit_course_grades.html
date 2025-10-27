@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+
+{% block sidebar %}
+    {% include 'teacher/_sidebar.html' %}
+{% endblock %}
+
+{% block main_content %}
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ url_for('teacher.submit_grades_overview') }}">ภาพรวมการส่งผลการเรียน</a></li>
+            <li class="breadcrumb-item active" aria-current="page">{{ course.subject.name }} ({{ course.classroom.name }})</li>
+        </ol>
+    </nav>
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2 class="bi bi-check2-square mb-0"> {{ title }}</h2>
+        {% if course.grade_submission_status in ['ยังไม่ส่ง', 'ต้องการการแก้ไข', 'pending'] %}
+        <form method="POST" onsubmit="return confirm('คุณยืนยันที่จะส่งผลการเรียนนี้ใช่หรือไม่?');">
+            {{ form.hidden_tag() }}
+            <button type="submit" class="btn btn-success btn-lg"><i class="bi bi-send-fill me-2"></i>ยืนยันและส่งผลการเรียน</button>
+        </form>
+        {% endif %}
+    </div>
+    
+    {% if course.grade_submission_status == 'ต้องการการแก้ไข' %}
+    <div class="alert alert-danger">
+        <strong>ส่งกลับเพื่อแก้ไข:</strong> {{ course.grade_submission_notes or 'กรุณาตรวจสอบความถูกต้องของผลการเรียนอีกครั้ง' }}
+    </div>
+    {% elif course.grade_submission_status not in ['ยังไม่ส่ง', 'pending'] %}
+     <div class="alert alert-info">
+        <strong>สถานะ: {{ course.grade_submission_status }}</strong> | ท่านไม่สามารถแก้ไขหรือส่งผลการเรียนได้ในขณะนี้
+    </div>
+    {% endif %}
+
+    <div class="card">
+        <div class="card-header">
+            สรุปผลการเรียนนักเรียนทั้งหมด ({{ student_grades|length }} คน)
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-striped table-sm align-middle mb-0">
+                    <thead class="table-light text-center">
+                        <tr>
+                            <th>เลขที่</th>
+                            <th class="text-start">รหัสนักเรียน - ชื่อสกุล</th>
+                            <th>คะแนนเก็บ ({{ max_collected|round(1) }})</th>
+                            {% if max_midterm > 0 %}
+                            <th>กลางภาค ({{ max_midterm|round(1) }})</th>
+                            {% endif %}
+                            {% if max_final > 0 %}
+                            <th>ปลายภาค ({{ max_final|round(1) }})</th>
+                            {% endif %}
+                            <th>คะแนนรวม ({{ grand_max_score|round(1) }})</th>
+                            <th>เกรด</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-center">
+                        {% for data in student_grades %}
+                        <tr>
+                            <td>{{ loop.index }}</td>
+                            <td class="text-start">{{ data.student_id }} - {{ data.full_name }}</td>
+                            <td>{{ data.collected_score|round(2) }}</td>
+                            {% if max_midterm > 0 %}
+                            <td>{{ data.midterm_score|round(2) if data.midterm_score is not none else '-' }}</td>
+                            {% endif %}
+                            {% if max_final > 0 %}
+                            <td>{{ data.final_score|round(2) if data.final_score is not none else '-' }}</td>
+                            {% endif %}
+                            <td class="fw-bold">{{ data.total_score|round(2) }}</td>
+                            <td class="text-center fw-bold">
+                                {% set grade_obj = data.exam_grade_obj %}
+                                {# --- THE FIX IS HERE --- #}
+                                {% if grade_obj and grade_obj.original_final_grade %}
+                                    <span class="text-success">{{ data.grade }}<small class="text-muted"> *{{ grade_obj.original_final_grade }}</small></span>
+                                {% else %}
+                                    {% if data.grade in ['0', 'ร', 'มส'] %}
+                                        <span class="text-danger">{{ data.grade }}</span>
+                                    {% else %}
+                                        <span>{{ data.grade }}</span>
+                                    {% endif %}
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+{% endblock %}

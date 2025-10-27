@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+
+{% block sidebar %}
+    {% include 'department/_sidebar.html' %}
+{% endblock %}
+
+{% block main_content %}
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ url_for('department.dashboard') }}">แดชบอร์ดกลุ่มสาระฯ</a></li>
+            <li class="breadcrumb-item active" aria-current="page">ตรวจสอบผลการเรียน</li>
+        </ol>
+    </nav>
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2 class="bi bi-search mb-0"> {{ title }}</h2>
+        <div>
+            <button class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#rejectModal"><i class="bi bi-x-circle-fill me-2"></i>ส่งกลับเพื่อแก้ไข</button>
+            <form method="POST" action="{{ url_for('department.approve_grades', course_id=course.id) }}" class="d-inline" onsubmit="return confirm('คุณยืนยันที่จะอนุมัติและส่งผลการเรียนนี้ต่อใช่หรือไม่?');">
+                {{ form.hidden_tag() }}
+                <button type="submit" class="btn btn-success"><i class="bi bi-check-circle-fill me-2"></i>อนุมัติและส่งต่อฝ่ายวิชาการ</button>
+            </form>
+        </div>
+    </div>
+    <p class="text-muted">วิชา: <strong>{{ course.subject.name }}</strong> | ห้องเรียน: <strong>{{ course.classroom.name }}</strong> | ผู้ส่ง: <strong>{{ course.submitted_by.full_name if course.submitted_by else 'N/A' }}</strong></p>
+    <hr>
+    
+    <div class="card">
+        <div class="card-header">
+            สรุปผลการเรียนนักเรียนทั้งหมด ({{ student_grades|length }} คน)
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-striped table-sm align-middle mb-0">
+                    <thead class="table-light text-center">
+                        <tr>
+                            <th>เลขที่</th>
+                            <th class="text-start">ชื่อ-สกุล</th>
+                            <th>คะแนนเก็บ ({{ max_scores.collected|round(1) }})</th>
+                            {% if max_scores.midterm > 0 %}<th>กลางภาค ({{ max_scores.midterm|round(1) }})</th>{% endif %}
+                            {% if max_scores.final > 0 %}<th>ปลายภาค ({{ max_scores.final|round(1) }})</th>{% endif %}
+                            <th>คะแนนรวม ({{ max_scores.grand_total|round(1) }})</th>
+                            <th>เกรด</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-center">
+                        {% for data in student_grades %}
+                        <tr>
+                            <td>{{ loop.index }}</td>
+                            <td class="text-start">{{ data.full_name }}</td>
+                            <td>{{ data.collected_score|round(2) }}</td>
+                            {% if max_scores.midterm > 0 %}
+                            <td>{{ data.midterm_score|round(2) if data.midterm_score is not none else '-' }}</td>
+                            {% endif %}
+                            {% if max_scores.final > 0 %}
+                            <td>{{ data.final_score|round(2) if data.final_score is not none else '-' }}</td>
+                            {% endif %}
+                            <td class="fw-bold">{{ data.total_score|round(2) }}</td>
+                            <td class="fw-bold fs-6 
+                                {% if data.grade in ['0', 'ร', 'มส'] %}text-danger{% endif %}
+                            ">{{ data.grade }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+            </div>
+        </div>
+
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header"><h5 class="mb-0"><i class="bi bi-table me-2"></i>ตารางสรุปผลการเรียนรายวิชา</h5></div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-hover table-sm text-center align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th rowspan="2" class="align-middle">รายวิชา/ห้องเรียน</th>
+                                    <th rowspan="2" class="align-middle">จำนวน (คน)</th>
+                                    <th rowspan="2" class="align-middle">(GPA)</th>
+                                    <th rowspan="2" class="align-middle">S.D.</th>
+                                    <th colspan="10">จำนวนนักเรียน (คน)</th>
+                                </tr>
+                                <tr>
+                                    <th>4</th><th>3.5</th><th>3</th><th>2.5</th><th>2</th><th>1.5</th><th>1</th><th>0</th><th>ร</th><th>มส</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in courses_with_stats|sort(attribute='course.subject.subject_code') %}
+                                {% set course = item.course %}
+                                {% set c_stats = item.stats %}
+                                {% set c_dist = c_stats.grade_distribution %}
+                                <tr>
+                                    <td class="text-start">
+                                        {{ course.subject.subject_code }} - {{ course.subject.name }}
+                                        <small class="text-muted d-block">ห้อง {{ course.classroom.name }}</small>
+                                    </td>
+                                    <td>{{ c_stats.total_students }}</td>
+                                    <td>{{ '%.2f'|format(c_stats.gpa) }}</td>
+                                    <td>{{ '%.2f'|format(c_stats.sd) }}</td>
+                                    <td>{{ c_dist.get('4', 0) }}</td>
+                                    <td>{{ c_dist.get('3.5', 0) }}</td>
+                                    <td>{{ c_dist.get('3', 0) }}</td>
+                                    <td>{{ c_dist.get('2.5', 0) }}</td>
+                                    <td>{{ c_dist.get('2', 0) }}</td>
+                                    <td>{{ c_dist.get('1.5', 0) }}</td>
+                                    <td>{{ c_dist.get('1', 0) }}</td>
+                                    <td class="{% if c_dist.get('0', 0) > 0 %}table-danger{% endif %}">{{ c_dist.get('0', 0) }}</td>
+                                    <td class="{% if c_dist.get('ร', 0) > 0 %}table-warning{% endif %}">{{ c_dist.get('ร', 0) }}</td>
+                                    <td class="{% if c_dist.get('มส', 0) > 0 %}table-warning{% endif %}">{{ c_dist.get('มส', 0) }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                            <tfoot class="table-light fw-bold">
+                                {% if overall_stats %}
+                                    {% set o_dist = overall_stats.grade_distribution %}
+                                    {% set o_perc = overall_stats.grade_percentages %}
+                                    <tr class="table-primary">
+                                        <td class="text-start">รวมทั้งหมด</td>
+                                        <td>{{ overall_stats.total_students }}</td>
+                                        <td>{{ '%.2f'|format(overall_stats.gpa) }}</td>
+                                        <td>{{ '%.2f'|format(overall_stats.sd) }}</td>
+                                        <td>{{ o_dist.get('4', 0) }}</td>
+                                        <td>{{ o_dist.get('3.5', 0) }}</td>
+                                        <td>{{ o_dist.get('3', 0) }}</td>
+                                        <td>{{ o_dist.get('2.5', 0) }}</td>
+                                        <td>{{ o_dist.get('2', 0) }}</td>
+                                        <td>{{ o_dist.get('1.5', 0) }}</td>
+                                        <td>{{ o_dist.get('1', 0) }}</td>
+                                        <td>{{ o_dist.get('0', 0) }}</td>
+                                        <td>{{ o_dist.get('ร', 0) }}</td>
+                                        <td>{{ o_dist.get('มส', 0) }}</td>
+                                    </tr>
+                                    <tr class="table-secondary">
+                                        <td class="text-start">รวม (ร้อยละ)</td>
+                                        <td colspan="3"></td>
+                                        <td>{{ '%.1f'|format(o_perc.get('4', 0)) }}%</td>
+                                        <td>{{ '%.1f'|format(o_perc.get('3.5', 0)) }}%</td>
+                                        <td>{{ '%.1f'|format(o_perc.get('3', 0)) }}%</td>
+                                        <td>{{ '%.1f'|format(o_perc.get('2.5', 0)) }}%</td>
+                                        <td>{{ '%.1f'|format(o_perc.get('2', 0)) }}%</td>
+                                        <td>{{ '%.1f'|format(o_perc.get('1.5', 0)) }}%</td>
+                                        <td>{{ '%.1f'|format(o_perc.get('1', 0)) }}%</td>
+                                        <td>{{ '%.1f'|format(o_perc.get('0', 0)) }}%</td>
+                                        <td>{{ '%.1f'|format(o_perc.get('ร', 0)) }}%</td>
+                                        <td>{{ '%.1f'|format(o_perc.get('มส', 0)) }}%</td>
+                                    </tr>
+                                {% endif %}
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {% for item in courses_with_stats|sort(attribute='course.subject.subject_code') %}
+        {% endfor %}
+    <div class="modal fade" id="rejectModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">ส่งกลับเพื่อแก้ไข</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form method="POST" action="{{ url_for('department.return_grades_for_revision', course_id=course.id) }}">
+                    {{ form.hidden_tag() }}
+                    <div class="modal-body">
+                        <p>กรุณาระบุเหตุผลที่ส่งผลการเรียนกลับไปให้ครูผู้สอนเพื่อแก้ไข</p>
+                        <textarea class="form-control" name="revision_notes" rows="4" placeholder="เช่น กรุณาตรวจสอบคะแนนสอบปลายภาคของนักเรียนเลขที่..." required></textarea>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+                        <button type="submit" class="btn btn-danger">ยืนยันการส่งกลับ</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+{% endblock %}

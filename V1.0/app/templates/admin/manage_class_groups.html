@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-3">
+        {% include 'admin/_admin_menu.html' %}
+    </div>
+    <div class="col-md-9">
+        <h1>{{ title }}</h1>
+        <p>สร้างสายชั้น (เช่น ม.1, ม.2) และเพิ่มห้องเรียนพร้อมกำหนดครูที่ปรึกษา</p>
+        <hr>
+
+        <div class="card mb-4">
+            <div class="card-header">สร้างสายชั้นใหม่</div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('admin.manage_class_groups') }}" class="row g-3 align-items-end">
+                    {{ grade_form.hidden_tag() }}
+                    <div class="col-auto">
+                        {{ grade_form.name.label(class="form-label") }}
+                        {{ grade_form.name(class="form-control") }}
+                    </div>
+                    <div class="col-auto">
+                        {{ grade_form.submit_grade(class="btn btn-primary") }}
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        {% for grade in grade_levels %}
+        <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">{{ grade.name }}</h5>
+                <div>
+                    <a href="{{ url_for('admin.edit_grade_level', id=grade.id) }}" class="btn btn-outline-warning btn-sm">แก้ไขชื่อ</a>
+                    <form action="{{ url_for('admin.delete_grade_level', id=grade.id) }}" method="POST" class="d-inline" onsubmit="return confirm('คุณแน่ใจหรือไม่ว่าต้องการลบสายชั้นนี้ทั้งหมด?');">
+                        <button type="submit" class="btn btn-outline-danger btn-sm">ลบสายชั้น</button>
+                    </form>
+                </div>
+            </div>
+            <div class="card-body">
+                <h6>กลุ่มเรียนที่มีอยู่:</h6>
+                {% if grade.class_groups.all() %}
+                    <ul class="list-group list-group-flush">
+                    {% for class_group in grade.class_groups.order_by('room_number') %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>
+                                ห้อง {{ class_group.room_number }} (ปีการศึกษา {{ class_group.academic_year }})
+                                <br>
+                                <small class="text-muted">ครูที่ปรึกษา: 
+                                    {% for advisor in class_group.advisors %}
+                                        <span class="badge bg-secondary">{{ advisor.full_name }}</span>
+                                    {% else %}
+                                        ยังไม่ได้กำหนด
+                                    {% endfor %}
+                                </small>
+                            </div>
+                            <div>
+                                <a href="{{ url_for('admin.edit_class_group', id=class_group.id) }}" class="btn btn-warning btn-sm">แก้ไข</a>
+                                <form action="{{ url_for('admin.delete_class_group', id=class_group.id) }}" method="POST" class="d-inline" onsubmit="return confirm('คุณแน่ใจหรือไม่ว่าต้องการลบห้องนี้?');">
+                                    <button type="submit" class="btn btn-danger btn-sm">ลบ</button>
+                                </form>
+                            </div>
+                        </li>
+                    {% endfor %}
+                    </ul>
+                {% else %}
+                    <p class="text-muted">ยังไม่มีกลุ่มเรียนในสายชั้นนี้</p>
+                {% endif %}
+                <hr>
+                <h6>เพิ่มกลุ่มเรียนใหม่ในสายชั้นนี้:</h6>
+                <form method="POST" action="{{ url_for('admin.add_class_group', grade_id=grade.id) }}">
+                    {{ class_form.hidden_tag() }}
+                    <div class="row">
+                        <div class="col-md-4 mb-2">
+                            {{ class_form.room_number(class="form-control", placeholder="หมายเลขห้อง") }}
+                        </div>
+                        <div class="col-md-4 mb-2">
+                            {{ class_form.academic_year(class="form-control") }}
+                        </div>
+                    </div>
+                    <div class="row mt-2">
+                        <div class="col-md-8">
+                            {{ class_form.advisors(class="form-select", size="5") }}
+                        </div>
+                        <div class="col-md-4">
+                             {{ class_form.submit_class(class="btn btn-success w-100 h-100") }}
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

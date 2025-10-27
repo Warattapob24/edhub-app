@@ -1,0 +1,162 @@
+{% extends "mobile_base.html" %}
+{% block title %}Mobile Classroom - {{ entry.course.subject.name }}{% endblock %}
+
+{% block styles %}
+    {{ super() }}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/mobile_entry.css') }}">
+{% endblock %}
+
+{% block main_content %}
+<div id="mobileEntryContainer" 
+     class="mobile-entry-container"
+     data-entry-id="{{ entry.id }}"
+     data-course-id="{{ entry.course.id }}"
+     data-date-iso="{{ date_iso }}">
+
+    <nav class="navbar navbar-light bg-light fixed-top border-bottom shadow-sm p-2">
+        <div class="container-fluid">
+            <a href="{{ url_for('teacher.dashboard') }}" class="btn btn-sm btn-outline-secondary me-2">
+                <i class="bi bi-arrow-left"></i> <span class="d-none d-sm-inline">กลับ</span>
+            </a>
+            <div class="flex-grow-1">
+                <h6 class="mb-0 text-primary">
+                    <i class="bi bi-book-fill"></i> {{ entry.course.subject.name }} 
+                </h6>
+                <small class="text-muted">
+                    <i class="bi bi-people-fill"></i> {{ entry.course.classroom.name }} | 
+                    <i class="bi bi-clock"></i> คาบที่ {{ entry.slot.period_number }}
+                </small>
+            </div>
+            
+            <div class="ms-auto">
+                <button id="randomBtn" class="btn btn-sm btn-outline-secondary me-1" data-bs-toggle="modal" data-bs-target="#randomStudentModal">
+                    <i class="bi bi-shuffle"></i> <span class="d-none d-sm-inline">สุ่ม</span>
+                </button>
+                <button id="groupBtn" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#groupingModal">
+                    <i class="bi bi-people-fill"></i> <span class="d-none d-sm-inline">จัดกลุ่ม</span>
+                </button>
+            </div>
+        </div>
+        <div class="container-fluid mt-2">
+            <select class="form-select form-select-sm" id="gradedItemSelect">
+                <option value="">-- เลือกรายการให้คะแนน --</option>
+                {% for item in graded_items %}
+                    <option value="{{ item.id }}">{{ item.name }} ({{ item.max_score }} คะแนน)</option>
+                {% endfor %}
+            </select>
+        </div>
+    </nav>
+
+    <div id="studentGrid" class="row row-cols-4">
+        {% for enrollment in enrollments %}
+            <div class="col" id="card-enrollment-{{ enrollment.id }}">
+                <div class="student-card" 
+                     data-student-id="{{ enrollment.student.id }}" 
+                     data-enrollment-id="{{ enrollment.id }}"
+                     data-status="{{ status_map.get(enrollment.id, 'PRESENT') }}">
+                    
+                    <span class="student-number">{{ enrollment.student_number or 'N/A' }}</span>
+                    <div class="student-avatar">
+                        <i class="bi bi-person-circle"></i>
+                    </div>
+                    <div class="student-name">
+                        {{ enrollment.student.first_name }}
+                    </div>
+                    <div class="score-display" data-student-id="{{ enrollment.student.id }}">
+                        -
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+
+    <div id="statusZones" class="fixed-bottom d-flex justify-content-around bg-light p-1 border-top shadow-lg">
+        <div class="status-zone present" data-status="PRESENT">
+            <i class="bi bi-check-circle-fill"></i>
+            <div>มา</div>
+        </div>
+        <div class="status-zone late" data-status="LATE">
+            <i class="bi bi-clock-history"></i>
+            <div>สาย</div>
+        </div>
+        <div class="status-zone leave" data-status="LEAVE">
+            <i class="bi bi-box-arrow-left"></i>
+            <div>ลา</div>
+        </div>
+        <div class="status-zone absent" data-status="ABSENT">
+            <i class="bi bi-x-circle-fill"></i>
+            <div>ขาด</div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="groupingModal" tabindex="-1" aria-labelledby="groupingModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-fullscreen-md-down modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="groupingModalLabel"><i class="bi bi-people-fill"></i> จัดกลุ่มนักเรียน</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="group-container mb-3">
+                    <h6><i class="bi bi-person-dash"></i> ยังไม่มีกลุ่ม</h6>
+                    <div id="ungroupedStudentsArea" class="group-zone drop-zone" data-group-id="null">
+                        </div>
+                </div>
+
+                <div id="groupZonesContainer">
+                    {% for group in groups %}
+                        <div class="group-container mb-3" id="group-container-{{ group.id }}">
+                            <h6><i class="bi bi-collection-fill"></i> {{ group.name }}</h6>
+                            <div class="group-zone drop-zone" data-group-id="{{ group.id }}">
+                                </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-success" id="createGroupBtn">
+                    <i class="bi bi-plus-circle"></i> สร้างกลุ่มใหม่
+                </button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ปิด</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="randomStudentModal" tabindex="-1" aria-labelledby="randomStudentModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="randomStudentModalLabel"><i class="bi bi-shuffle"></i> สุ่มนักเรียน</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body text-center">
+                <p>นักเรียนผู้โชคดีคือ...</p>
+                <h2 id="randomResult" class="display-4 my-4" style="display: none;"></h2>
+                <div id="wheelPlaceholder" class="my-4">
+                    <i class="bi bi-arrow-clockwise" style="font-size: 5rem;"></i>
+                    <p>(Wheel Library Placeholder)</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" id="spinWheelBtn">หมุน!</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ปิด</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+
+{% block scripts %}
+    {{ super() }} <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+
+    <script>
+        const ALL_SCORES_DATA = {{ score_data_json | tojson }};
+    </script>
+
+    <script src="{{ url_for('static', filename='js/mobile_entry.js') }}"></script>
+{% endblock %}

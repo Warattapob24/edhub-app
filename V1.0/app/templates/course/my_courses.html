@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1>รายวิชาของฉัน</h1>
+    <a href="{{ url_for('course.create_course') }}" class="btn btn-primary">สร้างคลาสเรียนใหม่</a>
+</div>
+<p>นี่คือรายการคลาสเรียนทั้งหมดที่คุณรับผิดชอบในภาคการเรียนต่างๆ</p>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+        {% for category, message in messages %}
+        <div class="alert alert-{{ 'danger' if category == 'error' else 'success' }}" role="alert">{{ message }}</div>
+        {% endfor %}
+    {% endif %}
+{% endwith %}
+
+<ul class="nav nav-tabs mb-3" id="dashboardTab" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" id="schedule-tab" data-bs-toggle="tab" data-bs-target="#schedule" type="button" role="tab" aria-controls="schedule" aria-selected="true">
+        <i class="fas fa-calendar-day"></i> ตารางสอนวันนี้
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="all-courses-tab" data-bs-toggle="tab" data-bs-target="#all-courses" type="button" role="tab" aria-controls="all-courses" aria-selected="false">
+        <i class="fas fa-list"></i> รายวิชาทั้งหมด
+    </button>
+  </li>
+</ul>
+
+<div class="tab-content" id="dashboardTabContent">
+  <div class="tab-pane fade show active" id="schedule" role="tabpanel" aria-labelledby="schedule-tab">
+    <h4>ตารางสอนประจำวันศุกร์ที่ 8 สิงหาคม 2568</h4> {# ตัวอย่างวันที่แบบไดนามิก #}
+{% if todays_schedule %}
+    <div class="list-group">
+    {% for item in todays_schedule %}
+        <div class="list-group-item">
+            <div class="d-flex w-100 justify-content-between">
+                <h5 class="mb-1">
+                    <i class="fas fa-clock text-primary"></i> 
+                    {# เข้าถึงเวลาผ่าน item.period #}
+                    {{ item.period.start_time.strftime('%H:%M') }} - {{ item.period.end_time.strftime('%H:%M') }} น.
+                </h5>
+                <small>รหัสวิชา: {{ item.course.subject.subject_code }}</small>
+            </div>
+            <p class="mb-2"><strong>{{ item.course.subject.name }}</strong></p>
+            <div class="d-flex justify-content-between align-items-center">
+                <small>
+                    <i class="fas fa-chalkboard-teacher"></i> 
+                    ห้องเรียน: 
+                    {# วนลูปใน item.class_groups #}
+                    {% for class_group in item.class_groups %}
+                        <span class="badge bg-info text-dark fs-6">{{ class_group.grade_level.name }}/{{ class_group.room_number }}</span>
+                    {% endfor %}
+                </small>
+                <div>
+                    <a href="{{ url_for('course.attendance', course_id=item.course.id) }}" class="btn btn-info btn-sm">เช็คชื่อ</a>
+                    <a href="{{ url_for('course.score_entry', course_id=item.course.id) }}" class="btn btn-success btn-sm">กรอกคะแนน</a>
+                </div>
+            </div>
+        </div>
+    {% endfor %}
+    </div>
+{% else %}
+    <div class="alert alert-info" role="alert">
+        <i class="fas fa-mug-hot"></i> วันนี้คุณไม่มีคาบสอน พักผ่อนได้!
+    </div>
+{% endif %}
+  </div>
+
+  <div class="tab-pane fade" id="all-courses" role="tabpanel" aria-labelledby="all-courses-tab">
+    {% if courses_summary %}
+    <table class="table table-hover align-middle">
+        <thead class="table-light">
+            <tr>
+                <th>ปีการศึกษา/เทอม</th>
+                <th>รายวิชา</th>
+                <th class="text-center">จำนวน นร.</th>
+                <th class="text-center">คะแนนเต็ม</th>
+                <th class="text-center">สถานะ</th>
+                <th>ดำเนินการ</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for summary in courses_summary %}
+            {% set course = summary.course %}
+            <tr>
+                <td>{{ course.academic_year }}/{{ course.semester }}</td>
+                <td>
+                    <strong>{{ course.subject.subject_code }}</strong>
+                    <br>
+                    <small class="text-muted">{{ course.subject.name }}</small>
+                </td>
+                <td class="text-center">{{ summary.student_count }}</td>
+                <td class="text-center">{{ summary.total_max_score }}</td>
+                <td class="text-center">
+                    {% if course.status == 'draft' %}
+                        <span class="badge bg-secondary">ฉบับร่าง</span>
+                    {% elif course.status == 'pending_approval' %}
+                         <span class="badge bg-warning text-dark">รออนุมัติ</span>
+                    {% elif course.status == 'approved' %}
+                        <span class="badge bg-success">อนุมัติแล้ว</span>
+                    {% elif course.status == 'rejected' %}
+                        <span class="badge bg-danger">ส่งกลับแก้ไข</span>
+                    {% else %}
+                        <span class="badge bg-light text-dark">{{ course.status }}</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <a href="{{ url_for('course.manage_course', course_id=course.id) }}" class="btn btn-outline-secondary btn-sm">จัดการวิชา</a>
+                    
+                    {% if course.status == 'draft' or course.status == 'rejected' %}
+                    <form action="{{ url_for('course.submit_course', course_id=course.id) }}" method="POST" class="d-inline" onsubmit="return confirm('คุณตรวจสอบความถูกต้องทั้งหมดแล้ว และต้องการส่งผลการเรียนใช่หรือไม่?');">
+                        <button type="submit" class="btn btn-success btn-sm">
+                            {% if course.status == 'rejected' %}
+                                ส่งอีกครั้ง
+                            {% else %}
+                                ส่งผลการเรียน
+                            {% endif %}
+                        </button>
+                    </form>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="alert alert-info" role="alert">
+        คุณยังไม่มีคลาสเรียนในระบบ <a href="{{ url_for('course.create_course') }}">คลิกที่นี่เพื่อสร้างคลาสเรียนแรกของคุณ</a>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

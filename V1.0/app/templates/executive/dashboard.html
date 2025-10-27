@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="h3">{{ title }}</h1>
+<p>ภาพรวมผลสัมฤทธิ์ทางการเรียนของโรงเรียน</p>
+<hr>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                เกรดเฉลี่ย (GPA) แยกตามกลุ่มสาระการเรียนรู้
+            </div>
+            <div class="card-body">
+                <canvas id="gpaByDepartmentChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const ctx = document.getElementById('gpaByDepartmentChart').getContext('2d');
+    
+    // ดึงข้อมูลที่ส่งมาจาก Backend
+    const labels = {{ chart_labels|safe }};
+    const dataPoints = {{ chart_data|safe }};
+
+    new Chart(ctx, {
+        type: 'bar', // ประเภทของกราฟ (bar, line, pie, etc.)
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'เกรดเฉลี่ย (GPA)',
+                data: dataPoints,
+                backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                borderColor: 'rgba(54, 162, 235, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 4.0 // กำหนดค่าสูงสุดของแกน Y
+                }
+            }
+        }
+    });
+});
+</script>
+{% endblock %}

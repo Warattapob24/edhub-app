@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>{{ title }}</h2>
+<hr>
+<form method="POST" action="">
+    {{ form.hidden_tag() }}
+    <label for="name">{{ form.name.label }}</label>
+    {{ form.name(size="40") }}
+
+    <label for="code">{{ form.code.label }}</label>
+    {{ form.code(size="10") }}
+
+    <label for="description">{{ form.description.label }}</label>
+    {{ form.description(rows="3") }}
+
+    <br><br>
+    {{ form.submit() }}
+    <a href="{{ url_for('admin.manage_dimensions') }}">
+        <button type="button" class="secondary">ยกเลิก</button>
+    </a>
+</form>
+{% endblock %}

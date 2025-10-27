@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-3">
+        {% include 'admin/_admin_menu.html' %}
+    </div>
+    <div class="col-md-9">
+        <h1>ตั้งค่าเกณฑ์การตัดเกรด</h1>
+        <p>กำหนดช่วงคะแนน (เปอร์เซ็นต์) สำหรับการตัดเกรดที่จะใช้ทั้งระบบ</p>
+        <hr>
+        <div class="col-md-8">
+            <form method="POST" id="grading-form">
+                <div id="scale-container">
+                    {% for rule in grading_scale %}
+                    <div class="row g-2 mb-2 scale-row">
+                        <div class="col-auto">
+                            <input type="text" class="form-control" name="grade" placeholder="เกรด (เช่น 4, 3.5)" value="{{ rule.grade }}">
+                        </div>
+                        <div class="col-auto">
+                            <input type="number" class="form-control" name="min_score" placeholder="คะแนนขั้นต่ำ (%)" value="{{ rule.min_score }}">
+                        </div>
+                        <div class="col-auto">
+                            <button type="button" class="btn btn-danger remove-row-btn">ลบ</button>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                <hr>
+                <button type="button" id="add-row-btn" class="btn btn-success">เพิ่มเกณฑ์</button>
+                <button type="submit" class="btn btn-primary">บันทึกเกณฑ์ทั้งหมด</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<template id="scale-row-template">
+    <div class="row g-2 mb-2 scale-row">
+        <div class="col-auto">
+            <input type="text" class="form-control" name="grade" placeholder="เกรด (เช่น 4, 3.5)">
+        </div>
+        <div class="col-auto">
+            <input type="number" class="form-control" name="min_score" placeholder="คะแนนขั้นต่ำ (%)">
+        </div>
+        <div class="col-auto">
+            <button type="button" class="btn btn-danger remove-row-btn">ลบ</button>
+        </div>
+    </div>
+</template>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const container = document.getElementById('scale-container');
+    const addBtn = document.getElementById('add-row-btn');
+    const template = document.getElementById('scale-row-template');
+
+    addBtn.addEventListener('click', function() {
+        const newRow = template.content.cloneNode(true);
+        container.appendChild(newRow);
+    });
+
+    container.addEventListener('click', function(e) {
+        if (e.target && e.target.classList.contains('remove-row-btn')) {
+            e.target.closest('.scale-row').remove();
+        }
+    });
+});
+</script>
+{% endblock %}

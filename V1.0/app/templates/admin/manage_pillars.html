@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-3">
+        {% include 'admin/_admin_menu.html' %}
+    </div>
+    <div class="col-md-9">
+        <h1>จัดการเสาหลักคะแนน (K, P, A)</h1>
+        <p>กำหนดหมวดหมู่คะแนนหลักที่จะใช้ในทุกรายวิชา</p>
+        
+        <div class="row">
+            <div class="col-md-8">
+                <h5>เสาหลักที่มีอยู่</h5>
+                <table class="table table-sm">
+                    <tbody>
+                        {% for pillar in pillars %}
+                        <tr>
+                            <td><strong>{{ pillar.key }}</strong></td>
+                            <td>{{ pillar.name }}</td>
+                            <td>
+                                <form action="{{ url_for('admin.delete_pillar', id=pillar.id) }}" method="POST" onsubmit="return confirm('คุณแน่ใจหรือไม่ว่าต้องการลบ?');">
+                                    <button type="submit" class="btn btn-danger btn-sm">ลบ</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="col-md-4">
+                <h5>เพิ่มใหม่</h5>
+                <form method="POST">
+                    {{ form.hidden_tag() }}
+                    <div class="mb-2">
+                        {{ form.key.label }}
+                        {{ form.key(class="form-control") }}
+                    </div>
+                    <div class="mb-2">
+                        {{ form.name.label }}
+                        {{ form.name(class="form-control") }}
+                    </div>
+                    {{ form.submit_pillar(class="btn btn-primary w-100") }}
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

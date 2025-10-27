@@ -1,0 +1,503 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+    /* CSS ทั้งหมดที่จำเป็น */
+    .modal-backdrop {
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background-color: rgba(0,0,0,0.5); z-index: 1040;
+        display: none; align-items: center; justify-content: center;
+        opacity: 0; transition: opacity 0.15s linear; pointer-events: none;
+    }
+    .modal-backdrop.visible { display: flex; opacity: 1; pointer-events: auto; }
+    .modal-content {
+        background-color: white; padding: 20px; border-radius: 5px;
+        width: 90%; max-width: 500px;
+    }
+    .assessment-cell {
+        position: relative;
+        padding: 8px 4px !important; /* ปรับ padding ให้มีพื้นที่สำหรับ badge */
+        vertical-align: middle;
+    }
+    .direct-assessment-select, .main-topic-select {
+        width: 100%;
+        height: 100%;
+        border: none;
+        background-color: transparent;
+        -webkit-appearance: none;
+        -moz-appearance: none;
+        appearance: none;
+        padding-left: 10px;
+        text-align: center;
+        font-weight: bold;
+    }
+    .direct-assessment-select { cursor: pointer; }
+    .main-topic-select:disabled {
+        color: #212529;
+        background-color: transparent;
+        opacity: 1;
+        cursor: default;
+    }
+    .assessment-modal-trigger {
+        position: absolute;
+        top: 50%;
+        right: 5px;
+        transform: translateY(-50%);
+        border: none;
+        background: #e9ecef;
+        color: #6c757d;
+        border-radius: 4px;
+        font-size: 0.7rem;
+        line-height: 1;
+        cursor: pointer;
+        padding: 4px 8px;
+        display: none;
+    }
+    .assessment-cell:hover .assessment-modal-trigger {
+        display: inline-block;
+    }
+    .assessment-modal-trigger:hover {
+        background: #ced4da;
+    }
+    .counts-container {
+        text-align: center;
+        margin-top: 4px; /* ระยะห่างระหว่าง dropdown กับ badge */
+    }
+    .count-badge {
+        font-size: 0.6em;
+        padding: 0.2em 0.4em;
+    }
+</style>
+
+<div class="d-flex justify-content-between align-items-center">
+    <div>
+        <h1 class="h3">{{ title }}</h1>
+        <p class="text-muted">ปีการศึกษา {{ class_group.academic_year }}</p>
+    </div>
+    <a href="{{ url_for('advisor.dashboard') }}" class="btn btn-outline-secondary"> &laquo; กลับไปแดชบอร์ด</a>
+</div>
+<hr>
+
+{% if students %}
+    <ul class="nav nav-tabs" id="assessmentTab" role="tablist">
+        {% for type, topics in topics_by_type.items() %}
+        {% if topics %}
+        <li class="nav-item" role="presentation">
+            <button class="nav-link {% if loop.first %}active{% endif %}" id="{{ type|replace(' ', '-')|replace('/', '') }}-tab" data-bs-toggle="tab" data-bs-target="#tab-{{ type|replace(' ', '-')|replace('/', '') }}" type="button" role="tab">{{ type }}</button>
+        </li>
+        {% endif %}
+        {% endfor %}
+    </ul>
+    <div class="tab-content" id="assessmentTabContent">
+        {% for type, topics in topics_by_type.items() %}
+        {% if topics %}
+        <div class="tab-pane fade {% if loop.first %}show active{% endif %}" id="tab-{{ type|replace(' ', '-')|replace('/', '') }}" role="tabpanel">
+            <div class="alert alert-light mt-3">
+                <strong>เครื่องมือช่วยกรอก:</strong>
+                <button class="btn btn-sm btn-outline-primary" onclick="setAllResultsInActiveTab('ดีเยี่ยม')">ดีเยี่ยม ทั้งหมด</button>
+                <button class="btn btn-sm btn-outline-info" onclick="setAllResultsInActiveTab('ดี')">ดี ทั้งหมด</button>
+                <button class="btn btn-sm btn-outline-success" onclick="setAllResultsInActiveTab('ผ่าน')">ผ่าน ทั้งหมด</button>
+                <button class="btn btn-sm btn-outline-danger" onclick="setAllResultsInActiveTab('')">ล้างทั้งหมด</button>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover">
+                    <thead class="table-light position-sticky top-0">
+                        <tr>
+                            <th rowspan="2" class="align-middle text-center" style="width: 50px;">เลขที่</th>
+                            <th rowspan="2" class="align-middle text-center" style="width: 120px;">เลขประจำตัว</th>
+                            <th rowspan="2" class="align-middle" style="min-width: 200px;">ชื่อ - นามสกุล</th>
+                            {% for topic in topics %}
+                                <th class="text-center" style="min-width: 180px;">{{ topic.name }}</th>
+                            {% endfor %}
+                        </tr>
+                        <tr>
+                            {% for topic in topics %}
+                                <th class="text-center">
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-success" title="ตั้งค่าทั้งคอลัมน์เป็น 'ผ่าน'" onclick="setColumnResults({{ loop.index0 }}, '1')">ผ่าน</button>
+                                        <button class="btn btn-outline-info" title="ตั้งค่าทั้งคอลัมน์เป็น 'ดี'" onclick="setColumnResults({{ loop.index0 }}, '2')">ดี</button>
+                                        <button class="btn btn-outline-primary" title="ตั้งค่าทั้งคอลัมน์เป็น 'ดีเยี่ยม'" onclick="setColumnResults({{ loop.index0 }}, '3')">ดีเยี่ยม</button>
+                                    </div>
+                                </th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for student in students %}
+                        <tr>
+                            <td class="text-center align-middle">{{ student.class_number }}</td>
+                            <td class="text-center align-middle">{{ student.student_id }}</td>
+                            <td class="align-middle">{{ student.prefix }}{{ student.first_name }} {{ student.last_name }}</td>
+                            {% for topic in topics %}
+                                <td class="assessment-cell">
+                                    {% if topic.sub_topics %}
+                                        {% set summary_key = student.id ~ '-' ~ topic.id %}
+                                        {% set current_summary = summary_results.get(summary_key) %}
+                                        <select class="main-topic-select" 
+                                                id="summary-{{ summary_key }}"
+                                                data-student-id="{{ student.id }}"
+                                                data-topic-id="{{ topic.id }}">
+                            {% for option in ['ดีเยี่ยม', 'ดี', 'ผ่าน', 'ไม่ผ่าน'] %}
+                            {% set count = counts_data.get(student.id, {}).get(topic.id, {}).get(option, 0) %}
+                            {% set display_text = option ~ " (" ~ count ~ ")" if count > 0 else option %}
+                            {% set advisor_choice = assessments_dict.get(summary_key) %}
+                            {% set suggestion = suggestions_dict.get(summary_key) %}
+                            <option value="{{ option }}" {% if advisor_choice == option or (not advisor_choice and suggestion == option) %}selected{% endif %}>
+                                {{ display_text }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                                        <button class="assessment-modal-trigger"
+                                                data-student-id="{{ student.id }}"
+                                                data-student-name="{{ student.prefix }}{{ student.first_name }} {{ student.last_name }}"
+                                                data-topic-id="{{ topic.id }}"
+                                                data-topic-name="{{ topic.name }}">
+                                            <i class="fas fa-edit me-1"></i> ประเมิน
+                                        </button>
+                            {% else %}
+                    {% set topic_key = student.id ~ '-' ~ topic.id %}
+                    <select class="direct-assessment-select" 
+                            data-student-id="{{ student.id }}" 
+                            data-topic-id="{{ topic.id }}">
+                        <option value="">-- เลือก --</option>
+                        
+                        {% for option in ['ดีเยี่ยม', 'ดี', 'ผ่าน', 'ไม่ผ่าน'] %}
+                            {% set count = counts_data.get(student.id, {}).get(topic.id, {}).get(option, 0) %}
+                            {% set display_text = option ~ " (" ~ count ~ ")" if count > 0 else option %}
+                            {% set advisor_choice = assessments_dict.get(topic_key) %}
+                            {% set suggestion = suggestions_dict.get(topic_key) %}
+                            <option value="{{ option }}" {% if advisor_choice == option or (not advisor_choice and suggestion == option) %}selected{% endif %}>
+                                {{ display_text }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                    {% endif %}
+            </td>
+        {% endfor %}
+    </tr>
+    {% endfor %}
+</tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+        {% endfor %}
+    </div>
+{% else %}
+    <div class="alert alert-info">กรุณาเลือกห้องเรียนเพื่อทำการประเมิน</div>
+{% endif %}
+
+<div id="assessment-modal" class="modal-backdrop">
+    <div class="modal-content">
+        <h5 id="modal-title">หัวข้อการประเมิน</h5>
+        <p id="modal-subtitle" class="text-muted">ชื่อนักเรียน</p>
+        <hr>
+        <div id="modal-body-content"></div>
+        <hr>
+        <div class="d-flex justify-content-end">
+            <button type="button" id="modal-cancel" class="btn btn-secondary me-2">ปิด</button>
+            <button type="button" id="modal-save" class="btn btn-primary">บันทึกและปิด</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script> 
+<script>
+const topicsData = {{ topics_by_type|tojson }};
+let assessmentsDict = {{ assessments_dict|tojson }};
+const countsData = {{ counts_data|tojson }};
+const suggestionsDict = {{ suggestions_dict|tojson }};
+const resultOptions = { '3': 'ดีเยี่ยม', '2': 'ดี', '1': 'ผ่าน', '0': 'ไม่ผ่าน' };
+const resultOptionsReversed = {'ดีเยี่ยม': 3, 'ดี': 2, 'ผ่าน': 1, 'ไม่ผ่าน': 0 };
+
+async function saveAssessment(studentId, topicId, result) {
+    assessmentsDict[`${studentId}-${topicId}`] = result;
+    try {
+        const response = await fetch('{{ url_for("advisor.save_final_evaluation") }}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ student_id: studentId, topic_id: topicId, result: result })
+        });
+        const data = await response.json();
+        if (!data.success) { console.error('Save Error:', data.error); }
+    } catch (error) { console.error('Fetch error:', error); }
+}
+
+function findTopicById(topicId) {
+    for (const type in topicsData) {
+        if (Array.isArray(topicsData[type])) {
+            const found = topicsData[type].find(t => t.id === topicId);
+            if (found) return found;
+        }
+    }
+    return null;
+}
+
+function updateMainTopicResult(studentId, mainTopicId) {
+    const summarySelect = document.getElementById(`summary-${studentId}-${mainTopicId}`);
+    if (!summarySelect) return; 
+
+    const mainTopicData = findTopicById(parseInt(mainTopicId));
+    if (!mainTopicData || !mainTopicData.sub_topics || !Array.isArray(mainTopicData.sub_topics) || mainTopicData.sub_topics.length === 0) {
+        return;
+    }
+
+    let totalScore = 0;
+    let allAssessed = true;
+    
+    for (const subTopic of mainTopicData.sub_topics) {
+        const result = assessmentsDict[`${studentId}-${subTopic.id}`];
+        if (result === undefined || result === '') {
+            allAssessed = false;
+            break;
+        }
+        totalScore += resultOptionsReversed[result] || 0;
+    }
+    
+    if (allAssessed) {
+        const averageScore = Math.round(totalScore / mainTopicData.sub_topics.length);
+        const finalResultText = resultOptions[averageScore.toString()] || 'ไม่ผ่าน';
+        summarySelect.value = finalResultText;
+    } else {
+        summarySelect.selectedIndex = -1; 
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const modal = document.getElementById('assessment-modal');
+    const modalTitle = document.getElementById('modal-title');
+    const modalSubtitle = document.getElementById('modal-subtitle');
+    const modalBody = document.getElementById('modal-body-content');
+    const modalSaveBtn = document.getElementById('modal-save');
+    const modalCancelBtn = document.getElementById('modal-cancel');
+    let currentStudentId = null;
+    let currentMainTopicId = null;
+    
+function openModal(button) {
+    const ds = button.dataset;
+    currentStudentId = ds.studentId;
+    currentMainTopicId = ds.topicId;
+
+    modalTitle.textContent = ds.topicName;
+    modalSubtitle.textContent = `นักเรียน: ${ds.studentName}`;
+    modalBody.innerHTML = '';
+    const mainTopicData = findTopicById(parseInt(currentMainTopicId));
+    
+    if (!mainTopicData || !mainTopicData.sub_topics || !Array.isArray(mainTopicData.sub_topics)) {
+        modalBody.innerHTML = '<p class="text-danger">เกิดข้อผิดพลาด: ไม่พบข้อมูลหัวข้อย่อย</p>';
+        modal.classList.add('visible');
+        return;
+    }
+    
+    if (mainTopicData.sub_topics.length === 0) {
+         modalBody.innerHTML = '<p>ไม่มีหัวข้อการประเมินย่อย</p>';
+    }
+
+    // วนลูปสร้าง Dropdown ของแต่ละหัวข้อย่อยด้วยตรรกะใหม่
+    mainTopicData.sub_topics.forEach(subTopic => {
+        let optionsHtml = '<option value="">-- เลือก --</option>';
+        const subTopicKey = `${currentStudentId}-${subTopic.id}`;
+
+        // สร้างตัวเลือก (ดีเยี่ยม, ดี, ผ่าน, ไม่ผ่าน)
+        ['ดีเยี่ยม', 'ดี', 'ผ่าน', 'ไม่ผ่าน'].forEach(option => {
+            // ดึงข้อมูลจำนวนจากครูท่านอื่น
+            const studentCounts = countsData[currentStudentId] || {};
+            const topicCounts = studentCounts[subTopic.id] || {};
+            const count = topicCounts[option] || 0;
+            const displayText = count > 0 ? `${option} (${count})` : option;
+
+            // หาค่าที่ควรจะถูกเลือก
+            const advisorChoice = assessmentsDict[subTopicKey];
+            const suggestion = suggestionsDict[subTopicKey];
+            const isSelected = (advisorChoice === option) || (!advisorChoice && suggestion === option);
+            
+            optionsHtml += `<option value="${option}" ${isSelected ? 'selected' : ''}>${displayText}</option>`;
+        });
+        
+        modalBody.innerHTML += `
+            <div class="row mb-2 align-items-center">
+                <div class="col-8">${subTopic.name}</div>
+                <div class="col-4">
+                    <select class="form-select form-select-sm modal-select" data-subtopic-id="${subTopic.id}">
+                        ${optionsHtml}
+                    </select>
+                </div>
+            </div>`;
+    });
+    
+    modal.classList.add('visible');
+}
+
+    function closeModal() { modal.classList.remove('visible'); }
+    modalCancelBtn.addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+
+// ✨ คาถาบทใหม่ที่ถูกต้องสำหรับปุ่ม "บันทึกและปิด" ✨
+
+modalSaveBtn.addEventListener('click', async function() {
+    const selects = modalBody.querySelectorAll('.modal-select');
+    
+    // ถ้าไม่มี dropdown ใน modal (เช่น กรณีแสดงข้อผิดพลาด) ให้ปิดไปเลย
+    if (selects.length === 0) {
+        closeModal();
+        return;
+    }
+    
+    const promises = [];
+    selects.forEach(select => {
+        const subTopicId = select.dataset.subtopicId;
+        const result = select.value;
+        // เพิ่มค่าที่เลือกใหม่เข้ารายการที่จะบันทึก
+        promises.push(saveAssessment(currentStudentId, subTopicId, result));
+    });
+    
+    // รอให้การบันทึกทั้งหมดเสร็จสิ้น
+    await Promise.all(promises);
+    
+    // หลังจากบันทึกเสร็จแล้ว ค่อยคำนวณสรุปผลใหม่จากข้อมูลล่าสุด
+    updateMainTopicResult(currentStudentId, currentMainTopicId);
+    
+    // แล้วจึงปิดหน้าต่าง
+    closeModal();
+});
+
+    // Event Listeners
+    document.querySelectorAll('.direct-assessment-select').forEach(select => {
+        select.addEventListener('change', function() { saveAssessment(this.dataset.studentId, this.dataset.topicId, this.value); });
+    });
+
+    document.querySelectorAll('.assessment-modal-trigger').forEach(button => {
+        button.addEventListener('click', function() { openModal(this); });
+    });
+
+    document.querySelectorAll('.main-topic-select').forEach(select => {
+        select.addEventListener('change', function(event) {
+            const studentId = this.dataset.studentId;
+            const topicId = this.dataset.topicId;
+            const newResult = this.value;
+            
+            if (!studentId || !topicId) return;
+            const mainTopic = findTopicById(parseInt(topicId));
+
+            if (mainTopic && mainTopic.sub_topics && mainTopic.sub_topics.length > 0) {
+                if (confirm(`คุณต้องการตั้งค่าหัวข้อย่อยทั้งหมดของ "${mainTopic.name}" ให้เป็น "${newResult}" หรือไม่?`)) {
+                    const promises = [];
+                    mainTopic.sub_topics.forEach(subTopic => {
+                        promises.push(saveAssessment(studentId, subTopic.id, newResult));
+                    });
+                } else {
+                    updateMainTopicResult(studentId, topicId);
+                }
+            }
+        });
+    });
+
+// --- คาถาสำหรับเครื่องมือช่วยกรอก (Helper Functions) ---
+
+window.setAllResultsInActiveTab = async function(resultText) {
+    const activeTabPane = document.querySelector('.tab-pane.active');
+    if (!activeTabPane) return;
+    if (!confirm(`คุณต้องการตั้งค่าการประเมินทั้งหมดในแท็บนี้เป็น "${resultText || 'ค่าว่าง'}" ใช่หรือไม่?`)) return;
+    
+    const promises = [];
+    const cells = activeTabPane.querySelectorAll('.assessment-cell');
+
+    cells.forEach(cell => {
+        const buttonOrSelect = cell.querySelector('[data-topic-id]');
+        if (!buttonOrSelect) return;
+
+        const studentId = buttonOrSelect.dataset.studentId;
+        const topicId = buttonOrSelect.dataset.topicId;
+        const mainTopic = findTopicById(parseInt(topicId));
+
+        if (mainTopic && mainTopic.sub_topics && mainTopic.sub_topics.length > 0) {
+            mainTopic.sub_topics.forEach(subTopic => {
+                promises.push(saveAssessment(studentId, subTopic.id, resultText));
+            });
+        } else {
+            const select = cell.querySelector('.direct-assessment-select');
+            if (select) {
+                select.value = resultText;
+                promises.push(saveAssessment(studentId, topicId, resultText));
+            }
+        }
+    });
+
+    await Promise.all(promises);
+    
+    // อัปเดต UI ทั้งหมดหลังบันทึกเสร็จ
+    activeTabPane.querySelectorAll('.main-topic-select').forEach(select => {
+         updateMainTopicResult(select.dataset.studentId, select.dataset.topicId);
+    });
+
+    // อัปเดต UI ของ direct select ด้วย
+    activeTabPane.querySelectorAll('.direct-assessment-select').forEach(select => {
+        if (resultText === '') {
+            select.selectedIndex = 0; // กลับไปที่ -- เลือก --
+        } else {
+            select.value = resultText;
+        }
+    });
+
+    alert('ตั้งค่าทั้งหมดเรียบร้อยแล้ว!');
+}
+
+window.setColumnResults = async function(columnIndex, resultValue) {
+    const activeTabPane = document.querySelector('.tab-pane.active');
+    if (!activeTabPane) return;
+
+    const typeKey = activeTabPane.id.replace('tab-', '').replace(/-/g, ' ');
+    if (!topicsData[typeKey]) return;
+    
+    const mainTopic = topicsData[typeKey][columnIndex];
+    if (!mainTopic) return;
+    
+    const resultText = resultOptions[resultValue];
+    if (!confirm(`คุณต้องการตั้งค่าคอลัมน์ "${mainTopic.name}" ทั้งหมดเป็น "${resultText}" ใช่หรือไม่?`)) return;
+
+    const promises = [];
+    const rows = activeTabPane.querySelectorAll('tbody tr');
+
+    rows.forEach(row => {
+        const cell = row.cells[columnIndex + 3]; // +3 เพราะมีคอลัมน์ เลขที่, เลขประจำตัว, ชื่อ
+        if (!cell) return;
+        
+        const buttonOrSelect = cell.querySelector('[data-topic-id]');
+        if (!buttonOrSelect) return;
+        
+        const studentId = buttonOrSelect.dataset.studentId;
+
+        if (mainTopic.sub_topics && mainTopic.sub_topics.length > 0) {
+            mainTopic.sub_topics.forEach(subTopic => {
+                promises.push(saveAssessment(studentId, subTopic.id, resultText));
+            });
+        } else {
+            const select = cell.querySelector('.direct-assessment-select');
+            if (select) {
+                select.value = resultText;
+                promises.push(saveAssessment(studentId, mainTopic.id, resultText));
+            }
+        }
+    });
+
+    await Promise.all(promises);
+    
+    // อัปเดต UI ในคอลัมน์นั้น
+    rows.forEach(row => {
+         const cell = row.cells[columnIndex + 3];
+         if (!cell) return;
+         const buttonOrSelect = cell.querySelector('[data-topic-id]');
+         if (!buttonOrSelect) return;
+         
+         const studentId = buttonOrSelect.dataset.studentId;
+         if (mainTopic.sub_topics && mainTopic.sub_topics.length > 0) {
+             updateMainTopicResult(studentId, mainTopic.id);
+         }
+    });
+
+    alert(`ตั้งค่าคอลัมน์ "${mainTopic.name}" เรียบร้อยแล้ว`);
+}
+});
+</script>
+{% endblock %}

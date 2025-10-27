@@ -1,0 +1,269 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+{% block sidebar %}
+    {% include 'director/_sidebar.html' %}
+{% endblock %}
+
+{% block main_content %}
+<div class="container-fluid py-4">
+    <h3 class="bi bi-person-workspace me-2"> ผู้อำนวยการ</h3>
+
+    <div class="row g-4 mb-4">
+        <div class="col-md-4">
+            <div class="card text-bg-primary h-100">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="bi bi-people-fill me-2"></i>ครูในระบบทั้งหมด</h5>
+                    <p class="card-text display-4">{{ total_teachers }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-bg-success h-100">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="bi bi-patch-check-fill me-2"></i>แผนฯ ที่อนุมัติแล้ว</h5>
+                    <p class="card-text display-4">{{ approved_plans_count }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-bg-warning h-100">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="bi bi-collection-play-fill me-2"></i>รอการอนุมัติ</h5>
+                    <p class="card-text display-4">{{ pending_director_approval }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-4">
+        <div class="col-lg-5">
+            <div class="card h-100">
+                <div class="card-header"><h5 class="mb-0">ภาพรวมสถานะแผนการสอน</h5></div>
+                <div class="card-body d-flex justify-content-center align-items-center">
+                    <canvas id="planStatusChart" style="max-height: 300px;"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-7">
+            <div class="card h-100">
+                <div class="card-header"><h5 class="mb-0">จำนวนแผนการสอนตามกลุ่มสาระฯ</h5></div>
+                <div class="card-body">
+                    <canvas id="plansPerGroupChart" style="max-height: 300px;"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="approval-section" class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><i class="bi bi-collection-play-fill me-2"></i>รายการแผนการสอน</h5>
+            {% if pending_director_approval > 0 %}
+            <button class="btn btn-success" id="approve-all-btn" data-url="{{ url_for('director.approve_all_plans') }}">
+                <i class="bi bi-check-all"></i> อนุมัติทั้งหมด ({{ pending_director_approval }})
+            </button>
+            {% endif %}
+        </div>
+        <div class="card-body">
+            {% if plans_for_approval %}
+                <div class="mb-3">
+                    <input type="text" id="plan-filter" class="form-control" placeholder="🔍 ค้นหาตามชื่อวิชา, รหัสวิชา, หรือชื่อครู...">
+                </div>
+
+                <div class="accordion" id="groupedPlansAccordion">
+                    {% for group_name, plans in grouped_plans.items() %}
+                    <div class="accordion-item plan-group-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-{{ loop.index }}">
+                                <strong class="group-name">{{ group_name }}</strong>&nbsp; ({{ plans|length }} รายการ)
+                            </button>
+                        </h2>
+                        <div id="collapse-{{ loop.index }}" class="accordion-collapse collapse show" data-bs-parent="#groupedPlansAccordion">
+                            <div class="accordion-body p-0">
+                                <div class="list-group list-group-flush">
+                                    {% for plan in plans %}
+                                    <div class="list-group-item d-flex justify-content-between align-items-center plan-item">
+                                        <div>
+                                            <strong class="plan-title">{{ plan.subject.subject_code }} - {{ plan.subject.name }}</strong>
+                                            <br>
+                                            <small class="text-muted teacher-name">
+                                                ผู้จัดทำ: 
+                                                {% if plan.courses %}{{ plan.courses[0].teachers|map(attribute='full_name')|join(', ') }}{% else %}(ยังไม่มีผู้สอน){% endif %}
+                                            </small>
+                                        </div>
+                                        
+                                        {% if plan.status == 'รอการอนุมัติจากผู้อำนวยการ' %}
+                                            <div class="plan-actions">
+                                                <a href="{{ url_for('director.review_plan', plan_id=plan.id) }}" class="btn btn-secondary btn-sm"><i class="bi bi-search"></i> พิจารณา</a>
+                                                <button class="btn btn-primary btn-sm approve-one-btn" data-url="{{ url_for('director.approve_final', plan_id=plan.id) }}">
+                                                    <i class="bi bi-check-lg"></i> อนุมัติ
+                                                </button>
+                                            </div>
+                                        {% else %}
+                                            <span class="badge bg-success"><i class="bi bi-check-circle-fill"></i> อนุมัติแล้ว</span>
+                                        {% endif %}
+
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="text-center text-muted p-4">
+                    <p class="mb-0">ไม่พบแผนการสอน</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    // --- Data from Flask ---
+    const planStatusData = {{ plan_status_data|tojson }};
+    const plansPerGroupData = {{ plans_per_group_data|tojson }};
+
+    // --- Chart 1: Plan Status Doughnut Chart ---
+    const ctxStatus = document.getElementById('planStatusChart');
+    if (ctxStatus && planStatusData.data.length > 0) {
+        new Chart(ctxStatus, {
+            type: 'doughnut',
+            data: {
+                labels: planStatusData.labels,
+                datasets: [{
+                    label: 'จำนวนแผนการสอน',
+                    data: planStatusData.data,
+                    backgroundColor: [
+                        'rgba(25, 135, 84, 0.7)',
+                        'rgba(255, 193, 7, 0.7)',
+                        'rgba(13, 202, 240, 0.7)',
+                        'rgba(108, 117, 125, 0.7)',
+                        'rgba(220, 53, 69, 0.7)'
+                    ],
+                    borderColor: '#fff',
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    }
+                }
+            }
+        });
+    }
+
+    // --- Chart 2: Plans per Subject Group Bar Chart ---
+    const ctxGroup = document.getElementById('plansPerGroupChart');
+    if (ctxGroup && plansPerGroupData.data.length > 0) {
+        new Chart(ctxGroup, {
+            type: 'bar',
+            data: {
+                labels: plansPerGroupData.labels,
+                datasets: [{
+                    label: 'จำนวนแผนการสอน',
+                    data: plansPerGroupData.data,
+                    backgroundColor: 'rgba(13, 110, 253, 0.6)',
+                    borderColor: 'rgba(13, 110, 253, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            stepSize: 1
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                }
+            }
+        });
+    }
+
+    // --- Quick Approval & Filtering Script ---
+    const approvalSection = document.getElementById('approval-section');
+    if (approvalSection) {
+        const csrfToken = '{{ form.csrf_token._value() }}';
+        
+        // Filter logic
+        const filterInput = document.getElementById('plan-filter');
+        filterInput.addEventListener('keyup', function() {
+            const filterValue = this.value.toLowerCase();
+            document.querySelectorAll('.plan-group-item').forEach(groupItem => {
+                let groupHasVisibleItems = false;
+                groupItem.querySelectorAll('.plan-item').forEach(planItem => {
+                    const title = planItem.querySelector('.plan-title').textContent.toLowerCase();
+                    const teacher = planItem.querySelector('.teacher-name').textContent.toLowerCase();
+                    if (title.includes(filterValue) || teacher.includes(filterValue)) {
+                        planItem.style.display = 'flex';
+                        groupHasVisibleItems = true;
+                    } else {
+                        planItem.style.display = 'none';
+                    }
+                });
+                groupItem.style.display = groupHasVisibleItems ? 'block' : 'none';
+            });
+        });
+
+        // Approval Actions Logic
+        approvalSection.addEventListener('click', function(e) {
+            const approveAllBtn = e.target.closest('#approve-all-btn');
+            const approveOneBtn = e.target.closest('.approve-one-btn');
+            if (approveAllBtn) {
+                handleApproval('อนุมัติแผนการสอนทั้งหมด?', approveAllBtn.dataset.url);
+            }
+            if (approveOneBtn) {
+                handleApproval('ยืนยันการอนุมัติแผนนี้?', approveOneBtn.dataset.url);
+            }
+        });
+
+        // Reusable Approval Handler Function
+        function handleApproval(title, url) {
+            Swal.fire({
+                title: title,
+                text: "การกระทำนี้ไม่สามารถย้อนกลับได้",
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#198754',
+                cancelButtonColor: '#6c757d',
+                confirmButtonText: 'ยืนยัน',
+                cancelButtonText: 'ยกเลิก'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    fetch(url, {
+                        method: 'POST',
+                        headers: { 'X-CSRFToken': csrfToken }
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            Swal.fire('สำเร็จ!', 'การอนุมัติเรียบร้อย', 'success').then(() => location.reload());
+                        } else {
+                            Swal.fire('ผิดพลาด!', data.message || 'Server error', 'error');
+                        }
+                    }).catch(err => Swal.fire('ผิดพลาด!', 'ไม่สามารถเชื่อมต่อได้', 'error'));
+                }
+            });
+        }
+    }
+});
+</script>
+{% endblock %}

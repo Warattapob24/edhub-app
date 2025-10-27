@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+
+{% block sidebar %}
+    {% include 'advisor/_sidebar.html' %}
+{% endblock %}
+
+{% block main_content %}
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            {# [แก้ไข] เปลี่ยน 'admin.students_list' เป็น 'admin.list_students' ตามที่ Error แนะนำ #}
+            <li class="breadcrumb-item"><a href="{{ url_for('admin.list_students') }}">จัดการข้อมูลนักเรียน</a></li>
+            <li class="breadcrumb-item active" aria-current="page">{{ student.first_name }} {{ student.last_name }}</li>
+        </ol>
+    </nav>
+    <h2 class="bi bi-person-badge"> {{ title }}</h2>
+    <hr>
+
+    {% if warnings %}
+    <div class="card border-danger mb-4">
+        <div class="card-header bg-danger text-white">
+            <h5 class="mb-0"><i class="bi bi-exclamation-triangle-fill me-2"></i>สถานะเฝ้าระวัง</h5>
+        </div>
+        <div class="list-group list-group-flush">
+            {% for warning in warnings %}
+            <div class="list-group-item">
+                <strong>การเข้าเรียน:</strong> ขาดเรียนวิชา <strong>{{ warning.course.subject.name }}</strong> เกินเกณฑ์ {{ warning.threshold_percent }}%
+                (ขาดไปแล้ว {{ warning.absence_count_at_trigger }} ครั้ง)
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card mb-4">
+                <div class="card-header">
+                ข้อมูลพื้นฐาน
+        </div>
+        <div class="card-body">
+            <p><strong>เลขที่:</strong> {{ current_enrollment.roll_number if current_enrollment else 'N/A' }}</p>
+            <p><strong>รหัสนักเรียน:</strong> {{ student.student_id }}</p>
+            <p><strong>ชื่อ-สกุล:</strong> {{ student.name_prefix or '' }}{{ student.first_name }} {{ student.last_name }}</p>
+            <p><strong>สถานะปัจจุบัน:</strong> {{ student.status }}</p>
+        </div>
+    </div>
+        </div>
+        <div class="col-md-8">
+            <div class="card mb-4">
+                <div class="card-header">
+                    รายวิชาที่ลงทะเบียนในภาคเรียนปัจจุบัน
+                </div>
+                <div class="card-body p-2">
+                    {% if courses %}
+                    <ul class="list-group list-group-flush">
+                        {% for course in courses %}
+                        <li class="list-group-item">
+                            {{ course.subject.name }} ({{ course.subject.subject_code }})
+                            <small class="text-muted d-block">
+                                {{ course.subject.credit|round(1) }} หน่วยกิต | ครูผู้สอน: {% for teacher in course.teachers %}{{ teacher.full_name }}{{ ', ' if not loop.last }}{% endfor %}
+                            </small>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <p class="text-muted">ไม่พบข้อมูลการลงทะเบียนในภาคเรียนปัจจุบัน</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-header"><h5 class="mb-0">สรุปผลการเรียนและการเข้าเรียน (ภาคเรียนปัจจุบัน)</h5></div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-striped align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>รายวิชา</th>
+                            <th class="text-center">คะแนนเก็บ</th>
+                            <th class="text-center">กลางภาค</th>
+                            <th class="text-center">ปลายภาค</th>
+                            <th class="text-center">คะแนนรวม</th>
+                            <th class="text-center">เกรด</th>
+                            <th class="text-center">มาเรียน</th>
+                            <th class="text-center">มาสาย</th>
+                            <th class="text-center">ขาด</th>
+                            <th class="text-center">ลา</th>
+                        </tr>
+                    </thead>
+                <tbody>
+                    {% for summary in academic_summary %}
+                    <tr>
+                        <td>
+                            {{ summary.course.subject.name }}
+                            <small class="text-muted d-block">{{ summary.course.subject.subject_code }} ({{ summary.course.subject.credit|round(1) }} หน่วยกิต)</small>
+                            <small class="text-primary">
+                                ครูผู้สอน: {% for teacher in summary.course.teachers %}{{ teacher.full_name }}{{ ', ' if not loop.last }}{% endfor %}
+                            </small>
+                        </td>
+                        <td class="text-center">{{ summary.collected_score|round(1) }} / {{ summary.max_collected_score|round(1) }}</td>
+                        <td class="text-center">{{ summary.midterm_score|round(1) if summary.midterm_score is not none else '0' }} / {{ summary.max_midterm_score|round(1) }}</td>
+                        <td class="text-center">{{ summary.final_score|round(1) if summary.final_score is not none else '0' }} / {{ summary.max_final_score|round(1) }}</td>
+                        <td class="text-center fw-bold">{{ summary.total_score|round(1) }} / {{ summary.grand_max_score|round(1) }}</td>
+                        <td class="text-center fw-bold {% if summary.grade == '0' %}text-danger{% endif %}">{{ summary.grade }}</td>
+                        <td class="text-center">{{ summary.total_attendance }}</td>
+                        <td class="text-center">{{ summary.attendance.LATE }}</td>
+                        <td class="text-center text-danger fw-bold">{{ summary.attendance.ABSENT }}</td>
+                        <td class="text-center">{{ summary.attendance.LEAVE }}</td>
+                    </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="10" class="text-center text-muted">ไม่พบข้อมูลการลงทะเบียนในภาคเรียนปัจจุบัน</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+{% endblock %}

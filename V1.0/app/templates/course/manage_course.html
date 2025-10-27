@@ -1,0 +1,296 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+    /* CSS for Modal and other styles */
+    .modal-backdrop {
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background-color: rgba(0,0,0,0.5); z-index: 1040;
+        display: none; align-items: center; justify-content: center;
+    }
+    .modal-backdrop.visible { display: flex; }
+    .modal-content {
+        background-color: white; padding: 20px; border-radius: 5px;
+        width: 90%; max-width: 500px;
+    }
+</style>
+    <div class="d-flex justify-content-between align-items-center">
+        <div>
+            <h1 class="h3">{{ title }}</h1>
+            <p class="text-muted">ปีการศึกษา {{ course.academic_year }}/{{ course.semester }} | รหัสวิชา: {{ course.subject.subject_code }}</p>
+        </div>
+        <a href="{{ url_for('course.additional_assessment', course_id=course.id) }}" class="btn btn-lg btn-secondary">
+            ประเมินเพิ่มเติม &raquo;
+        </a>        
+        <a href="{{ url_for('course.attendance', course_id=course.id) }}" class="btn btn-lg btn-info text-dark">
+            เช็คชื่อ &raquo;
+        </a>
+        <a href="{{ url_for('course.score_entry', course_id=course.id) }}" class="btn btn-lg btn-success">
+            กรอกคะแนน &raquo;
+        </a>
+        <a href="{{ url_for('course.remedial_management', course_id=course.id) }}" class="btn btn-lg btn-danger">
+            จัดการ 0,ร,มส &raquo;
+        </a>        
+        <a href="{{ url_for('course.poh05_report', course_id=course.id) }}" class="btn btn-lg btn-warning text-dark">
+            พิมพ์ ปถ.05 &raquo;
+        </a>
+    </div>
+    <hr>
+{% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+        {% for category, message in messages %}
+        <div class="alert alert-{{ 'danger' if category == 'error' else 'success' }}" role="alert">{{ message }}</div>
+        {% endfor %}
+    {% endif %}
+{% endwith %}
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header"><h5>องค์ประกอบคะแนน (ลากเพื่อจัดลำดับ)</h5></div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('course.manage_course', course_id=course.id) }}" id="component-form">
+                    {{ component_form.hidden_tag() }}
+                    <div class="mb-2">
+                        {{ component_form.name.label(class="form-label") }}
+                        {{ component_form.name(class="form-control") }}
+                    </div>
+                    <div class="mb-2">
+                        {{ component_form.indicator.label(class="form-label") }}
+                        {{ component_form.indicator(class="form-control", rows=2) }}
+                    </div>
+                    <div class="mb-3">
+                        {{ component_form.component_type.label(class="form-label") }}
+                        {{ component_form.component_type(class="form-select") }}
+                    </div>
+                    <div class="mb-3">
+                        {{ component_form.exam_type.label(class="form-label") }}
+                        {{ component_form.exam_type(class="form-select", id="exam_type_select") }}
+                    </div>
+                    <label class="form-label mb-1">คะแนนเต็ม (ส่วนงาน K/P/A)</label>
+                    <div class="row mb-3 align-items-end">
+                        <div class="col">{{ component_form.max_score_k(class="form-control", placeholder="K") }}</div>
+                        <div class="col">{{ component_form.max_score_p(class="form-control", placeholder="P") }}</div>
+                        <div class="col">{{ component_form.max_score_a(class="form-control", placeholder="A") }}</div>
+                    </div>
+                    <div class="mb-3" id="total_max_score_div" style="display: none;">
+                        {{ component_form.total_max_score.label(class="form-label") }}
+                        {{ component_form.total_max_score(class="form-control") }}
+                    </div>
+                    <button type="submit" name="submit_component" value="submit" class="btn btn-primary w-100">เพิ่มองค์ประกอบ</button>
+                </form>
+
+                    <hr>
+                    <h6>รายการองค์ประกอบที่มีอยู่:</h6>
+                    <ul class="list-group" id="component-list" data-course-id="{{ course.id }}">
+                        {% for component in components %}
+                            <li class="list-group-item d-flex justify-content-between align-items-center" data-id="{{ component.id }}">
+                                <div>
+                                    <i class="fas fa-grip-vertical me-2" style="cursor: move;"></i>
+                                    <strong>{{ component.name }}</strong> ({{component.component_type}})
+                                    <div class="mt-1">
+                                        <span class="badge bg-primary">K: {{ component.max_score_k }}</span>
+                                        <span class="badge bg-success">P: {{ component.max_score_p }}</span>
+                                        <span class="badge bg-info text-dark">A: {{ component.max_score_a }}</span>
+                                        <span class="badge bg-secondary rounded-pill">รวม {{ component.max_score_k + component.max_score_p + component.max_score_a }}</span>
+                                    </div>
+                                </div>
+                                <div>
+                                    <a href="{{ url_for('course.edit_component', component_id=component.id) }}" class="btn btn-warning btn-sm">แก้ไข</a>
+                                    <form action="{{ url_for('course.delete_component', component_id=component.id) }}" method="POST" class="d-inline" onsubmit="return confirm('คุณแน่ใจหรือไม่ว่าต้องการลบรายการนี้?');">
+                                        <button type="submit" class="btn btn-danger btn-sm">ลบ</button>
+                                    </form>
+                                </div>
+                            </li>
+                        {% else %}
+                            <li class="list-group-item">ยังไม่มีองค์ประกอบคะแนน</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+
+<div class="card mt-4">
+    <div class="card-header">
+        <h4><i class="fas fa-magic"></i> เงื่อนไขพิเศษในการจัดตารางสอน</h4>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-7">
+                <h6>เงื่อนไขที่กำหนดแล้ว:</h6>
+                {% if course.scheduling_rules.all() %}
+                <ul class="list-group">
+                    {% for rule in course.scheduling_rules %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>{{ rule.rule_type }}:</strong> 
+                            <span class="text-muted">{{ rule.value or 'N/A' }}</span>
+                        </div>
+                        <form action="{{ url_for('course.delete_rule', rule_id=rule.id) }}" method="POST">
+                            <button type="submit" class="btn btn-sm btn-outline-danger">&times;</button>
+                        </form>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="text-muted">ยังไม่มีการกำหนดเงื่อนไขพิเศษ</p>
+                {% endif %}
+            </div>
+            <div class="col-md-5">
+                <h6>เพิ่มเงื่อนไขใหม่:</h6>
+                <form method="POST">
+                    {{ rule_form.hidden_tag() }}
+                    <div class="mb-2">
+                        {{ rule_form.rule_type(class="form-select") }}
+                    </div>
+                    <div class="mb-2">
+                        {{ rule_form.value.label(class="form-label") }}
+                        {{ rule_form.value(class="form-control", placeholder=rule_form.value.description) }}
+                    </div>
+                    {{ rule_form.submit_rule(class="btn btn-primary w-100") }}
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+            
+<div class="card mt-4">
+  <div class="card-header">
+    <h5><i class="fas fa-calendar-alt"></i> จัดการคาบสอน</h5>
+  </div>
+  <div class="card-body">
+    <div class="row">
+      <div class="col-md-5">
+        <h6>เพิ่มคาบสอนใหม่</h6>
+        <form action="{{ url_for('course.add_timetable_slot', course_id=course.id) }}" method="POST">
+          {{ timetable_form.hidden_tag() }}
+          
+          <div class="mb-2">
+            {{ timetable_form.class_group.label(class="form-label") }}
+            {{ timetable_form.class_group(class="form-select") }}
+          </div>
+          
+          <div class="mb-2">
+            {{ timetable_form.day_of_week.label(class="form-label") }}
+            {{ timetable_form.day_of_week(class="form-select") }}
+          </div>
+          <div class="row mb-2">
+            <div class="col">
+              {{ timetable_form.start_time.label(class="form-label") }}
+              {{ timetable_form.start_time(class="form-control") }}
+            </div>
+            <div class="col">
+              {{ timetable_form.end_time.label(class="form-label") }}
+              {{ timetable_form.end_time(class="form-control") }}
+            </div>
+          </div>
+          {{ timetable_form.submit(class="btn btn-primary w-100") }}
+        </form>
+      </div>
+
+      <div class="col-md-7">
+        <h6>คาบสอนที่มีอยู่แล้ว</h6>
+        {% if existing_slots %}
+          <ul class="list-group">
+            {% set days = ['วันจันทร์', 'วันอังคาร', 'วันพุธ', 'วันพฤหัสบดี', 'วันศุกร์', 'วันเสาร์', 'วันอาทิตย์'] %}
+            {% for slot in existing_slots %}
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+              <div>
+                <strong>{{ days[slot.day_of_week|int] }}</strong>
+                
+                <span class="badge bg-info text-dark ms-2">{{ slot.class_group.grade_level.name }}/{{ slot.class_group.room_number }}</span>
+                
+                <span class="ms-3 text-muted">
+                  <i class="fas fa-clock"></i>
+                  {{ slot.start_time.strftime('%H:%M') }} - {{ slot.end_time.strftime('%H:%M') }}
+                </span>
+              </div>
+              <form action="{{ url_for('course.delete_timetable_slot', slot_id=slot.id) }}" method="POST" onsubmit="return confirm('คุณต้องการลบคาบสอนนี้ใช่หรือไม่?');">
+                <button type="submit" class="btn btn-outline-danger btn-sm">
+                    <i class="fas fa-trash-alt"></i>
+                </button>
+              </form>
+            </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <div class="alert alert-light">ยังไม่มีการเพิ่มคาบสอน</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+        </div>
+<div class="col-md-6">
+    <div class="card">
+        <div class="card-header">
+            <h5>นักเรียนในคลาสเรียนนี้</h5>
+        </div>
+        <div class="card-body">
+             <h6>รายชื่อนักเรียนจากห้อง: 
+                {% for class_group in course.class_groups %}
+                    <span class="badge bg-info text-dark">{{ class_group.grade_level.name }}/{{ class_group.room_number }}</span>
+                {% endfor %}
+            </h6>
+            <ul class="list-group list-group-flush">
+                {% for class_group in course.class_groups %}
+                    {% for student in class_group.students.order_by('class_number') %}
+                    <li class="list-group-item">
+                        {{ student.class_number }}. {{ student.prefix }}{{ student.first_name }} {{ student.last_name }}
+                    </li>
+                    {% endfor %}
+                {% else %}
+                     <li class="list-group-item">ยังไม่มีนักเรียนในห้องเรียนที่ผูกกับรายวิชานี้</li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+</div>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://kit.fontawesome.com/your-font-awesome-kit-id.js" crossorigin="anonymous"></script>
+<script defer src="https://use.fontawesome.com/releases/v5.15.4/js/all.js"></script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // JavaScript for drag-and-drop
+    const componentList = document.getElementById('component-list');
+    if (componentList) {
+        new Sortable(componentList, {
+            animation: 150,
+            ghostClass: 'bg-light',
+            handle: '.fa-grip-vertical',
+            onEnd: function (evt) {
+                const items = evt.to.children;
+                let order = [];
+                for (let i = 0; i < items.length; i++) {
+                    order.push(items[i].dataset.id);
+                }
+                fetch('{{ url_for("course.reorder_components") }}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ order: order })
+                });
+            }
+        });
+    }
+
+    // JavaScript for showing/hiding exam score field
+    const examTypeSelect = document.getElementById('exam_type_select');
+    const totalMaxScoreDiv = document.getElementById('total_max_score_div');
+    if (examTypeSelect && totalMaxScoreDiv) {
+        function toggleExamScoreField() {
+            if (examTypeSelect.value === 'midterm' || examTypeSelect.value === 'final') {
+                totalMaxScoreDiv.style.display = 'block';
+            } else {
+                totalMaxScoreDiv.style.display = 'none';
+            }
+        }
+        toggleExamScoreField();
+        examTypeSelect.addEventListener('change', toggleExamScoreField);
+    }
+});
+</script>
+{% endblock %}

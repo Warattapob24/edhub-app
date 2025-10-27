@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1>จัดการปีการศึกษา</h1>
+    <a href="{{ url_for('admin.add_academic_year') }}" class="btn btn-success"><i class="bi bi-plus-circle"></i> เพิ่มปีการศึกษาใหม่</a>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <table class="table table-hover">
+            <thead class="table-light">
+                <tr>
+                    <th>ปีการศึกษา/ภาคเรียน</th>
+                    <th>สถานะ</th>
+                    <th class="text-end">การดำเนินการ</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for year in years %}
+                <tr class="{{ 'table-success' if year.is_active else '' }}">
+                    <td><strong>{{ year.year }}/{{ year.semester }}</strong></td>
+                    <td>
+                        {% if year.is_active %}
+                            <span class="badge bg-success rounded-pill"><i class="bi bi-check-circle-fill"></i> เปิดใช้งาน</span>
+                        {% else %}
+                            <span class="badge bg-secondary rounded-pill">ปิดใช้งาน</span>
+                        {% endif %}
+                    </td>
+                        <td class="text-end">
+                            <div class="btn-group">
+                                <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                                    <i class="bi bi-gear-fill"></i> การกระทำ
+                                </button>
+                                    <ul class="dropdown-menu dropdown-menu-end">
+                                        <li>
+                                            <form action="{{ url_for('admin.activate_academic_year', year_id=year.id) }}" method="POST" class="d-inline">
+                                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                                <button type="submit" class="dropdown-item">
+                                                    {% if year.is_active %}
+                                                        <i class="bi bi-x-circle"></i> ปิดการใช้งาน
+                                                    {% else %}
+                                                        <i class="bi bi-play-circle"></i> เปิดการใช้งาน
+                                                    {% endif %}
+                                                </button>
+                                            </form>
+                                        </li>
+                                        
+                                        {% if year.is_active %}
+                                        <li>
+                                            <form action="{{ url_for('admin.open_semester_courses', year_id=year.id) }}" method="POST" class="d-inline">
+                                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                                <button type="submit" class="dropdown-item text-primary" onclick="return confirm('คุณต้องการเปิดรายวิชาทั้งหมดสำหรับเทอม {{ year.semester }} ใช่หรือไม่?')">
+                                                    <i class="bi bi-door-open-fill"></i> **เปิดรายวิชาประจำภาคเรียน**
+                                                </button>
+                                            </form>
+                                        </li>
+                                        {% endif %}
+
+                                        <li><hr class="dropdown-divider"></li>
+                                        
+                                        <li>
+                                            <a class="dropdown-item" href="{{ url_for('admin.edit_academic_year', id=year.id) }}">
+                                                <i class="bi bi-pencil"></i> แก้ไขข้อมูล
+                                            </a>
+                                        </li>
+                                    </ul>
+                            </div>
+                        </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="3" class="text-center text-muted">ยังไม่มีข้อมูลปีการศึกษา</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

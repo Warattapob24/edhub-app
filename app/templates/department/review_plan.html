@@ -1,0 +1,296 @@
+{% extends "base.html" %}
+
+{% block sidebar %}
+    {# FIXED: Added the missing condition for the Director role #}
+    {% if current_user.has_role('Admin') %}
+        {% include 'admin/_sidebar.html' %}
+    {% elif current_user.has_role('ผู้อำนวยการ') %}
+        {% include 'director/_sidebar.html' %}
+    {% elif current_user.has_role('Academic') %}
+        {% include 'academic/_sidebar.html' %}
+    {% elif current_user.led_subject_group %}
+         {% include 'department/_sidebar.html' %}
+    {% else %}
+        {% include 'teacher/_sidebar.html' %}
+    {% endif %}
+{% endblock %}
+
+{% block styles %}
+<style>
+    .plan-actions {
+        position: sticky;
+        top: 70px; /* Adjust based on your top navbar height */
+        z-index: 1020;
+    }
+    .details-grid {
+        display: grid;
+        grid-template-columns: max-content 1fr;
+        gap: 0.5rem 1rem;
+    }
+    .details-grid dt {
+        font-weight: 600;
+        color: #555;
+    }
+    .stat-card {
+        border-left: 3px solid #0d6efd;
+    }
+    .accordion-body h6 {
+        border-bottom: 1px solid #eee; padding-bottom: 0.5rem;
+        margin-top: 1.5rem; margin-bottom: 1rem; font-weight: bold;
+    }
+    .accordion-body h6:first-child { margin-top: 0; }
+    .score-table th, .score-table td { text-align: center; vertical-align: middle; }
+</style>
+{% endblock %}
+
+{% block main_content %}
+    {% if plan.status in ['รอการตรวจสอบ', 'เสนอฝ่ายวิชาการ', 'รอการอนุมัติจากผู้อำนวยการ'] %}
+    <div class="card plan-actions mb-4">
+        <div class="card-body d-flex justify-content-end align-items-center gap-2">
+            <h5 class="me-auto mb-0">สถานะปัจจุบัน: <span class="badge bg-warning">{{ plan.status }}</span></h5>
+            <button id="reject-btn" type="button" class="btn btn-outline-danger">ส่งกลับเพื่อแก้ไข</button>
+            <form action="{{ approve_action_url }}" method="POST" class="d-inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-success">{{ approve_button_text }}</button>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+    
+    <form id="reject-form" action="{{ reject_action_url }}" method="POST" class="d-none">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="revision_notes" id="revision-notes-input">
+    </form>
+<div class="card mb-4">
+    <div class="card-header"><h5 class="mb-0"><i class="bi bi-clipboard-data me-2"></i>ข้อมูลภาพรวมแผนการสอน</h5></div>
+    <div class="card-body">
+        <dl class="row">
+            <dt class="col-sm-3">รายวิชา</dt>
+            <dd class="col-sm-9">{{ plan.subject.subject_code }} - {{ plan.subject.name }}</dd>
+            <dt class="col-sm-3">หน่วยกิต</dt>
+            <dd class="col-sm-9">{{ plan.subject.credit }} หน่วยกิต</dd>            
+            <dt class="col-sm-3">ปีการศึกษา</dt>
+            <dd class="col-sm-9">{{ plan.academic_year.year }}</dd>
+            <dt class="col-sm-3">ผู้จัดทำ</dt>
+            <dd class="col-sm-9">
+                {% set teachers = [] %}
+                {% for course in plan.courses %}
+                    {% for teacher in course.teachers %}
+                        {% if teacher.full_name not in teachers %}
+                            {% set _ = teachers.append(teacher.full_name) %}
+                        {% endif %}
+                    {% endfor %}
+                {% endfor %}
+                {{ teachers|join(', ') if teachers else '(ยังไม่มีผู้สอน)' }}
+            </dd>
+        </dl>
+        <hr>
+        <div class="row text-center g-3 mb-3">
+            <div class="col-md-4">
+                <div class="p-2 stat-card">
+                    <i class="bi bi-layers-fill fs-4 text-primary"></i>
+                    <h4 class="mb-0">{{ total_units }}</h4>
+                    <small class="text-muted">หน่วยการเรียนรู้</small>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="p-2 stat-card">
+                    <i class="bi bi-clock-history fs-4 text-primary"></i>
+                    <h4 class="mb-0">{{ total_periods }}</h4>
+                    <small class="text-muted">คาบเรียนรวม</small>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="p-2 stat-card">
+                    <i class="bi bi-card-checklist fs-4 text-primary"></i>
+                    <h4 class="mb-0">{{ total_indicators }}</h4>
+                    <small class="text-muted">ตัวชี้วัดที่ใช้</small>
+                </div>
+            </div>
+        </div>
+        <hr>
+        <h6><strong>สรุปคะแนนและสัดส่วน</strong></h6>
+        <table class="table table-bordered score-table mt-2">
+            <thead class="table-light">
+                <tr>
+                    <th>คะแนนระหว่างภาค</th>
+                    <th>คะแนนปลายภาค</th>
+                    <th>คะแนนรวม</th>
+                    <th>สัดส่วนตามจริง</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>{{ score_during_semester }}</td>
+                    <td>{{ score_final }}</td>
+                    <td>{{ score_during_semester + score_final }}</td>
+                    <td><strong>{{ actual_ratio_str }}</strong></td>
+                </tr>
+            </tbody>
+        </table>
+        {% if plan.core_concepts %}
+        <hr>
+        <h6><strong>แก่นความรู้ของแผนฯ (Core Concepts)</strong></h6>
+        <p class="card-text bg-light p-3 rounded">{{ plan.core_concepts }}</p>
+        {% endif %}
+    </div>
+</div>
+<div class="card">
+    <div class="card-header"><h5 class="mb-0"><i class="bi bi-collection-fill me-2"></i>องค์ประกอบแผนการสอน (แยกตามหน่วย)</h5></div>
+    <div class="card-body">
+        {% if plan.learning_units %}
+            <div class="accordion" id="unitsAccordion">
+                {% for unit in plan.learning_units|sort(attribute='sequence') %}
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="heading-{{ unit.id }}">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-{{ unit.id }}">
+                            <strong>หน่วยที่ {{ loop.index }}:</strong>&nbsp;{{ unit.title }} ({{ unit.hours }} คาบ)
+                        </button>
+                    </h2>
+                    <div id="collapse-{{ unit.id }}" class="accordion-collapse collapse" data-bs-parent="#unitsAccordion">
+                        <div class="accordion-body">
+                        {% if unit.indicators_structured %}
+                        <section class="mb-4">
+                            <h6><strong>1. มาตรฐานการเรียนรู้/ตัวชี้วัด</strong></h6>
+                            {% for strand_name, standards in unit.indicators_structured.items() %}
+                            <div class="mt-3">
+                                <h6 class="p-2 rounded-top mb-0"><strong>{{ strand_name }}</strong></h6>
+                                {% for standard, indicators_in_standard in standards.items() %}
+                                <div class="ps-3 pt-2">
+                                    <p><strong>{{ standard.code }}</strong> {{ standard.description }}</p>
+                                    <ul class="list-group list-group-flush">
+                                        {% for indicator in indicators_in_standard %}
+                                        <li class="list-group-item">{{ indicator.code }} - {{ indicator.description }}</li>
+                                        {% endfor %}
+                                    </ul>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            {% endfor %}
+                        </section>
+                        {% endif %}
+                        {% if unit.core_concepts %}<section class="mb-4"><h6><strong>2. สาระสำคัญ</strong></h6><div style="white-space: pre-wrap;">{{ unit.core_concepts|nl2br|safe }}</div></section>{% endif %}
+                        {% if unit.learning_objectives %}<section class="mb-4"><h6><strong>3. จุดประสงค์การเรียนรู้</strong></h6><div style="white-space: pre-wrap;">{{ unit.learning_objectives|nl2br|safe }}</div></section>{% endif %}
+                        {% if unit.learning_activities %}<section class="mb-4"><h6><strong>4. กิจกรรมการเรียนรู้</strong></h6><div style="white-space: pre-wrap;">{{ unit.learning_activities|nl2br|safe }}</div></section>{% endif %}
+                        {% if unit.learning_content %}<section class="mb-4"><h6><strong>5. สาระการเรียนรู้</strong></h6><div style="white-space: pre-wrap;">{{ unit.learning_content|nl2br|safe }}</div></section>{% endif %}
+                        {% if unit.media_sources %}<section class="mb-4"><h6><strong>6. สื่อ/แหล่งเรียนรู้</strong></h6><div style="white-space: pre-wrap;">{{ unit.media_sources|nl2br|safe }}</div></section>{% endif %}
+
+                        {% if unit.structured_topics %}
+                        <section class="mb-4">
+                            {% for template_name, parent_topics in unit.structured_topics.items() %}
+                                <p class="mt-2 mb-1"><strong>{{ template_name }}</strong></p>
+                                <div class="ps-3">
+                                {% for parent_topic, child_topics in parent_topics.items() %}
+                                    <p class="mb-1">{{ parent_topic.name }}</p>
+                                    {% if child_topics %}
+                                        <ul class="list-unstyled ps-4">
+                                            {% for child in child_topics %}
+                                                <li>- {{ child.name }}</li>
+                                            {% endfor %}
+                                        </ul>
+                                    {% endif %}
+                                {% endfor %}
+                                </div>
+                            {% endfor %}
+                        </section>
+                        {% endif %}
+                        
+                        {% set formative_items = unit.graded_items %}
+                        {% if formative_items %}
+                        <section class="mb-4">
+                            <h6><strong>รายการคะแนนเก็บ</strong></h6>
+                            <table class="table table-sm table-bordered">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>รายการ</th>
+                                        <th class="text-center" style="width: 15%;">ประเภท</th>
+                                        <th class="text-center" style="width: 15%;">มิติ (KPA)</th>
+                                        <th class="text-center" style="width: 15%;">คะแนนเต็ม</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                {% for item in formative_items %}
+                                    <tr>
+                                        <td>{{ item.name }}</td>
+                                        <td class="text-center">
+                                            {% if item.indicator_type == 'SUMMATIVE' %}
+                                                <span class="badge bg-danger">ตัวชี้วัดปลายทาง</span>
+                                            {% elif item.indicator_type == 'FORMATIVE' %}
+                                                <span class="badge bg-info text-dark">ตัวชี้วัดระหว่างทาง</span>
+                                            {% endif %}
+                                        </td>                                        
+                                        <td class="text-center">{{ item.dimension.name if item.dimension else 'N/A' }}</td>
+                                        <td class="text-center">{{ item.max_score }}</td>
+                                    </tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                        </section>
+                        {% endif %}
+                        {% if unit.midterm_score or unit.final_score %}
+                        <section class="mb-4">
+                            <h6><strong>คะแนนสอบ (กลางภาค/ปลายภาค)</strong></h6>
+                            <ul class="list-group list-group-flush">
+                                {% if unit.midterm_score and unit.midterm_score > 0 %}
+                                <li class="list-group-item">
+                                    <i class="bi bi-calendar2-event-fill text-info me-2"></i>
+                                    การสอบกลางภาค: <strong>{{ unit.midterm_score|round(1) }}</strong> คะแนน
+                                </li>
+                                {% endif %}
+                                {% if unit.final_score and unit.final_score > 0 %}
+                                <li class="list-group-item">
+                                    <i class="bi bi-calendar2-check-fill text-danger me-2"></i>
+                                    การสอบปลายภาค: <strong>{{ unit.final_score|round(1) }}</strong> คะแนน
+                                </li>
+                                {% endif %}
+                            </ul>
+                        </section>
+                        {% endif %}                        
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p class="text-muted text-center">ยังไม่มีการสร้างหน่วยการเรียนรู้ในแผนการสอนนี้</p>
+        {% endif %}
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const rejectBtn = document.getElementById('reject-btn');
+    const rejectForm = document.getElementById('reject-form');
+    const revisionNotesInput = document.getElementById('revision-notes-input');
+
+    if (rejectBtn) {
+        rejectBtn.addEventListener('click', function () {
+            Swal.fire({
+                title: 'ส่งกลับเพื่อแก้ไข',
+                input: 'textarea',
+                inputLabel: 'เหตุผลในการส่งกลับ',
+                inputPlaceholder: 'กรุณาระบุข้อเสนอแนะหรือจุดที่ต้องการให้ครูผู้สอนแก้ไข...',
+                showCancelButton: true,
+                confirmButtonText: 'ยืนยันและส่งกลับ',
+                cancelButtonText: 'ยกเลิก',
+                confirmButtonColor: '#dc3545',
+                inputValidator: (value) => {
+                    if (!value) {
+                        return 'กรุณาระบุเหตุผล!'
+                    }
+                }
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    revisionNotesInput.value = result.value;
+                    rejectForm.submit();
+                }
+            });
+        });
+    }
+});
+</script>
+{% endblock %}

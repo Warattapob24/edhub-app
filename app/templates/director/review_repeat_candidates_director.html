@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+
+{% block sidebar %}
+    {% include 'director/_sidebar.html' %}
+{% endblock %}
+
+{% block main_content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="h3"><i class="bi bi-person-badge-fill me-2"></i>{{ title }}</h2>
+</div>
+
+{% if candidates %}
+<div class="card shadow-sm">
+    <div class="card-body">
+        <p class="text-muted">รายชื่อนักเรียนที่รอการอนุมัติขั้นสุดท้าย (เรียนซ้ำชั้น หรือเลื่อนชั้นเป็นกรณีพิเศษ)</p>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>ชื่อ-สกุล</th>
+                        <th>สายชั้นเดิม (ปี {{ candidates[0].academic_year.year }})</th>
+                        <th>ข้อเสนอเดิม<br>(ครูที่ปรึกษา)</th>
+                        <th>หมายเหตุ (ที่ปรึกษา)</th>
+                        <th>หมายเหตุ (หน.สายชั้น)</th>
+                        <th>หมายเหตุ (วิชาการ)</th>
+                        <th style="width: 25%;">การดำเนินการ (ผู้อำนวยการ)</th>
+                        <th style="width: 10%;">อนุมัติ</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for candidate in candidates %}
+                    <tr class="{% if 'Reject' in candidate.status %}table-danger{% endif %}">
+                        <td>
+                            {# Link to student profile if available #}
+                            {{ candidate.student.full_name }} {# Assume student has full_name property or adjust #}
+                            <br><small class="text-muted">{{ candidate.student.student_id }}</small>
+                        </td>
+                        <td>{{ candidate.previous_enrollment.classroom.grade_level.name }}</td>
+                        <td>
+                            {% if candidate.final_decision == 'Repeat' %}
+                                <span class="badge bg-warning text-dark">ซ้ำชั้น</span>
+                            {% elif candidate.final_decision == 'Promote (Special Case)' %}
+                                <span class="badge bg-info text-dark">เลื่อนชั้น (พิเศษ)</span>
+                            {% else %}
+                                <span class="badge bg-secondary">N/A</span>
+                            {% endif %}
+                        </td>
+                        <td><small>{{ candidate.advisor_notes or '-' }}</small></td>
+                        <td><small>{{ candidate.grade_head_notes or '-' }}</small></td> {# Display Grade Head notes #}
+                        <td><small>{{ candidate.academic_notes or '-' }}</small></td> {# Display Academic notes #}
+                        <td>
+                            <form method="POST" action="{{ url_for('director.submit_director_decision', candidate_id=candidate.id) }}" id="form-{{ candidate.id }}">
+                                {{ form.hidden_tag() }} {# CSRF #}
+                                <div class="mb-2">
+                                    <select name="decision" class="form-select form-select-sm" required>
+                                        <option value="" disabled selected>-- เลือกการอนุมัติ --</option>
+                                        <option value="approve">อนุมัติ</option>
+                                        <option value="reject">ไม่อนุมัติ</option>
+                                    </select>
+                                </div>
+                                <textarea name="notes" class="form-control form-control-sm" rows="2" placeholder="หมายเหตุ (ถ้ามี)"></textarea>
+                            </form>
+                        </td>
+                        <td class="text-center">
+                            <button type="submit" form="form-{{ candidate.id }}" class="btn btn-success btn-sm">
+                                <i class="bi bi-check-lg"></i> บันทึก
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="alert alert-success text-center">
+    <i class="bi bi-check-circle-fill fs-3"></i><br>
+    ไม่พบนักเรียนที่รอการอนุมัติในขณะนี้
+</div>
+{% endif %}
+
+{% endblock %}

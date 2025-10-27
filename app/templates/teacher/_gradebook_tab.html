@@ -1,0 +1,24 @@
+<div class="row mb-3 align-items-center">
+    <div class="col-md-5">
+        <label for="classroom-selector" class="form-label"><strong>เลือกห้องเรียนเพื่อดู Gradebook:</strong></label>
+        <select class="form-select" id="classroom-selector">
+            <option value="">-- กรุณาเลือกห้องเรียน --</option>
+            {% for c_data in classrooms_data %}
+                <option value="{{ c_data.classroom.id }}" data-course-id="{{ c_data.course_id }}">{{ c_data.classroom.name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-md-auto ms-auto">
+        <button class="btn btn-outline-primary" id="manage-groups-btn-workspace" disabled>
+            <i class="bi bi-people-fill"></i> จัดการกลุ่ม
+        </button>
+    </div>
+</div>
+<div class="card shadow-sm">
+    <div class="card-body p-0">
+        {# นี่คือ Container ที่ JavaScript กำลังค้นหา #}
+        <div id="gradebook-container" class="text-center p-5 text-muted">
+            กรุณาเลือกห้องเรียนเพื่อแสดงข้อมูล
+        </div>
+    </div>
+</div>

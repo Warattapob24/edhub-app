@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+
+{% block sidebar %}
+    {% include 'director/_sidebar.html' %}
+{% endblock %}
+
+{% block main_content %}
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2 class="bi bi-patch-check-fill mb-0"> {{ title }}</h2>
+        <span class="text-muted">ภาคเรียนที่ {{ semester.term }}/{{ semester.academic_year.year }}</span>
+    </div>
+    <p class="lead text-muted">ภาพรวมผลการเรียนทั้งหมดที่รอการพิจารณาเพื่ออนุมัติ</p>
+<hr>
+
+{% if pending_courses_count > 0 and overall_stats %}
+    <div class="row row-cols-1 row-cols-md-3 row-cols-xl-5 g-4">
+        <div class="col">
+            <div class="card text-center h-100 shadow-sm">
+                <div class="card-body">
+                    <h6 class="card-title text-muted">จำนวนนักเรียนทั้งหมด (นับซ้ำ)</h6>
+                    <p class="display-5 fw-bold text-primary mb-0">{{ overall_stats.total_students }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card text-center h-100 shadow-sm">
+                <div class="card-body">
+                    <h6 class="card-title text-muted">ผลการเรียนเฉลี่ยรวม (GPA)</h6>
+                    <p class="display-5 fw-bold text-info mb-0">{{ '%.2f'|format(overall_stats.gpa) }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card text-center h-100 shadow-sm">
+                <div class="card-body">
+                    <h6 class="card-title text-muted">ร้อยละดีเยี่ยม (เกรด 3+)</h6>
+                    <p class="display-5 fw-bold text-primary mb-0">{{ '%.2f'|format(overall_stats.good_excellent_percent) }}%</p>
+                    <small class="text-muted">({{ overall_stats.good_excellent_count }} คน)</small>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card text-center h-100 shadow-sm">
+                <div class="card-body">
+                    <h6 class="card-title text-muted">ร้อยละผ่านเกณฑ์ (เกรด 1+)</h6>
+                    <p class="display-5 fw-bold text-success mb-0">{{ '%.2f'|format(overall_stats.passed_percent) }}%</p>
+                    <small class="text-muted">({{ overall_stats.passed_count }} คน)</small>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card text-center h-100 shadow-sm">
+                <div class="card-body">
+                    <h6 class="card-title text-muted">ร้อยละไม่ผ่านเกณฑ์ (0,ร,มส)</h6>
+                    <p class="display-5 fw-bold text-danger mb-0">{{ '%.2f'|format(overall_stats.failed_percent) }}%</p>
+                    <small class="text-muted">({{ overall_stats.failed_count }} คน)</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mt-2">
+        <div class="col-xl-7">
+            <div class="card shadow-sm">
+                <div class="card-header"><h5 class="mb-0">การกระจายผลการเรียนภาพรวม</h5></div>
+                <div class="card-body"><canvas id="mainGradeDistChart"></canvas></div>
+            </div>
+        </div>
+        <div class="col-xl-5">
+            <div class="card shadow-sm">
+                <div class="card-header"><h5 class="mb-0">องค์ประกอบผลการเรียนรายกลุ่มสาระฯ</h5></div>
+                <div class="card-body"><canvas id="groupCompositionChart"></canvas></div>
+            </div>
+        </div>
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header"><h5 class="mb-0">เปรียบเทียบร้อยละการผ่านเกณฑ์รายภาคเรียน</h5></div>
+                <div class="card-body"><canvas id="semesterComparisonChart" style="max-height: 250px;"></canvas></div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="approval-section" class="card mt-4 shadow-lg">
+        <div class="card-header bg-light d-flex justify-content-between align-items-center">
+            <h4 class="mb-0 text-primary"><i class="bi bi-collection-play-fill me-2"></i>รายการผลการเรียนรออนุมัติ</h4>
+            <button class="btn btn-success" id="approve-all-btn" data-url="{{ url_for('director.approve_all_grades') }}">
+                <i class="bi bi-check-all"></i> อนุมัติทั้งหมด ({{ pending_courses_count }})
+            </button>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>รหัสวิชา</th>
+                            <th>ชื่อรายวิชา</th>
+                            <th>ห้องเรียน</th>
+                            <th>กลุ่มสาระฯ</th>
+                            <th class="text-center">การดำเนินการ</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for course in pending_courses %}
+                        <tr id="course-row-{{ course.id }}">
+                            <td>{{ course.subject.subject_code }}</td>
+                            <td>{{ course.subject.name }}</td>
+                            <td>{{ course.classroom.name }}</td>
+                            <td><span class="badge bg-secondary">{{ course.subject.subject_group.name }}</span></td>
+                            <td class="text-center">
+                                <a href="{{ url_for('director.review_grades', course_id=course.id) }}" class="btn btn-secondary btn-sm"><i class="bi bi-search"></i> ตรวจสอบ</a>
+                                <button class="btn btn-primary btn-sm approve-one-btn" data-url="{{ url_for('director.approve_one_grade', course_id=course.id) }}">
+                                    <i class="bi bi-check-lg"></i> อนุมัติ
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="alert alert-success text-center p-5">
+        <h4 class="alert-heading"><i class="bi bi-check-all me-2"></i>เรียบร้อยแล้ว</h4>
+        <p class="mb-0">ไม่มีผลการเรียนที่รอการอนุมัติในขณะนี้</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const chartData = {{ chart_data|tojson|safe if chart_data else 'null' }};
+    if (!chartData) return;
+
+    // 1. [ปรับปรุง] สีกราฟผลการเรียน
+    const gradeColors = ['#28a745', '#5cb85c', '#20c997', '#0dcaf0', '#0d6efd', '#fd7e14', '#ffc107', '#dc3545', '#6c757d', '#495057'];
+
+    // Chart 1: Main Grade Distribution with new colors
+    const ctxMain = document.getElementById('mainGradeDistChart');
+    if (ctxMain && chartData.main_grade_dist) {
+        new Chart(ctxMain, {
+            type: 'bar',
+            data: { labels: chartData.main_grade_dist.labels, datasets: [{ label: 'จำนวนนักเรียน', data: chartData.main_grade_dist.data, backgroundColor: gradeColors, borderWidth: 1 }] },
+            options: { responsive: true, plugins: { legend: { display: false } } }
+        });
+    }
+    
+    // Chart 2: [ปรับปรุง] Stacked Bar Chart for Grade Composition
+    const ctxGroup = document.getElementById('groupComparisonChart');
+    if (ctxGroup && chartData.group_comparison) {
+        new Chart(ctxGroup, {
+            type: 'bar',
+            data: {
+                labels: chartData.group_comparison.labels,
+                datasets: [
+                    { label: 'ร้อยละผ่านเกณฑ์ (เกรด 1+)', data: chartData.group_comparison.passed_data, backgroundColor: 'rgba(40, 167, 69, 0.7)' },
+                    { label: 'ร้อยละดี-ดีเยี่ยม (เกรด 3+)', data: chartData.group_comparison.good_excellent_data, backgroundColor: 'rgba(0, 123, 255, 0.7)' },
+                    { label: 'ร้อยละไม่ผ่าน', data: chartData.group_comparison.failed_data, backgroundColor: 'rgba(220, 53, 69, 0.8)' }
+                ]
+            },
+            options: { 
+                indexAxis: 'y', 
+                responsive: true, 
+                plugins: { legend: { display: true, position: 'top' }, tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.x.toFixed(2)}%` } } },
+                scales: { x: { min: 0, max: 100, ticks: { callback: value => value + "%" } } }
+            }
+        });
+    }
+
+    // Chart 3: [ปรับปรุง] Semester Pass Rate Comparison
+    const ctxSemester = document.getElementById('semesterComparisonChart');
+    if (ctxSemester && chartData.semester_comparison) {
+        new Chart(ctxSemester, {
+            type: 'line',
+            data: {
+                labels: chartData.semester_comparison.labels,
+                datasets: [
+                    { label: 'มัธยมศึกษาตอนต้น', data: chartData.semester_comparison.m_ton_passed, borderColor: 'rgba(54, 162, 235, 1)', backgroundColor: 'rgba(54, 162, 235, 0.2)', fill: true, tension: 0.2 },
+                    { label: 'มัธยมศึกษาตอนปลาย', data: chartData.semester_comparison.m_plai_passed, borderColor: 'rgba(255, 99, 132, 1)', backgroundColor: 'rgba(255, 99, 132, 0.2)', fill: true, tension: 0.2 }
+                ]
+            },
+            options: { responsive: true, scales: { y: { beginAtZero: false, ticks: { callback: value => value.toFixed(2) + "%" } } } }
+        });
+    }
+
+    // --- Approval Script ---
+    const approvalSection = document.getElementById('approval-section');
+    if (approvalSection) {
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+        approvalSection.addEventListener('click', function(e) {
+            const approveAllBtn = e.target.closest('#approve-all-btn');
+            const approveOneBtn = e.target.closest('.approve-one-btn');
+            if (approveAllBtn) { handleApproval('อนุมัติผลการเรียนทั้งหมด?', approveAllBtn.dataset.url, true); }
+            if (approveOneBtn) { handleApproval('ยืนยันการอนุมัติรายการนี้?', approveOneBtn.dataset.url, false, approveOneBtn.closest('tr')); }
+        });
+
+        function handleApproval(title, url, isApproveAll = false, elementToRemove = null) {
+            Swal.fire({ title: title, text: "การกระทำนี้ถือเป็นที่สิ้นสุดและไม่สามารถย้อนกลับได้", icon: 'warning', showCancelButton: true, confirmButtonColor: '#198754', cancelButtonColor: '#6c757d', confirmButtonText: 'ยืนยันการอนุมัติ', cancelButtonText: 'ยกเลิก' }).then((result) => {
+                if (result.isConfirmed) {
+                    fetch(url, { method: 'POST', headers: { 'X-CSRFToken': csrfToken } })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            if (isApproveAll) { Swal.fire('สำเร็จ!', 'ผลการเรียนทั้งหมดได้รับการอนุมัติแล้ว', 'success').then(() => location.reload()); } 
+                            else if (elementToRemove) { 
+                                elementToRemove.remove(); 
+                                Swal.fire({toast: true, position: 'top-end', showConfirmButton: false, timer: 3000, title: 'อนุมัติเรียบร้อย', icon: 'success'});
+                                // Optionally, update the main counter
+                                const countBadge = document.querySelector('#approve-all-btn');
+                                if(countBadge) {
+                                    const currentCount = parseInt(countBadge.textContent.match(/\d+/)[0] || 0);
+                                    const newCount = currentCount - 1;
+                                    if (newCount > 0) {
+                                        countBadge.innerHTML = `<i class="bi bi-check-all"></i> อนุมัติทั้งหมด (${newCount})`;
+                                    } else {
+                                        location.reload(); // Reload if it was the last one
+                                    }
+                                }
+                            } 
+                            else { location.reload(); }
+                        } else { Swal.fire('ผิดพลาด!', data.message || 'Server error', 'error'); }
+                    }).catch(err => Swal.fire('ผิดพลาด!', 'ไม่สามารถเชื่อมต่อได้', 'error'));
+                }
+            });
+        }
+    }
+});
+</script>
+{% endblock %}

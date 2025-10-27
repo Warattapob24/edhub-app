@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="h3">{{ title }}</h1>
+<p>ติดตามสถานะการส่งผลการเรียน, การกรอกคะแนน, และจำนวนนักเรียนที่มีปัญหาของทุกรายวิชา</p>
+<hr>
+
+<div class="table-responsive">
+    <table class="table table-hover align-middle">
+        <thead class="table-light">
+            <tr>
+                <th>รายวิชา / ครูผู้สอน</th>
+                <th class="text-center">สถานะกรอกคะแนน</th>
+                <th class="text-center">สถานะประเมินเพิ่มเติม</th>
+                <th class="text-center">จำนวน (0,ร,มส)</th>
+                <th class="text-center">สถานะการอนุมัติ</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in progress_data %}
+            {% set course = item.course %}
+            <tr>
+                <td>
+                    <strong>{{ course.subject.subject_code }}</strong> - {{ course.subject.name }}
+                    <br>
+                    <small class="text-muted">{{ course.teacher.full_name }}</small>
+                </td>
+                <td class="text-center">
+                    {% if 'สมบูรณ์' in item.score_status %}
+                        <span class="badge bg-success">{{ item.score_status }}</span>
+                    {% elif 'ไม่มี' in item.score_status %}
+                        <span class="badge bg-light text-dark">{{ item.score_status }}</span>
+                    {% else %}
+                        <span class="badge bg-warning text-dark">{{ item.score_status }}</span>
+                    {% endif %}
+                </td>
+                <td class="text-center">
+                    {% if 'สมบูรณ์' in item.assessment_status %}
+                        <span class="badge bg-success">{{ item.assessment_status }}</span>
+                    {% elif 'ไม่มี' in item.assessment_status %}
+                        <span class="badge bg-light text-dark">{{ item.assessment_status }}</span>
+                    {% else %}
+                        <span class="badge bg-warning text-dark">{{ item.assessment_status }}</span>
+                    {% endif %}
+                </td>
+                <td class="text-center">
+                    <span class="badge bg-danger">{{ item.issue_count }}</span>
+                </td>
+                <td class="text-center">
+                    {% if course.status == 'approved' %}
+                        <span class="badge bg-success">อนุมัติแล้ว</span>
+                    {% elif 'pending' in course.status %}
+                        <span class="badge bg-warning text-dark">รออนุมัติ</span>
+                    {% elif course.status == 'draft' %}
+                        <span class="badge bg-secondary">ฉบับร่าง</span>
+                    {% else %}
+                        <span class="badge bg-danger">{{ course.status }}</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% endblock %}

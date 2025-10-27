@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1>กลุ่มสาระการเรียนรู้: {{ area.name }}</h1>
+</div>
+
+<p>ชื่อหัวหน้ากลุ่มสาระฯ: <strong>{{ current_user.full_name }}</strong></p>
+<hr>
+
+<table class="table table-hover align-middle">
+    <thead class="table-light">
+        <tr>
+            <th>รหัสวิชา</th>
+            <th>ชื่อวิชา</th>
+            <th>ระดับชั้น</th>
+            <th style="width: 45%;">สถานะการมอบหมาย</th>
+        </tr>
+    </thead>
+        <tbody>
+            {% for section in sections %}
+            <tr>
+                <td>{{ section.course.course_code }}</td>
+                <td>{{ section.course.name_thai }}</td>
+                <td>{{ section.course.grade_level.name }}</td>
+                <td>
+                    <div class="d-flex justify-content-between align-items-center">
+                        {# This simple dropdown is for assigning ONE teacher to ALL classes for this section #}
+                        <div>
+                            {# Look up the first assigned teacher (if any) to pre-select the dropdown #}
+                            {% set first_assignment = assignments.get(section.id, [])[0] if assignments.get(section.id) else None %}
+                            <select class="form-select form-select-sm" data-section-id="{{ section.id }}">
+                                <option value="">-- ยังไม่มีผู้สอน --</option>
+                                {% for teacher in teachers %}
+                                <option value="{{ teacher.id }}" {% if first_assignment and first_assignment.teacher_id == teacher.id %}selected{% endif %}>
+                                    {{ teacher.full_name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        {# This button opens a modal for assigning different teachers to different classes #}
+                        <button class="btn btn-outline-primary btn-sm manage-assignment-btn" 
+                                data-bs-toggle="modal" 
+                                data-bs-target="#manageAssignmentModal"
+                                data-course-id="{{ section.course.id }}"
+                                data-course-name="{{ section.course.name_thai }}"
+                                title="จัดการผู้สอนและห้องเรียน">
+                            <i class="bi bi-pencil-square"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="4" class="text-center">ไม่พบรายวิชาในกลุ่มสาระนี้</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        </table>
+    </div>
+    <div class="col-md-4">
+        <h3>สรุปภาระงานสอน</h3>
+        <p class="text-muted small">อัปเดตอัตโนมัติ</p>
+        <div id="assignment-summary">
+            {% include 'department/_summary.html' with context %}
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="manageAssignmentModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-body">
+                <p>กำลังโหลดข้อมูลการมอบหมาย...</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}  
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const assignmentSummaryDiv = document.getElementById('assignment-summary');
+    const assignmentModal = document.getElementById('manageAssignmentModal');
+
+    // --- ฟังก์ชันสำหรับอัปเดต UI สรุปภาระงานสอน (โค้ดเดิมของท่าน - ทำงานได้ดีอยู่แล้ว) ---
+    function updateSummary() {
+        fetch('{{ url_for("department.api_get_summary") }}')
+            .then(response => response.text())
+            .then(html => {
+                assignmentSummaryDiv.innerHTML = html;
+            });
+    }
+
+    // --- จัดการ Event ของ Dropdown ในตารางหลัก (โค้ดเดิมของท่าน - ทำงานได้ดีอยู่แล้ว) ---
+    document.querySelectorAll('.table .form-select').forEach(selectElement => {
+        selectElement.addEventListener('change', function(event) {
+            const sectionId = this.dataset.sectionId; // Use sectionId now
+            const teacherId = this.value;
+            const row = this.closest('tr');
+            
+            row.style.opacity = '0.5';
+
+            fetch('{{ url_for("department.api_assign_teacher") }}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token() }}'
+                },
+                body: JSON.stringify({ section_id: sectionId, teacher_id: teacherId }) // Send section_id
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    updateSummary(); 
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            })
+            .finally(() => {
+                row.style.opacity = '1';
+            });
+        });
+    });
+
+    // --- [ปรับปรุงใหม่] จัดการ Event ของ Modal ---
+    let currentCourseId = null; // ตัวแปรสำหรับเก็บ courseId ที่กำลังทำงานใน Modal
+
+    assignmentModal.addEventListener('show.bs.modal', function(event) {
+        const button = event.relatedTarget;
+        currentCourseId = button.dataset.courseId; // เก็บ courseId ไว้
+        const courseName = button.dataset.courseName;
+
+        const modalTitle = assignmentModal.querySelector('.modal-title');
+        const modalBody = assignmentModal.querySelector('.modal-body');
+
+        modalBody.innerHTML = '<p class="text-center">กำลังโหลด...</p>';
+        
+        // ดึงฟอร์มที่มีรายชื่อห้องเรียนมาแสดง
+        fetch(`/department/api/assignment-details/${currentCourseId}`)
+            .then(response => response.text())
+            .then(html => {
+                modalBody.innerHTML = html;
+            });
+    });
+
+    // [โค้ดใหม่] ใช้ Event Delegation เพื่อดักจับการเปลี่ยนแปลงใน Modal
+    // ที่ถูกโหลดข้อมูลเข้ามาทีหลัง
+    assignmentModal.addEventListener('change', function(event) {
+        // ตรวจสอบว่า element ที่ถูกเปลี่ยนคือ dropdown ที่เราสนใจหรือไม่
+        if (event.target.classList.contains('teacher-assignment-select')) {
+            saveModalAssignments(currentCourseId);
+        }
+    });
+
+    // [ฟังก์ชันใหม่] สำหรับรวบรวมข้อมูลและบันทึกจากใน Modal
+    function saveModalAssignments(courseId) {
+        if (!courseId) return;
+
+        const selects = assignmentModal.querySelectorAll('.teacher-assignment-select');
+        const assignments = {};
+        selects.forEach(select => {
+            const classroomId = select.dataset.classroomId;
+            const teacherId = select.value;
+            // บันทึกเฉพาะที่มีการเลือกครูและห้องเรียนครบถ้วน
+            if (classroomId && teacherId) {
+                assignments[classroomId] = teacherId;
+            }
+        });
+
+        // แสดงสถานะว่ากำลังบันทึก (ทางเลือก)
+        const modalTitle = assignmentModal.querySelector('.modal-title');
+        modalTitle.innerHTML += ' <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>';
+
+        fetch(`/department/api/save-assignments/${courseId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token() }}' // เพิ่ม CSRF Token
+            },
+            body: JSON.stringify({ assignments: assignments })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                updateSummary(); // อัปเดตตารางสรุปเมื่อสำเร็จ
+            } else {
+                alert('เกิดข้อผิดพลาดในการบันทึก: ' + data.message);
+            }
+        })
+        .catch(error => console.error('Error saving modal assignments:', error))
+        .finally(() => {
+            // นำ spinner ออกเมื่อเสร็จสิ้น
+            const spinner = modalTitle.querySelector('.spinner-border');
+            if(spinner) spinner.remove();
+        });
+    }
+
+    // [รื้อถอน] ไม่มีการใช้งานปุ่ม Save อีกต่อไป จึงไม่จำเป็นต้องมีโค้ด saveBtn.onclick
+});
+</script>
+{% endblock %}

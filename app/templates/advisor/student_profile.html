@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+
+{% block sidebar %}
+    {% include 'advisor/_sidebar.html' %}
+{% endblock %}
+
+{% block main_content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{{ url_for('advisor.dashboard') }}">แดชบอร์ดครูที่ปรึกษา</a></li>
+        <li class="breadcrumb-item active" aria-current="page">ข้อมูลนักเรียน</li>
+    </ol>
+</nav>
+
+<div class="d-flex align-items-center mb-4">
+    <i class="bi bi-person-circle fs-1 text-primary me-3"></i>
+    <div>
+        <h1 class="h2 mb-0">{{ student.name_prefix }}{{ student.first_name }} {{ student.last_name }}</h1>
+        <p class="text-muted mb-0">รหัสนักเรียน: {{ student.student_id }} | สถานะ: <strong>{{ student.status }}</strong></p>
+    </div>
+</div>
+
+{# --- WARNINGS SECTION --- #}
+{% if warnings %}
+<div class="alert alert-danger">
+    <h4 class="alert-heading"><i class="bi bi-exclamation-triangle-fill"></i> การแจ้งเตือนที่ยังดำเนินอยู่ ({{ warnings|length }} รายการ)</h4>
+    <hr>
+    <ul class="mb-0">
+        {% for warning in warnings %}
+        <li><strong>{{ warning.course.subject.name }}:</strong> ขาดเรียนเกิน {{ warning.threshold_percent }}% (ขาดแล้ว {{ warning.absence_count_at_trigger }} ครั้ง ณ วันที่แจ้งเตือน)</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+{# --- ACADEMIC SUMMARY SECTION --- #}
+<div class="row g-4">
+    <div class="col-lg-8">
+        <div class="card shadow-sm">
+            <div class="card-header"><h5 class="mb-0">สรุปผลการเรียนภาคเรียนปัจจุบัน</h5></div>
+            <div class="card-body">
+                {% if academic_summary %}
+                    {% for summary in academic_summary %}
+                    <div class="card mb-3">
+                        <div class="card-header bg-light">
+                            <h6>{{ summary.course.subject.name }}</h6>
+                            <small class="text-muted">ครูผู้สอน: {{ summary.course.teachers|map(attribute='first_name')|join(', ') }}</small>
+                        </div>
+                        <div class="card-body">
+                            <div class="row align-items-center">
+                                <div class="col-md-8">
+                                    <div class="row text-center gy-3">
+                                        <div class="col-6 col-sm-3">
+                                            <div>คะแนนเก็บ</div>
+                                            <div class="fs-4 fw-bold">{{ "%.2f"|format(summary.collected_score) }}</div>
+                                            <small class="text-muted">/ {{ "%.2f"|format(summary.max_collected_score) }}</small>
+                                        </div>
+                                        <div class="col-6 col-sm-3">
+                                            <div>กลางภาค</div>
+                                            <div class="fs-4 fw-bold">{{ summary.midterm_score if summary.midterm_score is not none else '-' }}</div>
+                                            <small class="text-muted">/ {{ summary.max_midterm_score }}</small>
+                                        </div>
+                                        <div class="col-6 col-sm-3">
+                                            <div>ปลายภาค</div>
+                                            <div class="fs-4 fw-bold">{{ summary.final_score if summary.final_score is not none else '-' }}</div>
+                                            <small class="text-muted">/ {{ summary.max_final_score }}</small>
+                                        </div>
+                                        <div class="col-6 col-sm-3">
+                                            <div>รวม</div>
+                                            <div class="fs-4 fw-bold">{{ "%.2f"|format(summary.total_score) }}</div>
+                                            <small class="text-muted">/ {{ "%.2f"|format(summary.grand_max_score) }}</small>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4 text-center mt-3 mt-md-0 border-md-start">
+                                    <div>เกรดที่คาดการณ์</div>
+                                    <div class="display-4 fw-bold {% if summary.grade in ['0', 'ร', 'มส'] %}text-danger{% else %}text-success{% endif %}">
+                                        {{ summary.grade }}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-footer text-muted small">
+                            <div class="d-flex justify-content-around">
+                                <span><i class="bi bi-check-circle-fill text-success"></i> มาเรียน: {{ summary.attendance.PRESENT }}</span>
+                                <span><i class="bi bi-clock-fill text-warning"></i> มาสาย: {{ summary.attendance.LATE }}</span>
+                                <span><i class="bi bi-x-circle-fill text-danger"></i> ขาดเรียน: {{ summary.attendance.ABSENT }}</span>
+                                <span><i class="bi bi-info-circle-fill text-info"></i> ลา: {{ summary.attendance.LEAVE }}</span>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                <p class="text-muted text-center">ยังไม่มีข้อมูลผลการเรียนในภาคเรียนนี้</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card shadow-sm">
+            <div class="card-header"><h5 class="mb-0">สรุปผลการประเมิน</h5></div>
+            <div class="card-body">
+                {% if assessment_summary %}
+                    {% for template_data in assessment_summary %}
+                        <h6 class="mb-3">{{ template_data.name }}</h6>
+                        <table class="table table-sm table-hover">
+                            <tbody>
+                                {% for topic in template_data.topics %}
+                                <tr>
+                                    <td>{{ topic.name }}</td>
+                                    <td class="text-end">
+                                        {% if topic.advisor_score is not none %}
+                                            <div class="input-group input-group-sm justify-content-end">
+                                                {% set advisor_label = template_data.rubric_map.get(topic.advisor_score, '-') %}
+                                                <span class="badge fs-6 {% if topic.advisor_score == 3 %}bg-success{% elif topic.advisor_score == 2 %}bg-primary{% elif topic.advisor_score == 1 %}bg-info text-dark{% elif topic.advisor_score == 0 %}bg-danger{% else %}bg-secondary{% endif %}">
+                                                    {{ advisor_label }}
+                                                </span>
+                                                {% if topic.detailed_scores %}
+                                                <button class="btn btn-sm btn-outline-secondary py-0 px-1" type="button" data-bs-toggle="popover" 
+                                                        data-bs-html="true"
+                                                        title="ผลการประเมินรายวิชา"
+                                                        data-bs-content="
+                                                            <ul class='list-group list-group-flush' style='min-width: 200px;'>
+                                                            {% for score_item in topic.detailed_scores %}
+                                                                <li class='list-group-item d-flex justify-content-between align-items-center p-1'>
+                                                                    <small>{{ score_item.subject }}</small>
+                                                                    <span class='badge bg-primary rounded-pill'>{{ template_data.rubric_map.get(score_item.score, '-') }}</span>
+                                                                </li>
+                                                            {% endfor %}
+                                                            </ul>">
+                                                    <i class="bi bi-info-circle"></i>
+                                                </button>
+                                                {% endif %}
+                                            </div>
+                                        {% else %}
+                                            <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                         {% if not loop.last %}<hr class="my-4">{% endif %}
+                    {% endfor %}
+                {% else %}
+                    <p class="text-muted text-center">ยังไม่มีข้อมูลการประเมิน</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    // This is the only script needed for this page now.
+    // It finds all popover buttons and enables them with the 'hover focus' trigger.
+    const popoverTriggerList = document.querySelectorAll('[data-bs-toggle="popover"]');
+    [...popoverTriggerList].map(el => new bootstrap.Popover(el, { trigger: 'hover focus' }));
+});
+</script>
+{% endblock %}

@@ -1,0 +1,326 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    /* CSS สำหรับ Modal Pop-up */
+    .modal-backdrop {
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background-color: rgba(0,0,0,0.5); z-index: 1040;
+        display: flex; align-items: center; justify-content: center;
+        opacity: 0; transition: opacity 0.15s linear; pointer-events: none;
+    }
+    .modal-backdrop.visible { opacity: 1; pointer-events: auto; }
+    .modal-content {
+        background-color: white; padding: 20px; border-radius: 5px;
+        width: 90%; max-width: 400px;
+    }
+    .score-cell { position: relative; padding: 2px !important; }
+    .total-score-input { width: 100%; border: none; text-align: center; background-color: transparent; padding-right: 25px; }
+    .total-score-input:focus { outline: 2px solid #0d6efd; }
+    .kpa-modal-trigger {
+        position: absolute; top: 5px; right: 5px;
+        border: none; background: #e9ecef; color: #6c757d;
+        border-radius: 4px; font-size: 0.7rem; line-height: 1;
+        cursor: pointer; padding: 2px 5px;
+    }
+    .kpa-modal-trigger:hover { background: #ced4da; }
+</style>
+
+<div class="d-flex justify-content-between align-items-center">
+    <div>
+        <h1 class="h3">กรอกคะแนน: {{ course.subject.name }}</h1>
+        <p class="text-muted">ปีการศึกษา {{ course.academic_year }}/{{ course.semester }}</p>
+    </div>
+    <a href="{{ url_for('course.manage_course', course_id=course.id) }}" class="btn btn-outline-secondary"> &laquo; กลับไปหน้าจัดการรายวิชา</a>
+</div>
+<hr>
+
+<form method="GET" id="filter-form" class="row g-3 align-items-center mb-3">
+    <div class="col-auto">
+      <label for="class_group-select" class="col-form-label">เลือกห้องเรียน:</label>
+    </div>
+    <div class="col-auto">
+      <select class="form-select" id="class_group-select" name="class_group_id" onchange="this.form.submit()">
+          <option value="">-- กรุณาเลือกห้องเรียน --</option>
+          {% for class_group in class_groups %}
+              <option value="{{ class_group.id }}" {% if class_group.id == selected_class_group_id %}selected{% endif %}>
+                  {{ class_group.grade_level.name }} / ห้อง {{ class_group.room_number }}
+              </option>
+          {% endfor %}
+      </select>
+    </div>
+</form>
+
+{% if selected_class_group_id %}
+    <div class="table-responsive">
+        <table class="table table-bordered table-hover">
+            <thead class="table-light">
+                <tr>
+                            <th scope="col" rowspan="2" class="align-middle text-center">เลขที่</th>
+                            <th scope="col" rowspan="2" class="align-middle text-center">เลขประจำตัว</th>
+                    <th scope="col" rowspan="2" class="align-middle text-center">ชื่อ - นามสกุล</th>
+                    {% for component in components %}
+                        <th scope="col" class="text-center">
+                            {{ component.name }}
+                        </th>
+                    {% endfor %}
+                    <th scope="col" rowspan="2" class="align-middle text-center">คะแนนรวม</th>
+                    <th scope="col" rowspan="2" class="align-middle text-center">เกรด</th>
+                </tr>
+                <tr>
+                    {% for component in components %}
+                        <th scope="col" class="text-center text-muted fw-normal">
+                            ({{ component.max_score_k + component.max_score_p + component.max_score_a }})
+                        </th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for student in students %}
+                <tr>
+                            <td class="text-center align-middle">{{ student.class_number }}</td>
+                            <td class="text-center align-middle">{{ student.student_id }}</td>
+                    <td class="align-middle">{{ student.prefix }}{{ student.first_name }} {{ student.last_name }}</td>
+                    {% for component in components %}
+                        {% set score_key = student.id ~ '-' ~ component.id %}
+                        <td class="score-cell" 
+                            data-student-id="{{ student.id }}"
+                            data-student-name="{{ student.first_name }} {{ student.last_name }}"
+                            data-component-id="{{ component.id }}"
+                            data-component-name="{{ component.name }}"
+                            data-max-k="{{ component.max_score_k }}"
+                            data-max-p="{{ component.max_score_p }}"
+                            data-max-a="{{ component.max_score_a }}"
+                            data-score-k="{{ scores_dict.get(score_key, {}).get('k', '') }}"
+                            data-score-p="{{ scores_dict.get(score_key, {}).get('p', '') }}"
+                            data-score-a="{{ scores_dict.get(score_key, {}).get('a', '') }}"
+                            id="cell-{{ score_key }}">
+                             <input type="text" class="total-score-input"
+                                   id="total-input-{{ score_key }}"
+                                   value="{{ scores_dict.get(score_key, {}).get('total', '') }}"
+                                   max="{{ component.max_score_k + component.max_score_p + component.max_score_a }}">
+                             <button class="kpa-modal-trigger">KPA</button>
+                        </td>
+                    {% endfor %}
+                    <td class="text-center fw-bold" id="total-{{ student.id }}">
+                        {{ student_summary.get(student.id, {}).total }}
+                    </td>
+                    <td class="text-center fw-bold" id="grade-{{ student.id }}">
+                        {{ student_summary.get(student.id, {}).grade }}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% else %}
+    <div class="alert alert-info">กรุณาเลือกห้องเรียนเพื่อเริ่มกรอกคะแนน</div>
+{% endif %}
+
+
+<div id="kpa-modal" class="modal-backdrop">
+    <div class="modal-content">
+        <h5 id="modal-title">Title</h5>
+        <p id="modal-subtitle" class="text-muted"></p>
+        <hr>
+        <form id="kpa-form">
+            <input type="hidden" id="modal-student-id">
+            <input type="hidden" id="modal-component-id">
+            
+            <div class="mb-3">
+                <label for="modal-k" class="form-label" id="label-k">Knowledge (K)</label>
+                <input type="number" class="form-control" id="modal-k">
+            </div>
+            <div class="mb-3">
+                <label for="modal-p" class="form-label" id="label-p">Process (P)</label>
+                <input type="number" class="form-control" id="modal-p">
+            </div>
+            <div class="mb-3">
+                <label for="modal-a" class="form-label" id="label-a">Attitude (A)</label>
+                <input type="number" class="form-control" id="modal-a">
+            </div>
+            <hr>
+            <div class="d-flex justify-content-between align-items-center">
+                <strong>รวม: <span id="modal-total">0</span></strong>
+                <div>
+                    <button type="button" id="modal-cancel" class="btn btn-secondary">ยกเลิก</button>
+                    <button type="submit" class="btn btn-primary">บันทึก</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const modal = document.getElementById('kpa-modal');
+    const form = document.getElementById('kpa-form');
+    const modalTriggers = document.querySelectorAll('.kpa-modal-trigger');
+    let activeCell = null;
+
+    const modalTitle = document.getElementById('modal-title');
+    const modalSubtitle = document.getElementById('modal-subtitle');
+    const inputK = document.getElementById('modal-k');
+    const inputP = document.getElementById('modal-p');
+    const inputA = document.getElementById('modal-a');
+    const labelK = document.getElementById('label-k');
+    const labelP = document.getElementById('label-p');
+    const labelA = document.getElementById('label-a');
+    const totalDisplay = document.getElementById('modal-total');
+    const studentIdInput = document.getElementById('modal-student-id');
+    const componentIdInput = document.getElementById('modal-component-id');
+    
+    function updateModalTotal() {
+        const k = parseFloat(inputK.value) || 0;
+        const p = parseFloat(inputP.value) || 0;
+        const a = parseFloat(inputA.value) || 0;
+        totalDisplay.textContent = k + p + a;
+    }
+    [inputK, inputP, inputA].forEach(input => input.addEventListener('input', updateModalTotal));
+
+    function openModal(button) {
+        activeCell = button.closest('.score-cell');
+        const ds = activeCell.dataset;
+
+        modalTitle.textContent = `ให้คะแนน: ${ds.studentName}`;
+        modalSubtitle.textContent = ds.componentName;
+        studentIdInput.value = ds.studentId;
+        componentIdInput.value = ds.componentId;
+        
+        inputK.value = ds.scoreK;
+        inputP.value = ds.scoreP;
+        inputA.value = ds.scoreA;
+
+        labelK.textContent = `Knowledge (K) / ${ds.maxK}`;
+        labelP.textContent = `Process (P) / ${ds.maxP}`;
+        labelA.textContent = `Attitude (A) / ${ds.maxA}`;
+        inputK.max = ds.maxK;
+        inputP.max = ds.maxP;
+        inputA.max = ds.maxA;
+
+        updateModalTotal();
+        modal.classList.add('visible');
+    }
+
+    function closeModal() {
+        modal.classList.remove('visible');
+        activeCell = null;
+    }
+
+    modalTriggers.forEach(button => {
+        button.addEventListener('click', () => openModal(button));
+    });
+
+    document.getElementById('modal-cancel').addEventListener('click', closeModal);
+    modal.addEventListener('click', function(e) { if (e.target === modal) closeModal(); });
+
+    form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        saveKpaScores(studentIdInput.value, componentIdInput.value, { 
+            k: inputK.value, 
+            p: inputP.value, 
+            a: inputA.value 
+        });
+        closeModal();
+    });
+
+    document.querySelectorAll('.total-score-input').forEach(input => {
+        input.addEventListener('change', async function() {
+            const inputValue = this.value.trim().toLowerCase();
+            const cell = this.closest('.score-cell');
+            const studentId = cell.dataset.studentId;
+            const componentId = cell.dataset.componentId;
+
+            if (inputValue === '') {
+                await saveKpaScores(studentId, componentId, {k: '', p: '', a: ''});
+            } else if (inputValue === 'ร' || inputValue === 'มส') {
+                const status = (inputValue === 'ร') ? 'Incomplete' : 'Absent';
+                await saveKpaScores(studentId, componentId, {status: status});
+            } else {
+                const response = await fetch('{{ url_for("course.calculate_kpa_from_total") }}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ total_score: inputValue, component_id: componentId })
+                });
+                const kpaData = await response.json();
+                if (kpaData.success) {
+                    await saveKpaScores(studentId, componentId, {k: kpaData.k, p: kpaData.p, a: kpaData.a});
+                } else {
+                    alert("ค่าที่กรอกไม่ถูกต้อง กรุณาใส่ตัวเลข, 'ร' หรือ 'มส'");
+                    let oldTotal = (parseFloat(cell.dataset.scoreK) || 0) + (parseFloat(cell.dataset.scoreP) || 0) + (parseFloat(cell.dataset.scoreA) || 0);
+                    this.value = cell.dataset.scoreK ? oldTotal : '';
+                }
+            }
+        });
+    });
+
+    async function saveKpaScores(studentId, componentId, dataPayload) {
+        const payload = { student_id: studentId, component_id: componentId, ...dataPayload };
+        const response = await fetch('{{ url_for("course.save_score") }}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+            const scoreKey = `${studentId}-${componentId}`;
+            const totalInput = document.getElementById(`total-input-${scoreKey}`);
+            const cell = totalInput.closest('.score-cell');
+
+            totalInput.value = data.new_total_display;
+            
+            // **ส่วนสำคัญที่เพิ่มเข้ามา: อัปเดต data attributes บน cell**
+            if (dataPayload.status) {
+                cell.dataset.scoreK = '';
+                cell.dataset.scoreP = '';
+                cell.dataset.scoreA = '';
+            } else {
+                cell.dataset.scoreK = dataPayload.k;
+                cell.dataset.scoreP = dataPayload.p;
+                cell.dataset.scoreA = dataPayload.a;
+            }
+            updateStudentRowSummary(studentId);
+        } else {
+            alert('Error saving score: ' + (data.error || 'Unknown error'));
+        }
+    }
+    
+    function updateStudentRowSummary(studentId) {
+        let newTotal = 0;
+        let hasIncomplete = false;
+        document.querySelectorAll(`.score-cell[data-student-id='${studentId}'] .total-score-input`).forEach(input => {
+            const value = input.value.trim().toLowerCase();
+            if (value === 'ร' || value === 'มส') {
+                hasIncomplete = true;
+            } else if (!isNaN(parseFloat(value))) {
+                newTotal += parseFloat(value);
+            }
+        });
+        
+        const totalCell = document.getElementById(`total-${studentId}`);
+        const gradeCell = document.getElementById(`grade-${studentId}`);
+        totalCell.textContent = newTotal.toFixed(2);
+
+        const maxTotal = {{ max_total_score | default(0) }};
+        let grade = 'N/A';
+        if (hasIncomplete) {
+            grade = 'ร';
+        } else if (maxTotal > 0) {
+            const percentage = (newTotal / maxTotal) * 100;
+            if (percentage >= 80) grade = "4";
+            else if (percentage >= 75) grade = "3.5";
+            else if (percentage >= 70) grade = "3";
+            else if (percentage >= 65) grade = "2.5";
+            else if (percentage >= 60) grade = "2";
+            else if (percentage >= 55) grade = "1.5";
+            else if (percentage >= 50) grade = "1";
+            else grade = "0";
+        }
+        gradeCell.textContent = grade;
+    }
+});
+</script>
+{% endblock %}

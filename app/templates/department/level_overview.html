@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+
+{% block title %}EdHub {{ title }}{% endblock %}
+
+{% block sidebar %}
+    {% include 'department/_sidebar.html' %}
+{% endblock %}
+
+{% block main_content %}
+<div class="container-fluid py-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ url_for('department.dashboard') }}">ภาพรวมกลุ่มสาระฯ</a></li>
+            <li class="breadcrumb-item active" aria-current="page">{{ title }}</li>
+        </ol>
+    </nav>    
+    <h3 class="bi bi-graph-up me-2"> {{ title }}</h3>
+    <hr>
+
+    <div class="row g-4">
+        {% if overall_stats and overall_stats.total_students > 0 %}
+        
+        <div class="col-lg-7 mb-4">
+            <div class="card h-100">
+                <div class="card-header"><h5 class="mb-0"><i class="bi bi-pie-chart-fill me-2"></i>ภาพรวมผลการเรียน</h5></div>
+                <div class="card-body">
+                    {% if chart_data %}
+                    <canvas id="gradeDistributionChart"></canvas>
+                    {% else %}
+                    <div class="alert alert-info h-100 d-flex align-items-center justify-content-center">
+                        <i class="bi bi-info-circle-fill me-2"></i> ยังไม่มีข้อมูลสำหรับสร้างกราฟ
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-5 mb-4">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-bar-chart-line-fill me-2"></i>สรุปสถิติภาพรวม</h5>
+                </div>
+                <div class="card-body">
+                    <ul class="list-group list-group-flush">
+                        <li class="list-group-item d-flex justify-content-between align-items-center">จำนวนนักเรียนทั้งหมด<span class="badge bg-primary rounded-pill fs-6">{{ overall_stats.total_students }}</span></li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">ผลการเรียนเฉลี่ย (GPA)<span class="badge bg-info rounded-pill fs-6">{{ '%.2f'|format(overall_stats.gpa) }}</span></li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">ส่วนเบี่ยงเบนมาตรฐาน (S.D.)<span class="badge bg-secondary rounded-pill fs-6">{{ '%.2f'|format(overall_stats.sd) }}</span></li>
+                    </ul>
+                    <hr>
+                    <p class="card-text"><i class="bi bi-check-circle-fill text-success"></i> นักเรียนที่ได้ระดับผลการเรียน <strong>"1" ขึ้นไป</strong> มีจำนวน <strong>{{ overall_stats.passed_count }}</strong> คน (คิดเป็นร้อยละ <strong>{{ '%.2f'|format(overall_stats.passed_percent) }}</strong>)</p>
+                    <p class="card-text"><i class="bi bi-award-fill text-primary"></i> นักเรียนที่ได้ระดับผลการเรียน <strong>"3" ขึ้นไป</strong> (ดี-ดีเยี่ยม) มีจำนวน <strong>{{ overall_stats.good_excellent_count }}</strong> คน (คิดเป็นร้อยละ <strong>{{ '%.2f'|format(overall_stats.good_excellent_percent) }}</strong>)</p>
+                    <p class="card-text"><i class="bi bi-exclamation-triangle-fill text-danger"></i> นักเรียนที่มีผลการเรียน <strong>0, ร, มส</strong> มีจำนวน <strong class="text-danger">{{ overall_stats.failed_count }}</strong> คน (คิดเป็นร้อยละ <strong>{{ '%.2f'|format(overall_stats.failed_percent) }}</strong>)</p>
+                </div>
+                <div class="card-footer">
+                    <div class="card" id="gradesPendingReview">
+                        <div class="card-header d-flex justify-content-between align-items-center"><h5 class="mb-0"><i class="bi bi-inbox-fill me-2"></i>ผลการเรียนรอตรวจสอบ</h5>{% if grades_pending_review %}<span class="badge bg-danger rounded-pill fs-6">{{ grades_pending_review|length }} รายการ</span>{% endif %}</div>
+                        <div class="card-body text-center">
+                        {% if grades_pending_review %}
+                            <p>มีผลการเรียนที่รอการตรวจสอบและส่งต่อให้ฝ่ายวิชาการ</p>
+                            <form action="{{ url_for('department.submit_level_grades', level_group=level_group) }}" method="POST" class="d-grid">
+                                {{ form.hidden_tag() }}
+                                <button type="submit" class="btn btn-success"><i class="bi bi-send-check-fill me-2"></i>อนุมัติและส่งต่อทั้งหมดให้ฝ่ายวิชาการ</button>
+                            </form>
+                        {% else %}
+                            <div class="alert alert-success mb-0"><i class="bi bi-check-circle-fill me-2"></i> ไม่มีผลการเรียนรอการตรวจสอบ</div>
+                        {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header"><h5 class="mb-0"><i class="bi bi-table me-2"></i>ตารางสรุปผลการเรียน (จากรายวิชาที่ส่งแล้ว)</h5></div>
+                <div class="card-body p-0 table-responsive">
+                    <table class="table table-bordered table-hover table-sm text-center align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th rowspan="2" class="align-middle">ระดับชั้น</th><th rowspan="2" class="align-middle">จำนวน (คน)</th><th rowspan="2" class="align-middle">(GPA)</th><th rowspan="2" class="align-middle">S.D.</th>
+                                <th colspan="10">จำนวนนักเรียน (คน)</th>
+                            </tr>
+                            <tr><th>4</th><th>3.5</th><th>3</th><th>2.5</th><th>2</th><th>1.5</th><th>1</th><th>0</th><th>ร</th><th>มส</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for item in grade_level_summary_stats %}
+                            {% set gl = item.grade_level %}{% set gl_stats = item.stats %}{% set gl_dist = gl_stats.grade_distribution %}
+                            <tr>
+                                <td class="text-start fw-bold">{{ gl.name }}</td><td>{{ gl_stats.total_students }}</td><td>{{ '%.2f'|format(gl_stats.gpa) }}</td><td>{{ '%.2f'|format(gl_stats.sd) }}</td>
+                                <td>{{ gl_dist.get('4', 0) }}</td><td>{{ gl_dist.get('3.5', 0) }}</td><td>{{ gl_dist.get('3', 0) }}</td><td>{{ gl_dist.get('2.5', 0) }}</td><td>{{ gl_dist.get('2', 0) }}</td><td>{{ gl_dist.get('1.5', 0) }}</td><td>{{ gl_dist.get('1', 0) }}</td>
+                                <td class="{% if gl_dist.get('0', 0) > 0 %}table-danger{% endif %}">{{ gl_dist.get('0', 0) }}</td><td class="{% if gl_dist.get('ร', 0) > 0 %}table-warning{% endif %}">{{ gl_dist.get('ร', 0) }}</td><td class="{% if gl_dist.get('มส', 0) > 0 %}table-warning{% endif %}">{{ gl_dist.get('มส', 0) }}</td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="14" class="text-center p-4"><i class="bi bi-info-circle-fill me-2"></i> ยังไม่มีรายวิชาที่ส่งผลการเรียนในสายชั้นนี้</td></tr>
+                            {% endfor %}
+                        </tbody>
+                            {% if overall_stats %}
+                            <tfoot class="table-light fw-bold">
+                                {% set o_dist = overall_stats.grade_distribution %}
+                                {% set o_perc = overall_stats.grade_percentages %}
+                                <tr class="table-primary">
+                                    <td class="text-start">รวม (จำนวน)</td>
+                                    <td>{{ overall_stats.total_students }}</td>
+                                    <td>{{ '%.2f'|format(overall_stats.gpa) }}</td>
+                                    <td>{{ '%.2f'|format(overall_stats.sd) }}</td>
+                                    <td>{{ o_dist.get('4', 0) }}</td>
+                                    <td>{{ o_dist.get('3.5', 0) }}</td>
+                                    <td>{{ o_dist.get('3', 0) }}</td>
+                                    <td>{{ o_dist.get('2.5', 0) }}</td>
+                                    <td>{{ o_dist.get('2', 0) }}</td>
+                                    <td>{{ o_dist.get('1.5', 0) }}</td>
+                                    <td>{{ o_dist.get('1', 0) }}</td>
+                                    <td>{{ o_dist.get('0', 0) }}</td>
+                                    <td>{{ o_dist.get('ร', 0) }}</td>
+                                    <td>{{ o_dist.get('มส', 0) }}</td>
+                                </tr>
+                                <tr class="table-secondary">
+                                    <td class="text-start">รวม (ร้อยละ)</td>
+                                    <td colspan="3"></td>
+                                    <td>{{ '%.1f'|format(o_perc.get('4', 0)) }}%</td>
+                                    <td>{{ '%.1f'|format(o_perc.get('3.5', 0)) }}%</td>
+                                    <td>{{ '%.1f'|format(o_perc.get('3', 0)) }}%</td>
+                                    <td>{{ '%.1f'|format(o_perc.get('2.5', 0)) }}%</td>
+                                    <td>{{ '%.1f'|format(o_perc.get('2', 0)) }}%</td>
+                                    <td>{{ '%.1f'|format(o_perc.get('1.5', 0)) }}%</td>
+                                    <td>{{ '%.1f'|format(o_perc.get('1', 0)) }}%</td>
+                                    <td>{{ '%.1f'|format(o_perc.get('0', 0)) }}%</td>
+                                    <td>{{ '%.1f'|format(o_perc.get('ร', 0)) }}%</td>
+                                    <td>{{ '%.1f'|format(o_perc.get('มส', 0)) }}%</td>
+                                </tr>
+                            </tfoot>
+                            {% endif %}
+                    </table>
+                </div>
+            </div>
+        </div>
+
+<div class="row g-4">
+    {% for gl_id, progress in progress_by_grade.items() %}
+    <div class="col-lg-4">
+        <div class="card text-center">
+            <div class="card-header"><h5 class="mb-0">ความคืบหน้า {{ progress.grade_level_name }}</h5></div>
+            <div class="card-body">
+                <div class="progress" style="height: 30px;">
+                    <div class="progress-bar" role="progressbar" style="width: {{ progress.percentage }}%;" aria-valuenow="{{ progress.percentage }}" aria-valuemin="0" aria-valuemax="100">
+                        {{ '%.0f'|format(progress.percentage) }}%
+                    </div>
+                </div>
+                <p class="card-text mt-2">ส่งแล้ว {{ progress.submitted }} / {{ progress.total }} ห้อง</p>
+                <a href="{{ url_for('department.grade_level_detail', grade_level_id=gl_id) }}" class="btn btn-outline-primary"><i class="bi bi-search me-2"></i>ดูรายละเอียด {{ progress.grade_level_name }}</a>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+        {% else %}
+        <div class="col-12"><div class="alert alert-info text-center">ยังไม่มีการส่งผลการเรียนในสายชั้นนี้</div></div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const ctx = document.getElementById('gradeDistributionChart');
+        const chartData = {{ chart_data|tojson|safe if chart_data else 'null' }};
+        if (ctx && chartData) { new Chart(ctx, { type: 'bar', data: { labels: chartData.labels, datasets: [{ label: 'จำนวนนักเรียน', data: chartData.data, backgroundColor: ['#28a745', '#5cb85c', '#20c997', '#0dcaf0', '#0d6efd', '#fd7e14', '#ffc107', '#dc3545', '#6c757d', '#495057'], borderWidth: 1 }] }, options: { scales: { y: { beginAtZero: true, ticks: { stepSize: 1 }, title: { display: true, text: 'จำนวนนักเรียน (คน)' } } }, plugins: { legend: { display: false } } } }); }
+    });
+</script>
+{% endblock %}

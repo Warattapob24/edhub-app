@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container text-center vh-100 d-flex justify-content-center align-items-center">
+    <div class="col-md-6">
+        <h1 class="display-4">School Intelligence Platform</h1>
+        <p class="lead">กรุณาเลือกช่องทางการเข้าสู่ระบบ</p>
+        <hr class="my-4">
+        <div class="d-grid gap-3">
+            <a href="{{ url_for('student.login') }}" class="btn btn-info btn-lg">สำหรับนักเรียน</a>
+            <a href="{{ url_for('auth.login') }}" class="btn btn-primary btn-lg">สำหรับครูและบุคลากร</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

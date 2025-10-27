@@ -1,0 +1,827 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+{% block sidebar %}{% include 'academic/_sidebar.html' %}{% endblock %}
+
+{% block styles %}
+<link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet">
+<style>
+    .course-card { cursor: grab; user-select: none; }
+    .schedule-grid-cell { min-height: 80px; background-color: #f8f9fa; }
+    .drop-active { background-color: #d0e3ff !important; }
+    .drop-target { background-color: #cce5ff !important; border: 2px dashed #0d6efd !important; }
+    .course-in-grid {
+        position: relative; /* Needed for positioning the delete button */
+        font-size: 0.75rem;
+        padding: 4px;
+        margin-bottom: 2px;
+        border-left-width: 5px;
+        border-color: #0d6efd !important;
+    }
+    .delete-btn {
+        position: absolute;
+        top: 2px;
+        right: 2px;
+        cursor: pointer;
+        color: #dc3545;
+        background: rgba(255, 255, 255, 0.7);
+        border-radius: 50%;
+        width: 18px;
+        height: 18px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 1;
+        font-size: 1rem;
+        opacity: 0.5;
+        transition: opacity 0.2s;
+    }
+    .course-in-grid:hover .delete-btn {
+        opacity: 1;
+    }
+    .timetable-grid.is-dragging .schedule-grid-cell:not(.droppable-valid) { opacity: 0.4; }
+    .schedule-grid-cell.droppable-valid { background-color: #d1e7dd !important; border: 2px dashed #198754; }
+    .schedule-grid-cell.droppable-morning-preference { background-color: #fff3cd !important; }
+    .schedule-grid-cell.droppable-afternoon-preference { background-color: #cff4fc !important; }
+    .course-card.is-dragging-source { opacity: 0.5; }
+    .schedule-cell.available {
+        background-color: #d1e7dd !important; /* Greenish tint for available slots */
+        border-color: #a3cfbb !important;
+    }
+    .schedule-cell.conflicted {
+        background-color: #f8d7da !important; /* Reddish tint for conflicted slots */
+        border-color: #f1aeb5 !important;
+        position: relative;
+    }
+    .conflict-reason {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 0.75rem;
+        font-weight: bold;
+        color: #842029;
+        opacity: 0.6;
+        pointer-events: none; /* Make text unclickable */
+    }    
+    .constraint-info-btn { font-size: 1.1rem; color: #6c757d; }
+    .manual-note {
+        font-size: 0.75rem;
+        background-color: #fffbe6;
+        border: 1px dashed #ffeeba;
+        padding: 4px;
+        margin-top: 8px;
+        border-radius: 4px;
+        min-height: 30px;
+    }
+    .manual-note:focus { outline: 1px solid #ffc107; }
+    .manual-note:empty::before { content: 'เพิ่มบันทึกส่วนตัว...'; color: #b8b8b8; font-style: italic; }
+    #course-list-card {
+        position: -webkit-sticky; /* For Safari */
+        position: sticky;
+        top: 1rem; /* ระยะห่างจากขอบบนเมื่อเริ่มเลื่อน */
+    }
+</style>
+{% endblock %}
+
+{% block main_content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="bi bi-grid-3x3-gap-fill me-2"> {{ title }} - ภาคเรียน {{ semester.term }}/{{ semester.academic_year.year }}</h2>
+    <div>
+        <button class="btn btn-primary" id="ai-assistant-btn"><i class="bi bi-magic me-2"></i>ให้ AI ช่วยจัดตาราง</button>
+    </div>
+</div>
+<div class="card mb-4">
+    <div class="card-body">
+        {{ form.csrf_token() }}
+        <div class="row g-3 align-items-end">
+            <div class="col-md-4"><label for="filter-type-select" class="form-label fw-bold"><i class="bi bi-filter-left"></i> กรองตามประเภท</label><select class="form-select" id="filter-type-select"></select></div>
+            <div class="col-md-5"><label for="filter-value-select" class="form-label fw-bold"><i class="bi bi-list-stars"></i> เลือกรายการ</label><select class="form-select" name="filter_id" id="filter-value-select"></select></div>
+            <div class="col-md-3"><button id="clear-filter-btn" class="btn btn-outline-secondary w-100">ล้างตัวกรอง</button></div>
+        </div>
+    </div>
+</div>
+<div class="row g-3">
+    <div class="col-md-3">
+        <div class="card" id="course-list-card">
+            <div class="card-header"><h5 class="mb-0">รายวิชาที่ต้องจัด (<span id="course-count-badge">{{ courses_to_schedule|length }}</span>)</h5></div>
+            <div id="course-list" class="list-group list-group-flush" style="max-height: 80vh; overflow-y: auto;">
+            </div>
+        </div>
+    </div>
+    <div class="col-md-9">
+        <div class="table-responsive">
+            <table class="table table-bordered text-center" id="timetable-grid">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width: 8%;">คาบ</th>
+                        <th style="width: 13%;">จันทร์</th>
+                        <th style="width: 13%;">อังคาร</th>
+                        <th style="width: 13%;">พุธ</th>
+                        <th style="width: 13%;">พฤหัสบดี</th>
+                        <th style="width: 13%;">ศุกร์</th>
+                        <th style="width: 13%;">เสาร์</th>
+                        <th style="width: 13%;">อาทิตย์</th>
+                    </tr>
+                </thead>
+                <tbody>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    // --- 1. MASTER DATA & CONFIG ---
+    const MASTER_DATA = {
+        semesterId: {{ semester.id }},
+        classrooms: JSON.parse('{{ all_classrooms_json|safe }}'),
+        teachers: JSON.parse('{{ all_teachers_json|safe }}'),
+        rooms: JSON.parse('{{ all_rooms_json|safe }}'),
+        courses: JSON.parse('{{ all_courses_json|safe }}'),
+        entries: JSON.parse('{{ all_entries_json|safe }}'),
+        slots: JSON.parse('{{ all_slots_json|safe }}')
+    };
+    const deleteUrlTemplate = "{{ url_for('academic.delete_timetable_entry', entry_id=0) }}";
+    const moveUrlTemplate = "{{ url_for('academic.move_timetable_entry', entry_id=0) }}";
+
+    // --- 2. DOM ELEMENTS & STATE ---
+    const filterTypeSelect = document.getElementById('filter-type-select');
+    const filterValueSelect = document.getElementById('filter-value-select');
+    const clearFilterBtn = document.getElementById('clear-filter-btn');    
+    const courseListContainer = document.getElementById('course-list');
+    const timetableGrid = document.getElementById('timetable-grid');
+    const timetableGridBody = document.querySelector('#timetable-grid tbody');
+    const courseCountBadge = document.getElementById('course-count-badge');
+    const csrfToken = document.querySelector('input[name="csrf_token"]').value;
+    let currentFilter = { type: null, id: null };
+    let sortableInstances = [];
+    let draggedItemData = null; // Holds the full data of the dragged course
+
+    // --- 3. CONFLICT CHECKING & HIGHLIGHTING ---
+    function createCourseCardHtml(entry) {
+        const course = entry.course;
+        // เพิ่ม data-bs-toggle และ title สำหรับ Tooltip
+        return `<div class="alert alert-info p-1 m-0 course-in-grid" data-course-id="${course.id}" 
+                     draggable="true" 
+                     data-bs-toggle="tooltip" title="${course.subject_name} (${course.classroom_name})">
+            <div class="delete-btn" data-entry-id="${entry.id}" title="ลบออกจากตาราง">×</div>
+            <strong>${course.subject_name}</strong><br>
+            <small class="text-muted">${course.classroom_name} / ${course.room_name}</small><br>
+            <small class="text-muted">${course.teachers_name.join(', ')}</small>
+        </div>`;
+    }
+
+    function initializeGrid() {
+        timetableGridBody.innerHTML = '';
+        // หา Grade Level ID ของห้องเรียนที่กำลังเลือกอยู่ (ถ้ามี)
+        let currentGradeLevelId = null;
+        if (currentFilter.type === 'classroom' && currentFilter.id) {
+            const classroom = MASTER_DATA.classrooms.find(c => c.id === currentFilter.id);
+            if (classroom) {
+                // เราต้องมีข้อมูล grade_level_id ใน classroom data ของเรา
+                currentGradeLevelId = classroom.grade_level_id;
+            }
+        }        
+        // ถ้าไม่สามารถหาระดับชั้นได้ (เช่น filter ตามครู) จะไม่สามารถแสดงคาบกิจกรรมที่ถูกต้องได้
+        if (!currentGradeLevelId) {
+             // แสดงตารางว่างๆ ไปก่อน แต่ยังคงให้ลากวางได้
+             for (let period = 1; period <= 10; period++) {
+                const row = document.createElement('tr');
+                row.innerHTML = `<th class="align-middle">${period}</th>`;
+                for (let day = 1; day <= 7; day++) {
+                    row.innerHTML += `<td class="schedule-grid-cell" data-day="${day}" data-period="${period}"></td>`;
+                }
+                timetableGridBody.appendChild(row);
+            }
+            return;
+        }
+
+        for (let period = 1; period <= 10; period++) {
+            const row = document.createElement('tr');
+            row.innerHTML = `<th class="align-middle">${period}</th>`;
+            for (let day = 1; day <= 7; day++) {
+                const cell = document.createElement('td');
+                cell.dataset.day = day;
+                cell.dataset.period = period;
+
+                // --- START: REVISED LOGIC ---
+                // ค้นหา Slot ที่ถูกต้องสำหรับ "ระดับชั้น" ที่กำลังแสดงผลอยู่
+                const slotInfo = MASTER_DATA.slots.find(s => 
+                    s.day == day && 
+                    s.period == period && 
+                    s.grade_level_id === currentGradeLevelId
+                );
+                // --- END: REVISED LOGIC ---
+                
+                if (slotInfo) {
+                     if (!slotInfo.is_teaching) {
+                        cell.classList.add('text-muted', 'bg-light');
+                        cell.innerHTML = `<small>${slotInfo.activity || ''}</small>`;
+                    } else {
+                        cell.classList.add('schedule-grid-cell');
+                    }
+                } else {
+                    // ถ้าไม่พบ Slot เฉพาะสำหรับ Grade Level นั้นๆ ให้ถือว่าเป็นช่องว่างปกติ
+                    cell.classList.add('schedule-grid-cell');
+                }
+                row.appendChild(cell);
+            }
+            timetableGridBody.appendChild(row);
+        }
+    }
+
+    function renderTimetable() {
+        if (!currentFilter.type || !currentFilter.id) {
+            timetableGridBody.innerHTML = '<tr><td colspan="8" class="text-center text-muted p-5"><h4><i class="bi bi-filter-left"></i> กรุณาเลือกตัวกรองเพื่อเริ่มทำงาน</h4></td></tr>';
+            courseListContainer.innerHTML = '';
+            courseCountBadge.textContent = '0';
+            return;
+        }
+
+        initializeGrid();
+        let filteredCourses = MASTER_DATA.courses;
+        let filteredEntries = MASTER_DATA.entries;
+        
+        if (currentFilter.type === 'classroom') {
+            filteredCourses = MASTER_DATA.courses.filter(c => c.classroom_id === currentFilter.id);
+            const filteredCourseIds = new Set(filteredCourses.map(c => c.id));
+            filteredEntries = MASTER_DATA.entries.filter(e => e.course && filteredCourseIds.has(e.course.id));
+        } else if (currentFilter.type === 'teacher') {
+            filteredCourses = MASTER_DATA.courses.filter(c => c.teacher_ids.includes(currentFilter.id));
+            filteredEntries = MASTER_DATA.entries.filter(e => e.course && e.course.teacher_ids.includes(currentFilter.id));
+        } else if (currentFilter.type === 'room') {
+            filteredEntries = MASTER_DATA.entries.filter(e => e.course && e.course.room_id === currentFilter.id);
+            filteredCourses = [];
+        }
+
+        document.querySelectorAll('.schedule-grid-cell').forEach(c => c.innerHTML = '');
+        filteredEntries.forEach(entry => {
+            const cell = timetableGridBody.querySelector(`[data-day='${entry.day}'][data-period='${entry.period}']`);
+            if (cell && entry.course) cell.innerHTML = createCourseCardHtml(entry);
+        });
+
+        const scheduledCounts = MASTER_DATA.entries.reduce((acc, e) => {
+            if(e.course) acc[e.course.id] = (acc[e.course.id] || 0) + 1;
+            return acc;
+        }, {});
+
+        courseListContainer.innerHTML = '';
+        filteredCourses.forEach(course => {
+            const count = scheduledCounts[course.id] || 0;
+            if (count < course.periods_needed) {
+                courseListContainer.appendChild(createCourseListItem(course));
+            }
+        });
+        courseCountBadge.textContent = courseListContainer.children.length;
+        
+        initializeSortable();
+        initializePopovers();
+        initializeTooltips();
+    }
+
+    /**
+     * สร้าง HTML สำหรับการ์ดรายวิชาที่ยังไม่ได้จัดตาราง
+     */
+    function createCourseListItem(course) {
+        const div = document.createElement('div');
+        div.className = 'list-group-item';
+        div.dataset.courseId = course.id;
+        
+        // 1. สร้าง Popover Content จากข้อมูลเงื่อนไข
+        let popoverContent = '';
+        const arrangement = course.constraints.period_arrangement || 'separate';
+        const preference = course.constraints.time_preference || 'any';
+
+        popoverContent += `<strong>รูปแบบ:</strong> ${arrangement === 'consecutive' ? 'คาบคู่' : 'คาบเดี่ยว'}<br>`;
+        let preferenceText = 'ไม่มีเงื่อนไข';
+        if (preference === 'morning') preferenceText = 'เน้นช่วงเช้า';
+        else if (preference === 'afternoon') preferenceText = 'เน้นช่วงบ่าย';
+        popoverContent += `<strong>ช่วงเวลา:</strong> ${preferenceText}`;
+        
+        // 2. นำ "บันทึกส่วนตัว" มาต่อท้าย (ถ้ามี)
+        const manualNotes = course.manual_notes;
+        if (manualNotes && manualNotes.trim() !== '') {
+            // ใช้ .replace เพื่อให้การขึ้นบรรทัดใหม่แสดงผลถูกต้องใน HTML
+            const formattedNotes = manualNotes.replace(/\n/g, '<br>');
+            popoverContent += `<hr class='my-1'><strong>บันทึกจากครู:</strong><br>${formattedNotes}`;
+        }
+
+        // 2. ดึงบันทึกส่วนตัวจาก sessionStorage (ถ้ามี)
+        const savedNote = sessionStorage.getItem(`manual_note_${course.id}`) || '';
+
+        // 3. สร้าง HTML ทั้งหมด
+        div.innerHTML = `
+            <div class="course-card p-2 border rounded" draggable="true" 
+                 data-course-id="${course.id}"
+                 data-arrangement="${arrangement}"
+                 data-preference="${preference}">
+                
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <strong>${course.subject_name}</strong><br>
+                        <small class="text-muted">ชั้นเรียน: ${course.classroom_name}</small><br>
+                        <small class="text-muted">ผู้สอน: ${course.teachers_name.join(', ')}</small>
+                    </div>
+                    <i class="bi bi-info-circle-fill constraint-info-btn" 
+                       data-bs-toggle="popover" 
+                       data-bs-title="เงื่อนไขจากครู"
+                       data-bs-content="${popoverContent}"></i>
+                </div>
+                <div class="mt-1">
+                    <span class="badge bg-secondary">${course.periods_needed} คาบ/สัปดาห์</span>
+                </div>
+                <div class="manual-note" 
+                     contenteditable="true" 
+                     data-course-id="${course.id}">${savedNote}</div>
+            </div>`;
+        return div;
+    }
+
+    /**
+     * ติดตั้ง Bootstrap Popovers
+     */
+    function initializePopovers() {
+        const popoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'));
+        popoverTriggerList.map(function (popoverTriggerEl) {
+            return new bootstrap.Popover(popoverTriggerEl, {
+                html: true,
+                trigger: 'hover focus' // แสดงเมื่อ hover หรือ focus
+            });
+        });
+    }
+
+    /**
+     * ติดตั้ง Event Listener สำหรับบันทึก Note ส่วนตัว
+     */
+    courseListContainer.addEventListener('input', function(e) {
+        if (e.target.classList.contains('manual-note')) {
+            const courseId = e.target.dataset.courseId;
+            // Debounce: รอ 500ms หลังผู้ใช้หยุดพิมพ์จึงจะบันทึก
+            clearTimeout(e.target.debounceTimer);
+            e.target.debounceTimer = setTimeout(() => {
+                sessionStorage.setItem(`manual_note_${courseId}`, e.target.innerHTML);
+            }, 500);
+        }
+    });
+
+    function initializeTooltips() {
+        const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        tooltipTriggerList.map(el => new bootstrap.Tooltip(el));
+    }
+
+    // --- 4. CONFLICT HIGHLIGHTING ---
+    function checkConflicts(course, day, period, entriesToCheck) {
+        const conflictEntry = entriesToCheck.find(e => e.day === day && e.period === period);
+        if (conflictEntry) {
+            if (course.teacher_ids.some(tid => conflictEntry.course.teacher_ids.includes(tid))) return `ครูไม่ว่าง`;
+            if (conflictEntry.course.classroom_id === course.classroom_id) return `ห้องเรียนไม่ว่าง`;
+            if (course.room_id && conflictEntry.course.room_id === course.room_id) return `ห้องพิเศษไม่ว่าง`;
+        }
+        return null;
+    }
+
+    function highlightSlots() {
+        if (!draggedItemData) return;
+        timetableGridBody.querySelectorAll('.schedule-grid-cell').forEach(cell => {
+            if (cell.children.length > 0) return;
+            const day = parseInt(cell.dataset.day, 10);
+            const period = parseInt(cell.dataset.period, 10);
+            const conflictReason = checkConflicts(draggedItemData, day, period, MASTER_DATA.entries);
+            if (conflictReason) {
+                cell.classList.add('conflicted');
+                cell.innerHTML = `<div class="conflict-reason">${conflictReason}</div>`;
+            } else {
+                cell.classList.add('available');
+            }
+        });
+    }
+
+    function clearHighlights() {
+        timetableGridBody.querySelectorAll('.schedule-grid-cell').forEach(cell => {
+            cell.classList.remove('conflicted', 'available');
+            if (cell.querySelector('.conflict-reason')) cell.innerHTML = '';
+        });
+    }
+
+    // --- DRAG & DROP LOGIC (REFACTORED) ---
+
+    function initializeSortable() {
+        sortableInstances.forEach(s => s.destroy());
+        sortableInstances = [];
+
+        sortableInstances.push(new Sortable(courseListContainer, {
+            group: { name: 'shared', pull: 'clone', put: false },
+            animation: 150, sort: false
+        }));
+
+        document.querySelectorAll('.schedule-grid-cell').forEach(cell => {
+            sortableInstances.push(new Sortable(cell, {
+                group: 'shared',
+                animation: 150,
+                onAdd: async function (evt) {
+                    const itemEl = evt.item;
+                    const toCell = evt.to;
+                    const courseId = parseInt(itemEl.dataset.courseId, 10);
+                    
+                    // ******** START: ส่วนที่แก้ไข (จุดสำคัญ) ********
+                    // 1. ตรวจสอบจำนวนคาบก่อนส่งไปบันทึก
+                    const course = MASTER_DATA.courses.find(c => c.id === courseId);
+                    const scheduledCount = MASTER_DATA.entries.filter(e => e.course && e.course.id === courseId).length;
+
+                    if (scheduledCount >= course.periods_needed) {
+                        Swal.fire('จัดไม่ได้!', 'รายวิชานี้ถูกจัดลงตารางครบตามจำนวนคาบที่ต้องการแล้ว', 'warning');
+                        itemEl.remove(); // ลบ ghost element ที่ลากมาทิ้ง
+                        return; // จบการทำงานทันที
+                    }
+                    // ******** END: ส่วนที่แก้ไข (จุดสำคัญ) ********
+
+                    itemEl.innerHTML = '<div class="d-flex justify-content-center align-items-center h-100"><div class="spinner-border spinner-border-sm text-primary" role="status"></div></div>';
+
+                    try {
+                        const newEntryData = await saveEntry(courseId, toCell.dataset.day, toCell.dataset.period);
+                        
+                        MASTER_DATA.entries.push({
+                            id: newEntryData.entry_id,
+                            day: parseInt(toCell.dataset.day),
+                            period: parseInt(toCell.dataset.period),
+                            course: newEntryData.course
+                        });
+                        
+                    } catch (error) {
+                        Swal.fire('จัดไม่ได้!', error.message || 'เกิดข้อผิดพลาดในการบันทึก', 'error');
+                    } finally {
+                        itemEl.remove();
+                        renderTimetable();
+                    }
+                }
+            }));
+        });
+    }
+    
+    // --- ฟังก์ชันสำหรับ Visual Assistant ---
+    function highlightDroppableSlots() {
+        if (!draggedItem) return;
+        const arrangement = draggedItem.dataset.arrangement;
+        const preference = draggedItem.dataset.preference;
+        
+        timetableGridBody.querySelectorAll('.schedule-grid-cell').forEach(cell => {
+            if (cell.children.length > 0) return; // ถ้ามีวิชาอื่นอยู่แล้ว ให้ข้าม
+
+            let isValid = true;
+            if (arrangement === 'consecutive') {
+                const nextCell = timetableGridBody.querySelector(`.schedule-grid-cell[data-day="${cell.dataset.day}"][data-period="${parseInt(cell.dataset.period) + 1}"]`);
+                if (!nextCell || nextCell.children.length > 0) isValid = false;
+            }
+            
+            if (isValid) {
+                cell.classList.add('droppable-valid');
+                const period = parseInt(cell.dataset.period);
+                if (preference === 'morning' && period <= 4) cell.classList.add('droppable-morning-preference');
+                else if (preference === 'afternoon' && period > 5) cell.classList.add('droppable-afternoon-preference');
+            }
+        });
+    }
+
+    // --- Event Listeners สำหรับ Visual Assistant ---
+    document.addEventListener('dragstart', (e) => {
+        if (e.target.classList.contains('course-card')) {
+            draggedItem = e.target;
+            setTimeout(() => {
+                draggedItem.classList.add('is-dragging-source');
+                timetableGrid.classList.add('is-dragging');
+                highlightDroppableSlots();
+            }, 0);
+        }
+    });
+
+    document.addEventListener('dragend', (e) => {
+        if (draggedItem) {
+            draggedItem.classList.remove('is-dragging-source');
+            draggedItem = null;
+            timetableGrid.classList.remove('is-dragging');
+            clearHighlights();
+        }
+    });
+
+    // --- 4. INTERACTION & EVENT HANDLERS ---
+    function initializeFilters() {
+        if (filterTypeSelect.tomselect) filterTypeSelect.tomselect.destroy();
+        if (filterValueSelect.tomselect) filterValueSelect.tomselect.destroy();
+
+        new TomSelect(filterTypeSelect, {
+            onChange: (value) => {
+                localStorage.setItem('timetable_filter_type', value);
+                populateFilterValues(value);
+                localStorage.removeItem('timetable_filter_id');
+            }
+        });
+
+        new TomSelect(filterValueSelect, {
+            onChange: (value) => {
+                currentFilter.type = filterTypeSelect.value;
+                currentFilter.id = value ? parseInt(value, 10) : null;
+                localStorage.setItem('timetable_filter_id', currentFilter.id);
+                renderTimetable();
+            }
+        });
+
+        // เติมตัวเลือกให้ Dropdown ตัวแรก
+        filterTypeSelect.tomselect.addOptions([
+            {value: 'classroom', text: 'ชั้นเรียน'},
+            {value: 'teacher', text: 'ครูผู้สอน'},
+            {value: 'room', text: 'สถานที่'}
+        ]);
+
+        clearFilterBtn.addEventListener('click', () => {
+            localStorage.removeItem('timetable_filter_type');
+            localStorage.removeItem('timetable_filter_id');
+            filterTypeSelect.tomselect.clear(true);
+            filterValueSelect.tomselect.clear(true);
+            filterValueSelect.tomselect.clearOptions();
+            currentFilter = { type: null, id: null };
+            renderTimetable();
+        });
+
+        // --- โหลดค่าที่เคยเลือกไว้ตอนเปิดหน้า ---
+        const savedType = localStorage.getItem('timetable_filter_type');
+        if (savedType) {
+            filterTypeSelect.tomselect.setValue(savedType, true); // silent = true to prevent onChange firing
+            populateFilterValues(savedType).then(() => {
+                const savedId = localStorage.getItem('timetable_filter_id');
+                if (savedId) {
+                    filterValueSelect.tomselect.setValue(savedId, true);
+                    // Manually set currentFilter and render
+                    currentFilter.type = savedType;
+                    currentFilter.id = parseInt(savedId, 10);
+                    renderTimetable();
+                }
+            });
+        }
+    }
+
+    async function populateFilterValues(type) {
+        const tomSelect = filterValueSelect.tomselect;
+        tomSelect.clear(); // ล้างค่าที่เลือกไว้
+        tomSelect.clearOptions(); // ล้างรายการเก่าทิ้งทั้งหมด
+
+        let options = [];
+        let placeholder = '-- เลือกรายการ --';
+
+        if (type === 'classroom') {
+            options = MASTER_DATA.classrooms.map(c => ({ value: c.id, text: c.name }));
+            placeholder = 'พิมพ์เพื่อค้นหาห้องเรียน...';
+        } else if (type === 'teacher') {
+            options = MASTER_DATA.teachers.map(t => ({ value: t.id, text: t.name }));
+            placeholder = 'พิมพ์เพื่อค้นหาชื่อครู...';
+        } else if (type === 'room') {
+            options = MASTER_DATA.rooms.map(r => ({ value: r.id, text: r.name }));
+            placeholder = 'พิมพ์เพื่อค้นหาสถานที่...';
+        }
+        
+        tomSelect.addOptions(options);
+        tomSelect.settings.placeholder = placeholder;
+        tomSelect.sync(); // อัปเดต UI ของ TomSelect
+    }
+
+    function initializeSortable() {
+        sortableInstances.forEach(s => s.destroy());
+        sortableInstances = [];
+
+        // ฟังก์ชันตรวจสอบเงื่อนไขก่อนปล่อยวาง
+        function isMoveValid(course, day, period) {
+            // 1. ตรวจสอบ Classroom ชนกัน
+            const classroomConflict = MASTER_DATA.entries.find(e => 
+                e.day === day && e.period === period && e.course.classroom_id === course.classroom_id);
+            if (classroomConflict) {
+                Swal.fire('จัดไม่ได้!', `ห้องเรียน ${course.classroom_name} มีเรียนวิชาอื่นในเวลานี้แล้ว`, 'error');
+                return false;
+            }
+
+            // 2. ตรวจสอบ Teacher ชนกัน
+            const teacherConflict = MASTER_DATA.entries.find(e => {
+                if (e.day !== day || e.period !== period) return false;
+                return e.course.teacher_ids.some(teacherId => course.teacher_ids.includes(teacherId));
+            });
+            if (teacherConflict) {
+                Swal.fire('จัดไม่ได้!', `ครูผู้สอนมีสอนคาบอื่นในเวลานี้แล้ว`, 'error');
+                return false;
+            }
+
+            // 3. ตรวจสอบ Room ชนกัน
+            if (course.room_id) {
+                const roomConflict = MASTER_DATA.entries.find(e => 
+                    e.day === day && e.period === period && e.course.room_id === course.room_id);
+                if (roomConflict) {
+                    Swal.fire('จัดไม่ได้!', `ห้อง ${course.room_name} ถูกใช้งานในเวลานี้แล้ว`, 'error');
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        sortableInstances.push(new Sortable(courseListContainer, {
+            group: { name: 'shared', pull: 'clone', put: false }, animation: 150, sort: false
+        }));
+
+        document.querySelectorAll('.schedule-grid-cell').forEach(cell => {
+            sortableInstances.push(new Sortable(cell, {
+                group: 'shared', animation: 150,
+                onAdd: function (evt) {
+                    const itemEl = evt.item;
+                    const toCell = evt.to;
+                    const fromCell = evt.from;
+                    const courseId = parseInt(itemEl.dataset.courseId, 10);
+                    const course = MASTER_DATA.courses.find(c => c.id === courseId);
+                    const newDay = parseInt(toCell.dataset.day, 10);
+                    const newPeriod = parseInt(toCell.dataset.period, 10);
+
+                    // --- VALIDATION CHECK ---
+                    // ถ้าเป็นการย้ายจากช่องอื่นมา ต้องไม่เช็คกับตัวเอง
+                    let isMoving = fromCell.classList.contains('schedule-grid-cell');
+                    let tempEntries = MASTER_DATA.entries;
+                    if (isMoving) {
+                        const oldDay = parseInt(fromCell.dataset.day, 10);
+                        const oldPeriod = parseInt(fromCell.dataset.period, 10);
+                        tempEntries = MASTER_DATA.entries.filter(e => !(e.day === oldDay && e.period === oldPeriod));
+                    }
+                    
+                    if (!isMoveValid(course, newDay, newPeriod)) {
+                        // ถ้าไม่ผ่าน ให้ลบ item ที่ลากมาทิ้ง แล้ว re-render เพื่อให้ทุกอย่างกลับสู่สภาพเดิม
+                        itemEl.remove();
+                        renderTimetable();
+                        return; 
+                    }
+                    
+                    // ถ้าผ่านเงื่อนไข ให้ดำเนินการบันทึก (โค้ดส่วนนี้เหมือนเดิม)
+                    const newEntry = { day: newDay, period: newPeriod, course: course };
+                    if (isMoving) {
+                        const oldDay = parseInt(fromCell.dataset.day, 10);
+                        const oldPeriod = parseInt(fromCell.dataset.period, 10);
+                        const oldEntryIndex = MASTER_DATA.entries.findIndex(e => e.day === oldDay && e.period === oldPeriod);
+                        if (oldEntryIndex > -1) MASTER_DATA.entries.splice(oldEntryIndex, 1);
+                        saveEntry(courseId, fromCell.dataset.day, fromCell.dataset.period, true);
+                    }
+                    
+                    const existingEntryIndex = MASTER_DATA.entries.findIndex(e => e.day === newEntry.day && e.period === newEntry.period);
+                    if (existingEntryIndex > -1) MASTER_DATA.entries.splice(existingEntryIndex, 1);
+
+                    MASTER_DATA.entries.push(newEntry);
+                    saveEntry(courseId, toCell.dataset.day, toCell.dataset.period);
+                    renderTimetable();
+                }
+            }));
+        });
+    }
+
+    async function saveEntry(courseId, day, period) {
+        const url = "{{ url_for('academic.save_timetable_entry') }}";
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+            body: JSON.stringify({ course_id: courseId, day: day, period: period, semester_id: MASTER_DATA.semesterId })
+        });
+        const data = await response.json();
+        if (data.status !== 'success') {
+            throw new Error(data.message || 'ไม่สามารถบันทึกข้อมูลได้');
+        }
+        return data;
+    }
+
+    timetableGridBody.addEventListener('click', async function(event) {
+        const deleteBtn = event.target.closest('.delete-btn');
+        if (deleteBtn) {
+            const entryId = parseInt(deleteBtn.dataset.entryId, 10);
+            if (isNaN(entryId)) { // ตรวจสอบ NaN ที่นี่
+                Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถลบรายการนี้ได้เนื่องจากไม่มี ID ที่ถูกต้อง', 'error');
+                renderTimetable(); // วาดหน้าจอใหม่เพื่อแก้สถานะ UI
+                return;
+            }
+
+            const cardElement = deleteBtn.closest('.course-in-grid');
+            cardElement.style.opacity = '0.5';
+
+            try {
+                const response = await fetch(`{{ url_for('academic.delete_timetable_entry', entry_id=0) }}`.replace('0', entryId), {
+                    method: 'DELETE',
+                    headers: { 'X-CSRFToken': csrfToken }
+                });
+                const data = await response.json();
+                if (data.status !== 'success') throw new Error(data.message);
+                
+                const entryIndex = MASTER_DATA.entries.findIndex(e => e.id === entryId);
+                if (entryIndex > -1) MASTER_DATA.entries.splice(entryIndex, 1);
+                
+                renderTimetable();
+
+            } catch (error) {
+                Swal.fire('เกิดข้อผิดพลาด', error.message || 'การเชื่อมต่อล้มเหลว', 'error');
+                cardElement.style.opacity = '1';
+            }
+        }
+    });
+
+    // --- 5A. AI ASSISTANT BUTTON LOGIC ---
+    const aiBtn = document.getElementById('ai-assistant-btn');
+    aiBtn.addEventListener('click', function() {
+        let title = '';
+        let payload = { semester_id: MASTER_DATA.semesterId };
+
+        if (currentFilter.type === 'classroom' && currentFilter.id) {
+            const selectedName = filterValueSelect.options[filterValueSelect.selectedIndex].text;
+            title = `ให้ AI จัดตารางสอนสำหรับห้อง ${selectedName}?`;
+            payload.classroom_id = currentFilter.id;
+        } else if (currentFilter.type === 'teacher' && currentFilter.id) {
+            const selectedName = filterValueSelect.options[filterValueSelect.selectedIndex].text;
+            title = `ให้ AI จัดตารางสอนทุกวิชาของ ${selectedName}?`;
+            payload.teacher_id = currentFilter.id;
+        } else if (currentFilter.type === 'room' && currentFilter.id) {
+            const selectedName = filterValueSelect.options[filterValueSelect.selectedIndex].text;
+            title = `ให้ AI จัดตารางสอนทุกวิชาที่ใช้ห้อง ${selectedName}?`;
+            payload.room_id = currentFilter.id;        
+        } else {
+            Swal.fire('กรุณาเลือก Filter', 'โปรดเลือก "ห้องเรียน", "ครูผู้สอน" หรือ "สถานที่" ที่ต้องการให้ AI จัดตารางสอนก่อน', 'warning');
+            return;
+        }
+
+        Swal.fire({
+            title: title,
+            text: "ระบบจะพยายามจัดวิชาที่ยังว่างอยู่ให้อัตโนมัติ",
+            icon: 'info',
+            showCancelButton: true,
+            confirmButtonText: 'ใช่, เริ่มเลย!',
+            cancelButtonText: 'ยกเลิก',
+            reverseButtons: true
+        }).then((result) => {
+            if (result.isConfirmed) {
+                Swal.fire({
+                    title: 'AI กำลังทำงาน...',
+                    html: 'กรุณารอสักครู่...<br><b>ห้ามปิดหรือรีเฟรชหน้านี้</b>',
+                    allowOutsideClick: false,
+                    didOpen: () => {
+                        Swal.showLoading();
+                        fetch("{{ url_for('academic.auto_schedule_timetable') }}", {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+                            body: JSON.stringify(payload) // ส่ง payload ที่เตรียมไว้
+                        })
+                        .then(res => res.json())
+                        .then(data => {
+                            if (data.status === 'success') {
+                                let finalMessage = 'AI จัดตารางสอนเรียบร้อย!';
+                                let finalIcon = 'success';
+                                let finalHtml = 'จะทำการรีเฟรชหน้าเพื่อแสดงผลลัพธ์ล่าสุด';
+
+                                // ✨ NEW: ตรวจสอบว่ามีรายงานความล้มเหลวหรือไม่
+                                if (data.unscheduled_courses && data.unscheduled_courses.length > 0) {
+                                    finalIcon = 'warning';
+                                    finalMessage = 'AI ทำงานเสร็จสิ้น (มีบางวิชาที่จัดไม่ลงตัว)';
+                                    
+                                    let reasonsList = data.unscheduled_courses.map(item => 
+                                        `<li><strong>${item.subject_name}:</strong> ${item.reason}</li>`
+                                    ).join('');
+                                    
+                                    finalHtml = `
+                                        <p>วิชาต่อไปนี้ไม่สามารถจัดลงในตารางได้:</p>
+                                        <ul class="text-start">${reasonsList}</ul>
+                                        <p class="mt-3">กรุณาตรวจสอบและลองจัดด้วยตนเอง หรือปรับแก้เงื่อนไข</p>
+                                    `;
+                                }
+
+                                Swal.fire({
+                                    icon: finalIcon,
+                                    title: finalMessage,
+                                    html: finalHtml,
+                                    showConfirmButton: true, // แสดงปุ่มให้ผู้ใช้กดยืนยัน
+                                    confirmButtonText: 'รับทราบและรีเฟรช'
+                                }).then(() => {
+                                    window.location.reload();
+                                });
+
+                            } else {
+                                Swal.fire('ผิดพลาด', data.message || 'ไม่สามารถเรียกใช้ AI ได้', 'error');
+                            }
+                        }).catch(err => {
+                            Swal.close();
+                            console.error('AI Fetch Error:', err);
+                            Swal.fire('ผิดพลาด', 'เกิดข้อผิดพลาดในการเชื่อมต่อกับ AI Assistant', 'error');
+                        });
+                    }
+                });
+            }
+        });
+    });
+
+    // --- 6. INITIALIZATION ---
+    initializeFilters();
+    renderTimetable();
+});
+</script>
+{% endblock %}

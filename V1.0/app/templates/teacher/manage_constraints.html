@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1>จัดการเงื่อนไขการสอน</h1>
+    <p>ระบุช่วงเวลาในแต่ละวันที่ท่าน "ไม่สะดวก" ทำการสอน เพื่อให้ระบบนำไปใช้จัดตารางสอนอัตโนมัติ</p>
+    <div class="row">
+        <div class="col-md-8">
+            <h4>เงื่อนไขของฉัน</h4>
+            {% if constraints %}
+            <ul class="list-group">
+                {% for c in constraints %}
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                    <div>
+                        <strong>วัน{{ ["จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์"][c.day_of_week|int] }}:</strong>
+                        ไม่สะดวกช่วงเวลา {{ c.start_time.strftime('%H:%M') }} - {{ c.end_time.strftime('%H:%M') }}
+                    </div>
+                    <form action="{{ url_for('teacher.delete_constraint', id=c.id) }}" method="POST">
+                        <button type="submit" class="btn btn-sm btn-outline-danger">&times;</button>
+                    </form>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p class="text-muted">ท่านยังไม่ได้กำหนดเงื่อนไขใดๆ</p>
+            {% endif %}
+        </div>
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header">เพิ่มเงื่อนไขใหม่</div>
+                <div class="card-body">
+                    <form method="POST">
+                        {{ form.hidden_tag() }}
+                        <div class="mb-3">
+                            {{ form.day_of_week.label(class="form-label") }}
+                            {{ form.day_of_week(class="form-control") }}
+                        </div>
+                        <div class="mb-3">
+                            {{ form.start_time.label(class="form-label") }}
+                            {{ form.start_time(class="form-control") }}
+                        </div>
+                         <div class="mb-3">
+                            {{ form.end_time.label(class="form-label") }}
+                            {{ form.end_time(class="form-control") }}
+                        </div>
+                        {{ form.submit(class="btn btn-primary w-100") }}
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+
+{% block title %}404 - ไม่พบหน้า{% endblock %}
+
+{% block main_content %}
+<div class="container text-center py-5">
+    <h1 class="display-1">404</h1>
+    <p class="lead">ขออภัย, ไม่พบหน้าที่คุณกำลังค้นหา</p>
+    <a href="{{ url_for('main.dashboard') }}" class="btn btn-primary">กลับสู่หน้าหลัก</a>
+</div>
+{% endblock %}

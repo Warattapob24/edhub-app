@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+
+{% block sidebar %}
+    {% include 'academic/_sidebar.html' %}
+{% endblock %}
+
+{% block main_content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="h3"><i class="bi bi-person-plus-fill me-2"></i>{{ title }} (ปีการศึกษา {{ academic_year.year }})</h2>
+</div>
+
+{% if candidates %}
+<div class="card shadow-sm">
+    <div class="card-body">
+        <p class="text-muted">
+            รายชื่อนักเรียนที่ผ่านการอนุมัติให้เรียนซ้ำชั้น หรือเลื่อนชั้นกรณีพิเศษ และยังไม่มีห้องเรียนในปีการศึกษา {{ academic_year.year }}.
+            กรุณาเลือกห้องเรียนและกำหนดเลขที่ใหม่
+        </p>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle" id="enrollment-table">
+                <thead class="table-light">
+                    <tr>
+                        <th>ชื่อ-สกุล</th>
+                        <th>รหัส นร.</th>
+                        <th>ปีที่ Flag</th>
+                        <th>ผลการอนุมัติ</th>
+                        <th style="width: 30%;">จัดเข้าห้องเรียน (ปี {{ academic_year.year }})</th>
+                        <th style="width: 15%;">เลขที่ใหม่</th>
+                        <th style="width: 10%;">บันทึก</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for candidate in candidates %}
+                    <tr id="row-{{ candidate.id }}">
+                        <td>{{ candidate.student.full_name }}</td>
+                        <td>{{ candidate.student.student_id }}</td>
+                        <td>{{ candidate.academic_year.year }}</td>
+                        <td>
+                            {% if candidate.final_decision == 'Repeat' %}
+                                <span class="badge bg-warning text-dark">ซ้ำชั้น</span>
+                            {% elif candidate.final_decision == 'Promote (Special Case)' %}
+                                <span class="badge bg-info text-dark">เลื่อนชั้น (พิเศษ)</span>
+                            {% else %}
+                                <span class="badge bg-secondary">{{ candidate.status }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <select class="form-select form-select-sm" name="classroom_id">
+                                <option value="" selected disabled>-- เลือกห้องเรียน --</option>
+                                {% for classroom in classrooms %}
+                                    <option value="{{ classroom.id }}">{{ classroom.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </td>
+                        <td>
+                            <input type="number" class="form-control form-control-sm" name="roll_number" placeholder="เลขที่">
+                        </td>
+                        <td class="text-center">
+                             <form>{{ form.hidden_tag() }}</form> {# For CSRF token #}
+                            <button type="button" class="btn btn-success btn-sm enroll-btn"
+                                    data-candidate-id="{{ candidate.id }}"
+                                    data-student-id="{{ candidate.student.id }}">
+                                <i class="bi bi-check-lg"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="alert alert-success text-center">
+    <i class="bi bi-check-circle-fill fs-3"></i><br>
+    ไม่พบนักเรียนที่รอการจัดสรรห้องเรียนในขณะนี้
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const table = document.getElementById('enrollment-table');
+    if (table) {
+        table.addEventListener('click', function(e) {
+            const enrollButton = e.target.closest('.enroll-btn');
+            if (!enrollButton) return;
+
+            const row = enrollButton.closest('tr');
+            const classroomSelect = row.querySelector('select[name="classroom_id"]');
+            const rollNumberInput = row.querySelector('input[name="roll_number"]');
+            const csrfTokenInput = row.querySelector('input[name="csrf_token"]');
+
+            const payload = {
+                student_id: enrollButton.dataset.studentId,
+                candidate_id: enrollButton.dataset.candidateId,
+                classroom_id: classroomSelect.value,
+                roll_number: rollNumberInput.value
+            };
+
+            if (!payload.classroom_id || !payload.roll_number) {
+                Swal.fire('ข้อมูลไม่ครบ', 'กรุณาเลือกห้องเรียนและป้อนเลขที่ใหม่', 'warning');
+                return;
+            }
+
+            enrollButton.disabled = true;
+            enrollButton.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+            fetch("{{ url_for('academic.api_enroll_repeater') }}", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfTokenInput ? csrfTokenInput.value : '{{ form.csrf_token._value() }}' // Fallback
+                },
+                body: JSON.stringify(payload)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    Swal.fire('สำเร็จ!', data.message, 'success');
+                    row.remove(); // Remove the row from the table
+                } else {
+                    Swal.fire('ผิดพลาด!', data.message || 'ไม่สามารถบันทึกได้', 'error');
+                    enrollButton.disabled = false;
+                    enrollButton.innerHTML = '<i class="bi bi-check-lg"></i>';
+                }
+            })
+            .catch(error => {
+                Swal.fire('ผิดพลาด!', 'การเชื่อมต่อล้มเหลว: ' + error, 'error');
+                enrollButton.disabled = false;
+                enrollButton.innerHTML = '<i class="bi bi-check-lg"></i>';
+            });
+        });
+    }
+});
+</script>
+{% endblock %}

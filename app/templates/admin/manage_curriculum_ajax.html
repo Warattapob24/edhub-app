@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+{% block sidebar %}
+    {% include 'admin/_sidebar.html' %}
+{% endblock %}
+{% block main_content %}
+    <h2 class="bi bi-journal-check"> {{ title }}</h2>
+    <p class="text-muted">เลือกภาคเรียนและระดับชั้น (การเปลี่ยนแปลงจะถูกบันทึกอัตโนมัติ)</p>
+
+    <div class="card mb-3">
+        <div class="card-body">
+            {{ form.hidden_tag() }} 
+            <div class="row align-items-center g-3">
+                <div class="col-md-5">
+                    <label class="form-label">ภาคเรียน:</label>
+                    {# แก้ไข: ใช้ f-string ใน Python แทน #}
+                    {{ form.semester(class="form-select", id="semesterSelect") }}
+                </div>
+                <div class="col-md-5">
+                    <label class="form-label">ระดับชั้น:</label>
+                    {{ form.grade_level(class="form-select", id="gradeSelect") }}
+                </div>
+                <div class="col-md-2">
+                    <span id="statusIndicator" class="fw-bold"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="subjectsContainer" class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">
+                กำหนดรายวิชาสำหรับ: 
+                <strong id="gradeLevelName"></strong> 
+                ภาคเรียน:
+                <strong id="semesterName"></strong>
+            </h5>
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" onchange="toggleAll(this.checked)" id="selectAllCheck">
+                <label class="form-check-label" for="selectAllCheck">เลือก/ยกเลิกทั้งหมด</label>
+            </div>
+        </div>
+        <div class="card-body">
+            <div id="subjectsCheckboxList" class="border rounded p-3" style="min-height: 400px; overflow-y: scroll;">
+            </div>
+        </div>
+    </div>
+    
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // <<< ย้ายออกมา: ฟังก์ชันที่ถูกเรียกจาก HTML (onchange) ต้องอยู่ Global Scope >>>
+    function toggleAll(checked) {
+        if (document.readyState === "complete" || document.readyState === "interactive") {
+            // Selector นี้จะเลือก Checkbox ของหัวข้อกลุ่ม และ Checkbox ของรายวิชาทั้งหมด
+            document.querySelectorAll('legend .form-check-input, .subject-checkbox').forEach(cb => cb.checked = checked);
+            scheduleSaveChanges();
+        }
+    }
+
+    function toggleGroup(groupClass, checked) {
+        if (document.readyState === "complete" || document.readyState === "interactive") {
+            // แก้ไข: เพิ่ม . นำหน้า groupClass และลบ '.group-' ที่ซ้ำซ้อนออก
+            document.querySelectorAll('.' + groupClass).forEach(cb => cb.checked = checked);
+            scheduleSaveChanges();
+        }
+    }
+
+    // สร้างฟังก์ชัน scheduleSaveChanges ใน global scope เพื่อให้ toggleAll/toggleGroup เรียกใช้ได้
+    // แต่ตัว logic จริงๆ จะถูกกำหนดค่าอีกทีเมื่อ DOM โหลดเสร็จ
+    let scheduleSaveChanges = () => { console.log("DOM not ready for saving."); };
+
+
+    document.addEventListener('DOMContentLoaded', () => {
+        // โค้ดทั้งหมดที่ต้องรอ DOM จะยังอยู่ข้างในนี้
+        const masterCurriculum = JSON.parse('{{ master_curriculum_json|safe }}');
+        let allExistingCurriculum = JSON.parse('{{ all_existing_curriculum_json|safe }}');
+
+        const semesterSelect = document.getElementById('semesterSelect');
+        const gradeSelect = document.getElementById('gradeSelect');
+        const subjectsContainer = document.getElementById('subjectsContainer');
+        const subjectsCheckboxList = document.getElementById('subjectsCheckboxList');
+        const gradeLevelNameSpan = document.getElementById('gradeLevelName');
+        const semesterNameSpan = document.getElementById('semesterName');
+        const statusIndicator = document.getElementById('statusIndicator');
+        let saveTimeout;
+
+        // --- Overwrite ฟังก์ชัน scheduleSaveChanges ด้วย Logic จริงเมื่อ DOM พร้อมแล้ว ---
+        scheduleSaveChanges = () => {
+            clearTimeout(saveTimeout);
+            statusIndicator.innerHTML = '<span class="text-warning">กำลังพิมพ์...</span>';
+            saveTimeout = setTimeout(autoSaveChanges, 1500);
+        }
+        // --------------------------------------------------------------------------
+
+        async function autoSaveChanges() {
+            statusIndicator.innerHTML = '<span class="text-primary">กำลังบันทึก...</span>';
+            const csrfTokenInput = document.querySelector('input[name="csrf_token"]');
+            if (!csrfTokenInput) {
+                console.error('CSRF token input not found!');
+                statusIndicator.innerHTML = '<span class="text-danger">✗ ข้อผิดพลาด: ไม่พบ Token</span>';
+                return; // Stop the function if token is missing
+            }
+            const csrfToken = csrfTokenInput.value;            
+            const selectedCheckboxes = document.querySelectorAll('.subject-checkbox:checked');
+            const selectedSubjectIds = Array.from(selectedCheckboxes).map(cb => parseInt(cb.value));
+            const dataToSend = {
+                semester_id: semesterSelect.value,
+                grade_level_id: gradeSelect.value,
+                subject_ids: selectedSubjectIds
+            };
+            try {
+                const response = await fetch("{{ url_for('admin.manage_curriculum') }}", {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+                    body: JSON.stringify(dataToSend)
+                });
+                if (!response.ok) {
+                    throw new Error(`Server responded with status: ${response.status}`);
+                }                
+                const result = await response.json();
+                if (result.status === 'success') {
+                    statusIndicator.innerHTML = '<span class="text-success">✔ บันทึกเรียบร้อย</span>';
+                    const existingKey = `${semesterSelect.value}-${gradeSelect.value}`;
+                    allExistingCurriculum[existingKey] = selectedSubjectIds;
+                } else { throw new Error(result.message); }
+            } catch (error) {
+                statusIndicator.innerHTML = '<span class="text-danger">✗ เกิดข้อผิดพลาด</span>';
+                console.error('Error saving data:', error);
+            }
+        }
+
+        function updateUrl() {
+            setTimeout(() => {
+                const newUrl = `{{ url_for('admin.manage_curriculum') }}?semester=${semesterSelect.value}&grade_level=${gradeSelect.value}`;
+                window.history.pushState({ path: newUrl }, '', newUrl);
+            }, 100);
+        }
+        
+        function updateDisplay() {
+            const gradeId = gradeSelect.value;
+            const semesterId = semesterSelect.value;
+            if (!gradeId || !semesterId) {
+                subjectsCheckboxList.innerHTML = '<p class="text-muted text-center">กรุณาเลือกภาคเรียนและระดับชั้น</p>';
+                return;
+            }
+            gradeLevelNameSpan.textContent = gradeSelect.options[gradeSelect.selectedIndex].text;
+            const semesterOptionText = semesterSelect.options[semesterSelect.selectedIndex].text;
+            const formattedSemesterText = semesterOptionText.replace(/ปีการศึกษา\s*/, '');
+            semesterNameSpan.textContent = formattedSemesterText;
+            const subjectsForGrade = masterCurriculum[gradeId] || [];
+            const existingKey = `${semesterId}-${gradeId}`;
+            const existingSubjectIds = allExistingCurriculum[existingKey] || [];
+            const groupedByType = subjectsForGrade.reduce((acc, subject) => {
+                if (!acc[subject.type]) acc[subject.type] = [];
+                acc[subject.type].push(subject);
+                return acc;
+            }, {});
+            let html = '';
+            if (subjectsForGrade.length === 0) {
+                html = '<p class="text-muted text-center mt-5">ไม่พบรายวิชาที่ผูกกับระดับชั้นนี้ (กรุณาตรวจสอบในเมนู "จัดการรายวิชา")</p>';
+            } else {
+                let groupIndex = 0; 
+                for (const type in groupedByType) {
+                    const groupIdentifier = `group-${groupIndex}`; 
+                    html += `<fieldset class="mb-3 border p-3 rounded-3"><legend class="fs-6 fw-bold"><div class="form-check"><input type="checkbox" class="form-check-input" onchange="toggleGroup('${groupIdentifier}', this.checked)"><label class="form-check-label">ประเภท: ${type}</label></div></legend>`;
+                    groupedByType[type].forEach(subject => {
+                        const isChecked = existingSubjectIds.includes(subject.id) ? 'checked' : '';
+                        html += `<div class="form-check ms-3"><input type="checkbox" name="subjects" value="${subject.id}" id="subject-${subject.id}" class="subject-checkbox form-check-input ${groupIdentifier}" onchange="scheduleSaveChanges()" ${isChecked}><label class="form-check-label" for="subject-${subject.id}">${subject.code} - ${subject.name}</label></div>`;
+                    });
+                    html += `</fieldset>`;
+                    groupIndex++; 
+                }
+            }
+            subjectsCheckboxList.innerHTML = html;
+        }
+
+        semesterSelect.addEventListener('change', () => { updateDisplay(); updateUrl(); });
+        gradeSelect.addEventListener('change', () => { updateDisplay(); updateUrl(); });
+        
+        updateDisplay();
+    });
+</script>
+{% endblock %}

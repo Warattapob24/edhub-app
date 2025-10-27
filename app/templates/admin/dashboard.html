@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}EdHub แดชบอร์ดผู้ดูแลระบบ{% endblock %}
+
+{% block sidebar %}
+    {% include 'admin/_sidebar.html' %}
+{% endblock %}
+
+{% block main_content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">
+        <i class="bi bi-house-door-fill me-2"></i>
+        แดชบอร์ดผู้ดูแลระบบ
+    </h1>
+</div>
+
+<div class="p-5 mb-4 bg-light rounded-3">
+    <div class="container-fluid py-5">
+        <h1 class="display-5 fw-bold">ยินดีต้อนรับ</h1>
+        <p class="col-md-8 fs-4">โปรดเลือกเมนูจากแถบด้านข้างเพื่อเริ่มต้นการตั้งค่าและจัดการระบบ</p>
+    </div>
+</div>
+{% endblock %}

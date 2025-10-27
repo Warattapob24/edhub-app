@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+{% block sidebar %}
+    {% include 'admin/_sidebar.html' %}
+{% endblock %}
+{% block main_content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-0">
+                <li class="breadcrumb-item"><a href="{{ url_for('admin.list_classrooms') }}">ห้องเรียน</a></li>
+                <li class="breadcrumb-item active" aria-current="page">{{ title }}</li>
+            </ol>
+        </nav>
+        <h2 class="mb-0">{{ classroom.name }}</h2>
+        <p class="text-muted mb-0">
+            <strong>ระดับชั้น:</strong> {{ classroom.grade_level.name }} | 
+            <strong>ปีการศึกษา:</strong> {{ classroom.academic_year.year }}
+        </p>
+    </div>
+    {# --- VVV เพิ่ม Dropdown เข้ามาตรงนี้ VVV --- #}
+    <div class="col-md-4">
+        <label for="classroomSwitcher" class="form-label"><strong>จัดการห้องเรียนอื่น:</strong></label>
+        <select id="classroomSwitcher" class="form-select">
+            {% for c in all_classrooms_in_year %}
+                <option value="{{ url_for('admin.manage_enrollment', classroom_id=c.id) }}" 
+                        {% if c.id == classroom.id %}selected{% endif %}>
+                    {{ c.name }}
+                </option>
+            {% endfor %}
+        </select>
+    </div>
+    {# --- ^^^ สิ้นสุดส่วนที่เพิ่ม ^^^ --- #}
+</div>
+
+<div class="row g-4">
+    {# --- คอลัมน์ที่ 1: นักเรียนในห้องนี้ --- #}
+    <div class="col-lg-7">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-people-fill"></i> นักเรียนในห้องนี้ ({{ enrolled_students|length }} คน)</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 10%;">เลขที่</th>
+                                <th>รหัสนักเรียน</th>
+                                <th>ชื่อ-นามสกุล</th>
+                                <th class="text-end">การกระทำ</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for student in enrolled_students %}
+                            <tr>
+                                <td class="text-center">
+                                    {% set enrollment = student.enrollments.filter_by(classroom_id=classroom.id).first() %}
+                                    {{ enrollment.roll_number if enrollment and enrollment.roll_number is not none else '-' }}
+                                </td>
+                                <td>{{ student.student_id }}</td>
+                                <td>{{ student.name_prefix }}{{ student.first_name }} {{ student.last_name }}</td>
+                                <td class="text-end">
+                                    <form action="{{ url_for('admin.remove_enrollment', classroom_id=classroom.id, student_id=student.id) }}" method="POST" onsubmit="return confirm('ยืนยันนำนักเรียนออกจากห้อง?');">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-person-dash-fill"></i> นำออก</button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="4" class="text-center text-muted py-4">ยังไม่มีนักเรียนในห้องนี้</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# --- คอลัมน์ที่ 2: เพิ่มนักเรียนเข้าห้อง --- #}
+    <div class="col-lg-5">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-person-plus-fill"></i> เพิ่มนักเรียนเข้าห้อง</h5>
+            </div>
+            <div class="card-body">
+                {% if unassigned_students %}
+                    <p class="text-muted">รายชื่อนักเรียนที่ยังไม่มีห้องเรียนในปีการศึกษานี้</p>
+                    <form id="addStudentForm" method="POST" class="row g-2 align-items-end">
+                        <div class="col-12">
+                            <label for="student_id_to_add" class="form-label">เลือกนักเรียน:</label>
+                            <select id="student_id_to_add" name="student_id" required>
+                                <option value="">-- ค้นหาหรือเลือกนักเรียน --</option>
+                                {% for student in unassigned_students %}
+                                    <option value="{{ student.id }}">{{ student.student_id }} - {{ student.name_prefix }}{{ student.first_name }} {{ student.last_name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-sm-6">
+                            <label for="roll_number" class="form-label">เลขที่:</label>
+                            <input type="number" name="roll_number" id="roll_number" class="form-control">
+                        </div>
+                        <div class="col-sm-6">
+                            <button type="submit" class="btn btn-primary w-100"><i class="bi bi-plus-lg"></i> เพิ่มเข้าห้อง</button>
+                        </div>
+                    </form>
+                {% else %}
+                    <div class="alert alert-success text-center">
+                        <i class="bi bi-check-circle-fill fs-4"></i>
+                        <p class="mb-0 mt-2">นักเรียนทั้งหมดมีห้องเรียนครบแล้ว</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // --- VVV เพิ่ม Script สำหรับ Classroom Switcher VVV ---
+        const classroomSwitcher = document.getElementById('classroomSwitcher');
+        classroomSwitcher.addEventListener('change', function() {
+            if (this.value) {
+                window.location.href = this.value;
+            }
+        });
+        // --- ^^^ สิ้นสุดส่วนที่เพิ่ม ^^^ ---
+
+        const studentSelectEl = document.getElementById('student_id_to_add');
+        if(studentSelectEl){
+            const tomInstance = new TomSelect(studentSelectEl, { create: false, sortField: { field: "text", direction: "asc" } });
+            
+            const addStudentForm = document.getElementById('addStudentForm');
+            studentSelectEl.addEventListener('change', function() {
+                if (this.value) {
+                    const actionUrl = `/admin/enrollment/add/{{ classroom.id }}/${this.value}`;
+                    addStudentForm.action = actionUrl;
+                } else {
+                    addStudentForm.action = "";
+                }
+            });
+        }
+    });
+</script>
+{% endblock %}

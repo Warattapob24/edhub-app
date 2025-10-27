@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+{% block sidebar %}
+    {% include 'admin/_sidebar.html' %}
+{% endblock %}
+
+{% block main_content %}
+    <h2 class="bi bi-plus-lg"> {{ title }}</h2>
+    <a href="{{ url_for('admin.add_semester') }}"> + เพิ่มภาคเรียนใหม่</a>
+    <hr>
+    <table border="1" width="100%">
+        <thead>
+            <tr>
+                <th>ปีการศึกษา</th>
+                <th>ภาคเรียนที่</th>
+                <th>วันเปิด-ปิด</th>
+                <th>สถานะปัจจุบัน</th>
+                <th>การกระทำ</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for semester in semesters %}
+            <tr>
+                <td>{{ semester.academic_year.year }}</td>
+                <td>{{ semester.term }}</td>
+                <td>{{ semester.start_date if semester.start_date else '-' }} ถึง {{ semester.end_date if semester.end_date else '-' }}</td>
+                <td>{% if semester.is_current %}✅ ปัจจุบัน{% else %}-{% endif %}</td>
+                <td>
+                    <a href="{{ url_for('admin.edit_semester', semester_id=semester.id) }}">แก้ไข</a>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="5">ยังไม่มีข้อมูลภาคเรียนในระบบ</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+{% endblock %}

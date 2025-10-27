@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+{% block sidebar %}
+    {% include 'admin/_sidebar.html' %}
+{% endblock %}
+
+{% block main_content %}
+    <h2 class="bi bi-clock-history"> {{ title }}</h2>
+    <div class="card mt-3">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th>เวลา</th>
+                            <th>ผู้ใช้งาน</th>
+                            <th>การกระทำ</th>
+                            <th>รายละเอียด</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for log in logs.items %}
+                        <tr>
+                            <td class="text-nowrap"><small>{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</small></td>
+                            <td>{{ log.user.full_name if log.user else 'N/A' }}</td>
+                            <td><span class="badge bg-secondary">{{ log.action }}</span></td>
+                            <td>
+                                <strong>{{ log.model_name }} ID:</strong> {{ log.record_id }}<br>
+                                <span class="text-danger"><strong>ค่าเดิม:</strong> {{ log.old_value }}</span><br>
+                                <span class="text-success"><strong>ค่าใหม่:</strong> {{ log.new_value }}</span>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="4" class="text-center">ยังไม่มีประวัติการทำงานในระบบ</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+{% endblock %}

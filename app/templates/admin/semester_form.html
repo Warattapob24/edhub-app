@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+{% block sidebar %}
+    {% include 'admin/_sidebar.html' %}
+{% endblock %}
+
+{% block main_content %}
+    <h2 class="bi bi-plus-lg"> {{ title }}</h2>
+    <hr>
+    <div class="card">
+        <div class="card-body">
+            <form action="" method="post" novalidate>
+                {{ form.hidden_tag() }}
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        {{ form.term.label(class="form-label") }}
+                        {{ form.term(class="form-control") }}
+                        {% for error in form.term.errors %}<span class="text-danger small">{{ error }}</span>{% endfor %}
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        {{ form.academic_year.label(class="form-label") }}
+                        {{ form.academic_year(class="form-select") }}
+                        {% for error in form.academic_year.errors %}<span class="text-danger small">{{ error }}</span>{% endfor %}
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        {{ form.start_date.label(class="form-label") }}
+                        {{ form.start_date(class="form-control") }}
+                        {% for error in form.start_date.errors %}<span class="text-danger small">{{ error }}</span>{% endfor %}
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        {{ form.end_date.label(class="form-label") }}
+                        {{ form.end_date(class="form-control") }}
+                        {% for error in form.end_date.errors %}<span class="text-danger small">{{ error }}</span>{% endfor %}
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <div class="form-check">
+                        {{ form.is_current(class="form-check-input") }}
+                        {{ form.is_current.label(class="form-check-label") }}
+                    </div>
+                     {% for error in form.is_current.errors %}<span class="text-danger small">{{ error }}</span>{% endfor %}
+                </div>
+                <hr>
+                {{ form.submit(class="btn btn-success") }}
+                <a href="{{ url_for('admin.list_academic_years') }}" class="btn btn-secondary">ยกเลิก</a>
+            </form>
+        </div>
+    </div>
+{% endblock %}

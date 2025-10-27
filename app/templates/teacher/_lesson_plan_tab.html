@@ -1,0 +1,132 @@
+{# FILE: app/templates/teacher/_lesson_plan_tab.html #}
+
+<link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet">
+<style>
+    .indicator-group h6 {
+        font-size: 1rem;
+        color: var(--bs-primary);
+        border-bottom: 1px solid #dee2e6;
+        padding-bottom: .5rem;
+        margin-top: 1rem;
+    }
+    .indicator-group .list-group-item {
+        border: none;
+        padding-left: .5rem;
+    }
+</style>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0">รายละเอียดแผนการสอน: {{ unit.title }}</h4>
+    <div id="plan-status-display">
+        <span class="fw-bold">สถานะปัจจุบัน:</span>
+        <span class="badge 
+            {% if unit.lesson_plan.status == 'ผ่านการตรวจสอบ' %} bg-success
+            {% elif unit.lesson_plan.status == 'รอการตรวจสอบ' %} bg-info
+            {% elif unit.lesson_plan.status == 'ต้องการการแก้ไข' %} bg-danger
+            {% else %} bg-secondary
+            {% endif %}">
+            {{ unit.lesson_plan.status }}
+        </span>
+    </div>
+</div>
+
+<form id="lessonPlanForm" method="POST">
+    <input type="hidden" name="csrf_token" value="{{ form.csrf_token._value() }}">
+    
+    <div class="row mb-3">
+        <div class="col-md-4">
+            <label for="hours" class="form-label fw-bold">จำนวนคาบสำหรับหน่วยนี้</label>
+            <div class="input-group">
+                <input type="number" id="hours" name="hours" class="form-control learning-unit-hours-input" 
+                       value="{{ unit.hours or 0 }}" min="0" data-unit-id="{{ unit.id }}">
+                <span class="input-group-text cumulative-period-display" id="cumulative-display-{{ unit.id }}">(คาบที่ --)</span>
+            </div>
+        </div>
+    </div>
+    
+        <div class="mb-3">
+            <label for="indicator-selector" class="form-label fw-bold">1. มาตรฐานการเรียนรู้/ตัวชี้วัด</label>
+            
+            <select id="indicator-selector" name="indicators" multiple 
+                    placeholder="พิมพ์เพื่อค้นหา หรือเพิ่มตัวชี้วัด..."
+                    data-initial-options='{{ initial_indicators_json|safe }}'>
+                {# Loop ที่ใช้สร้าง <option> ถูกลบออกไปแล้ว #}
+            </select>
+
+            <div class="form-text">พิมพ์เพื่อค้นหาจากคลัง หรือสร้างตัวชี้วัดใหม่หากไม่มีในรายการ</div>
+            <div id="indicator-display-area" class="mt-2"></div>
+        </div>
+    
+    <div class="mb-3">
+        <label for="core_concepts" class="form-label fw-bold">2. สาระสำคัญ</label>
+        <textarea class="form-control" id="core_concepts" name="core_concepts" rows="3">{{ unit.core_concepts or '' }}</textarea>
+    </div>
+    <div class="mb-3">
+        <label for="learning_objectives" class="form-label fw-bold">3. จุดประสงค์การเรียนรู้</label>
+        <textarea class="form-control" id="learning_objectives" name="learning_objectives" rows="3">{{ unit.learning_objectives or '' }}</textarea>
+    </div>
+    <div class="mb-3">
+        <label for="learning_content" class="form-label fw-bold">4. สาระการเรียนรู้</label>
+        <textarea class="form-control" id="learning_content" name="learning_content" rows="3">{{ unit.learning_content or '' }}</textarea>
+    </div>
+    <div class="mb-3">
+        <label for="learning_activities" class="form-label fw-bold">5. กิจกรรมการเรียนรู้</label>
+        <textarea class="form-control" id="learning_activities" name="learning_activities" rows="5">{{ unit.learning_activities or '' }}</textarea>
+    </div>
+    <div class="mb-3">
+        <label for="media_resources" class="form-label fw-bold">6. สื่อ/แหล่งการเรียนรู้</label>
+        <textarea class="form-control" id="media_resources" name="media_resources" rows="3">{{ unit.media_sources or '' }}</textarea>
+    </div>
+
+    <div class="d-flex justify-content-end align-items-center gap-2 mt-4">
+        <button type="button" class="btn btn-info" id="submit-for-review-btn" 
+                data-plan-id="{{ unit.lesson_plan.id }}"
+                {% if unit.lesson_plan.status != 'ฉบับร่าง' and unit.lesson_plan.status != 'ต้องการการแก้ไข' %}disabled{% endif %}>
+            <i class="bi bi-send-check-fill"></i> ส่งแผนการสอน
+        </button>
+        
+        <button type="button" class="btn btn-primary" id="save-draft-btn">
+            <i class="bi bi-save-fill"></i> บันทึกแผนการสอน
+        </button>
+    </div>
+</form>
+
+<hr class="my-4">
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4><i class="bi bi-clock-history me-2"></i>แผนการสอนรายชั่วโมง</h4>
+    <button id="add-subunit-btn" class="btn btn-sm btn-outline-primary" 
+            data-unit-id="{{ unit.id }}" 
+            data-unit-hours="{{ unit.hours or 0 }}"
+            {% if unit.sub_units|length >= (unit.hours or 0) %}disabled{% endif %}>
+        <i class="bi bi-plus-lg"></i> เพิ่มแผนรายชั่วโมง
+    </button>
+</div>
+
+<div id="sub-units-list">
+    {% for sub_unit in unit.sub_units|sort(attribute='hour_sequence') %}
+        <div class="card mb-2" id="subunit-card-{{ sub_unit.id }}">
+            <div class="card-body p-3">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h6 class="card-title mb-1">
+                            <span class="badge bg-primary me-2">ชั่วโมงที่ {{ sub_unit.hour_sequence }}</span>
+                            <span class="subunit-title">{{ sub_unit.title }}</span>
+                        </h6>
+                        <p class="card-text text-muted small subunit-activities">{{ sub_unit.activities }}</p>
+                    </div>
+                    <div>
+                        <button class="btn btn-sm btn-outline-secondary edit-subunit-btn" data-subunit-id="{{ sub_unit.id }}">
+                            <i class="bi bi-pencil"></i> แก้ไข
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger delete-subunit-btn" data-subunit-id="{{ sub_unit.id }}">
+                            <i class="bi bi-trash"></i> ลบ
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% else %}
+        <p id="no-subunits-placeholder" class="text-muted fst-italic">ยังไม่มีแผนการสอนรายชั่วโมง</p>
+    {% endfor %}
+</div>

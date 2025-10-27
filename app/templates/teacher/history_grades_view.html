@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+
+{% block sidebar %}
+    {% include 'teacher/_sidebar.html' %}
+{% endblock %}
+
+{% block main_content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h1 class="h2">
+            <i class="bi bi-card-checklist me-2"></i>
+            ผลการเรียนย้อนหลัง: {{ course.subject.name }} ({{ course.subject.subject_code }})
+        </h1>
+        <p class="text-muted">
+            ห้อง {{ course.classroom.name }} | ภาคเรียนที่ {{ course.semester.term }}/{{ course.semester.academic_year.year }}
+        </p>
+    </div>
+    <div>
+        <a href="{{ url_for('teacher.teaching_history', year_id=course.semester.academic_year_id, semester_term=course.semester.term) }}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> กลับไปหน้าประวัติ
+        </a>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>คะแนนเต็ม: คะแนนเก็บ {{ max_collected|round(1)|replace('.0', '') }}, กลางภาค {{ max_midterm|round(1)|replace('.0', '') }}, ปลายภาค {{ max_final|round(1)|replace('.0', '') }} (รวม {{ grand_max_score|round(1)|replace('.0', '') }})</span>
+        <span class="badge bg-info">ข้อมูล ณ วันที่ส่งเกรด (อ่านอย่างเดียว)</span>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-bordered table-striped table-hover align-middle mb-0" style="font-size: 0.9rem;">
+            <thead class="table-light text-center sticky-top">
+                <tr>
+                    <th rowspan="2" class="align-middle">เลขที่</th>
+                    <th rowspan="2" class="align-middle" style="min-width: 180px;">ชื่อ-สกุล</th>
+                    <th colspan="3">คะแนนระหว่างภาค</th>
+                    <th>คะแนนปลายภาค</th>
+                    <th rowspan="2" class="align-middle">รวม ({{ grand_max_score|round(1)|replace('.0', '') }})</th>
+                    <th rowspan="2" class="align-middle">เกรด</th>
+                     <th rowspan="2" class="align-middle">ผลการแก้ตัว</th>
+                </tr>
+                <tr>
+                    <th>คะแนนเก็บ ({{ max_collected|round(1)|replace('.0', '') }})</th>
+                    <th>กลางภาค ({{ max_midterm|round(1)|replace('.0', '') }})</th>
+                    <th>รวม</th>
+                    <th>ปลายภาค ({{ max_final|round(1)|replace('.0', '') }})</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for data in student_grades %}
+                {% set grade_obj = data.exam_grade_obj %} {# Get the CourseGrade object #}
+                <tr>
+                    <td class="text-center">{{ data.student.roll_number or '-' }}</td>
+                    <td>{{ data.full_name }}</td>
+                    <td class="text-center">{{ data.collected_score|round(1)|replace('.0', '') if data.collected_score is not none else '-' }}</td>
+                    <td class="text-center">{{ data.midterm_score|round(1)|replace('.0', '') if data.midterm_score is not none else '-' }}</td>
+                    <td class="text-center fw-bold">{{ (data.collected_score or 0 + data.midterm_score or 0)|round(1)|replace('.0', '') }}</td>
+                    <td class="text-center">{{ data.final_score|round(1)|replace('.0', '') if data.final_score is not none else '-' }}</td>
+                    <td class="text-center fw-bold">{{ data.total_score|round(1)|replace('.0', '') if data.total_score is not none else '-' }}</td>
+                    <td class="text-center fw-bold">
+                        {% set original_grade = grade_obj.original_final_grade if grade_obj else data.grade %}
+                        <span class="badge fs-6 {% if original_grade == 'มส' %}bg-danger{% elif original_grade == 'ร' %}bg-warning text-dark{% elif original_grade == '0' %}bg-secondary{% else %}bg-primary{% endif %}">
+                            {{ original_grade or data.grade }}
+                        </span>
+                    </td>
+                     <td class="text-center">
+                        {% if grade_obj and grade_obj.remediation_status != 'None' and grade_obj.final_grade != original_grade and grade_obj.final_grade in ['1','1.5','2','2.5','3','3.5','4'] %}
+                             <span class="badge fs-6 bg-success">{{ grade_obj.final_grade }}</span>
+                        {% else %}
+                             <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% endblock %}

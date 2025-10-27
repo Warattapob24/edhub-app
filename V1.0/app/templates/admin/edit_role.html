@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <h1>แก้ไขบทบาท: <code>{{ role.key }}</code></h1>
+    
+    <div class="row">
+        <div class="col-md-6">
+            <form method="POST" action="">
+                {{ form.hidden_tag() }}
+                <div class="mb-3">
+                    {{ form.label.label(class="form-label") }}
+                    {{ form.label(class="form-control", size=32) }}
+                    {% for error in form.label.errors %}
+                    <span class="text-danger">[{{ error }}]</span>
+                    {% endfor %}
+                </div>
+                <div class="mb-3">
+                    {{ form.submit(class="btn btn-primary") }}
+                    <a href="{{ url_for('admin.manage_roles') }}" class="btn btn-secondary">ยกเลิก</a>
+                </div>
+            </form>
+        </div>
+    </div>
+{% endblock %}

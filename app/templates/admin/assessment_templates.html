@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+{% block sidebar %}
+    {% include 'admin/_sidebar.html' %}
+{% endblock %}
+{% block main_content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2><i class="bi bi-pencil-ruler"></i> {{ title }}</h2>
+    <a href="{{ url_for('admin.add_assessment_template') }}" class="btn btn-primary"><i class="bi bi-plus-lg"></i> สร้างแม่แบบใหม่</a>
+</div>
+<div class="card">
+    <div class="card-body">
+        <p class="text-muted">ที่นี่คือศูนย์กลางสำหรับสร้างแม่แบบการประเมินต่างๆ เช่น สมรรถนะ, คุณลักษณะฯ, การอ่านคิดวิเคราะห์ เป็นต้น</p>
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>ชื่อแม่แบบ</th>
+                        <th>จำนวนหัวข้อหลัก</th>
+                        <th class="text-end">การกระทำ</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for tpl in templates %}
+                    <tr>
+                        <td><strong>{{ tpl.name }}</strong><br><small class="text-muted">{{ tpl.description or '' }}</small></td>
+                        <td>{{ tpl.topics|length }}</td>
+                        <td class="text-end">
+                            <a href="{{ url_for('admin.manage_assessment_template', tpl_id=tpl.id) }}" class="btn btn-sm btn-info me-1"><i class="bi bi-list-nested"></i> จัดการหัวข้อ/เกณฑ์</a>
+                            <a href="{{ url_for('admin.edit_assessment_template', tpl_id=tpl.id) }}" class="btn btn-sm btn-warning me-1"><i class="bi bi-pencil-fill"></i> แก้ไข</a>
+                            <form action="{{ url_for('admin.delete_assessment_template', tpl_id=tpl.id) }}" method="POST" class="d-inline" onsubmit="return confirm('ยืนยันการลบแม่แบบและข้อมูลทั้งหมดที่เกี่ยวข้อง?');">
+                                <button type="submit" class="btn btn-sm btn-danger"><i class="bi bi-trash-fill"></i> ลบ</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="3" class="text-center text-muted py-4">ยังไม่มีแม่แบบการประเมิน</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

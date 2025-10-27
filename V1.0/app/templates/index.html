@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <h1>ยินดีต้อนรับสู่แพลตฟอร์ม, {{ current_user.full_name }}!</h1>
+    <p>บทบาทของคุณคือ: <strong>{{ current_user.role.label }}</strong></p>
+    <p>กำลังนำท่านไปยังแดชบอร์ด...</p>
+{% endblock %}

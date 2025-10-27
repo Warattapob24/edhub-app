@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <h2><i class="fas fa-table"></i> ตารางสอน</h2>
+    <p>เลือกดูตารางสอนของห้องเรียนหรือครูผู้สอน</p>
+
+    <div class="row mb-3">
+        <div class="col-md-6">
+            <form method="GET" action="{{ url_for('main.view_timetable') }}">
+                <div class="input-group">
+                    <label class="input-group-text" for="class_group_select">ดูตารางสอนของห้องเรียน:</label>
+                    <select name="class_group_id" id="class_group_select" class="form-select" onchange="this.form.submit()">
+                        <option value="">-- เลือกห้องเรียน --</option>
+                        {% for c in all_class_groups %}
+                        <option value="{{ c.id }}" {% if c.id == selected_class_group_id %}selected{% endif %}>
+                            {{ c.grade_level.name }} / {{ c.room_number }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </form>
+        </div>
+        <div class="col-md-6">
+            <form method="GET" action="{{ url_for('main.view_timetable') }}">
+                <div class="input-group">
+                    <label class="input-group-text" for="teacher_select">ดูตารางสอนของครู:</label>
+                    <select name="teacher_id" id="teacher_select" class="form-select" onchange="this.form.submit()">
+                        <option value="">-- เลือกครู --</option>
+                        {% for t in all_teachers %}
+                        <option value="{{ t.id }}" {% if t.id == selected_teacher_id %}selected{% endif %}>
+                            {{ t.full_name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {% if viewing_target %}
+    <h4 class="text-center mb-3">ตารางสอนสำหรับ: {{ viewing_target.grade_level.name ~ "/" ~ viewing_target.room_number if selected_class_group_id else viewing_target.full_name }}</h4>
+    
+    <table class="table table-bordered text-center">
+        <thead class="table-light">
+            <tr>
+                <th style="width: 10%;">วัน / คาบ</th>
+                {# สร้างหัวตารางเป็นคาบเรียน #}
+                {% for period in school_periods %}
+                    <th>
+                        <strong>คาบที่ {{ period.period_number }}</strong><br>
+                        <small class="text-muted">{{ period.start_time.strftime('%H:%M')}}-{{ period.end_time.strftime('%H:%M')}}</small>
+                    </th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {# สร้างแถวเป็นวันในสัปดาห์ #}
+            {% for day in range(5) %}
+            <tr>
+                <td><strong>{{ ["วันจันทร์", "วันอังคาร", "วันพุธ", "วันพฤหัสบดี", "วันศุกร์"][day] }}</strong></td>
+                
+                {# สร้างช่องข้อมูลสำหรับแต่ละคาบเรียนในวันนั้นๆ #}
+                {% for period in school_periods %}
+                    {% set slot = timetable_grid[day][period.period_number] %}
+                    <td>
+                        {% if slot %}
+                            {% if slot is string %}
+                                <div class="bg-light p-2 h-100 d-flex align-items-center justify-content-center rounded">
+                                    <small class="text-muted">{{ slot }}</small>
+                                </div>
+                            {% else %}
+                                <strong>{{ slot.course.subject.name }}</strong><br>
+                                <small>
+                                    {% if selected_teacher_id %}
+                                        ห้อง {{ slot.class_group.grade_level.name }}/{{ slot.class_group.room_number }}
+                                    {% else %}
+                                        ครู {{ slot.course.teacher.full_name }}
+                                    {% endif %}
+                                </small>
+                            {% endif %}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                {% endfor %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+</div>
+{% endblock %}

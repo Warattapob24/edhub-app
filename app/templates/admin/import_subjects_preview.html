@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+{% block sidebar %}
+    {% include 'admin/_sidebar.html' %}
+{% endblock %}
+{% block main_content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2><i class="bi bi-journal-check"></i> {{ title }}</h2>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">สรุปข้อมูล</h5>
+    </div>
+    <div class="card-body">
+        <p>กรุณาตรวจสอบข้อมูลด้านล่างก่อนยืนยันการนำเข้า (แถวที่มี <span class="badge bg-warning text-dark">คำเตือน</span> จะถูกข้ามไป)</p>
+        <div class="row text-center">
+            <div class="col-md-6">
+                <div class="card bg-light">
+                    <div class="card-body">
+                        <h4 class="mb-0">{{ data|length }}</h4>
+                        <small class="text-muted">จำนวนรายการทั้งหมด</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card bg-light">
+                    <div class="card-body">
+                        <h4 class="mb-0">{{ data|rejectattr('warnings')|list|length }}</h4>
+                        <small class="text-muted">รายการที่พร้อมนำเข้า</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="text-center">แถวที่</th>
+                        <th>กลุ่มสาระฯ</th>
+                        <th>สาระฯ</th>
+                        <th>มาตรฐาน</th>
+                        <th>ตัวชี้วัด</th>
+                        <th>คำเตือน</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in data %}
+                    <tr {% if row.warnings %}class="table-warning"{% endif %}>
+                        <td class="text-center">{{ row.row_num }}</td>
+                        <td>{{ row.subject_group }}</td>
+                        <td>{{ row.strand }}</td>
+                        <td><strong>{{ row.standard_code }}</strong>: {{ row.standard_description }}</td>
+                        <td><strong>{{ row.indicator_code }}</strong>: {{ row.indicator_description }}</td>
+                        <td>
+                            {% for warning in row.warnings %}
+                                <span class="badge bg-warning-subtle text-warning-emphasis rounded-pill">{{ warning }}</span>
+                            {% endfor %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="card-footer text-end">
+        <a href="{{ url_for('admin.import_standards') }}" class="btn btn-secondary">ยกเลิก</a>
+        <form action="{{ url_for('admin.execute_import_standards') }}" method="POST" class="d-inline" onsubmit="return confirm('คุณยืนยันที่จะนำเข้าข้อมูลที่ไม่มีคำเตือนทั้งหมดใช่หรือไม่?');">
+            {{ form.csrf_token }}
+            <button type="submit" class="btn btn-primary"><i class="bi bi-check-circle-fill"></i> ยืนยันและนำเข้าข้อมูล</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

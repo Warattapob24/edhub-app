@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center">
+    <div>
+        <h1 class="h3">บันทึกเวลาเรียน: {{ course.subject.name }}</h1>
+        <p class="text-muted">ปีการศึกษา {{ course.academic_year }}/{{ course.semester }}</p>
+    </div>
+    <a href="{{ url_for('course.manage_course', course_id=course.id) }}" class="btn btn-outline-secondary"> &laquo; กลับไปหน้าจัดการรายวิชา</a>
+</div>
+<hr>
+
+<form method="GET" id="filter-form" class="row g-3 align-items-center mb-3">
+    <div class="col-auto">
+      <label for="class_group-select" class="col-form-label">เลือกห้องเรียน:</label>
+    </div>
+    <div class="col-auto">
+      <select class="form-select" id="class_group-select" name="class_group_id">
+          <option value="">-- กรุณาเลือก --</option>
+          {% for class_group in class_groups %}
+              <option value="{{ class_group.id }}" {% if class_group.id == selected_class_group_id %}selected{% endif %}>
+                  {{ class_group.grade_level.name }} / ห้อง {{ class_group.room_number }}
+              </option>
+          {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <label for="date-picker" class="col-form-label">เลือกวันที่:</label>
+    </div>
+    <div class="col-auto">
+      <input type="date" class="form-control" id="date-picker" name="date" value="{{ selected_date_str }}">
+    </div>
+</form>
+
+
+{% if selected_class_group_id %}
+    <form method="POST">
+        </form>
+{% else %}
+    <div class="alert alert-info">กรุณาเลือกห้องเรียนเพื่อเริ่มบันทึกเวลาเรียน</div>
+{% endif %}
+
+<form method="POST">
+    <table class="table table-hover align-middle">
+        <thead class="table-light">
+            <tr>
+                <th>เลขที่</th>
+                <th>ชื่อ - นามสกุล</th>
+                <th class="text-center">มา</th>
+                <th class="text-center">ลา</th>
+                <th class="text-center">ป่วย</th>
+                <th class="text-center">ขาด</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for student in students %}
+                {% set current_status = attendance_dict.get(student.id, 'มา') %}
+                <tr>
+                    <td>{{ student.class_number }}</td>
+                    <td>{{ student.prefix }}{{ student.first_name }} {{ student.last_name }}</td>
+                    <td class="text-center">
+                        <input class="form-check-input" type="radio" name="attendance-{{ student.id }}" value="มา" {% if current_status == 'มา' %}checked{% endif %}>
+                    </td>
+                    <td class="text-center">
+                        <input class="form-check-input" type="radio" name="attendance-{{ student.id }}" value="ลา" {% if current_status == 'ลา' %}checked{% endif %}>
+                    </td>
+                    <td class="text-center">
+                        <input class="form-check-input" type="radio" name="attendance-{{ student.id }}" value="ป่วย" {% if current_status == 'ป่วย' %}checked{% endif %}>
+                    </td>
+                    <td class="text-center">
+                        <input class="form-check-input" type="radio" name="attendance-{{ student.id }}" value="ขาด" {% if current_status == 'ขาด' %}checked{% endif %}>
+                    </td>
+                </tr>
+            {% else %}
+            <tr>
+                <td colspan="6" class="text-center text-muted">ยังไม่มีนักเรียนในห้องเรียนนี้</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <div class="text-end mt-3">
+    </div>
+</form>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+        // ส่งฟอร์มเมื่อเปลี่ยนสถานะการเข้าเรียน
+document.querySelectorAll('input[type=radio][name^="attendance-"]').forEach(function(radio) {
+    radio.addEventListener('change', function(e) {
+        const form = this.form;
+        const formData = new FormData(form);
+        const scrollY = window.scrollY; // จำตำแหน่ง scroll
+
+        fetch(form.action, {
+            method: form.method,
+            body: formData,
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        }).then(response => {
+            if (!response.ok) throw new Error('Network error');
+            return response.text();
+        }).then(() => {
+            window.scrollTo(0, scrollY); // กลับมาตำแหน่งเดิม
+            // ถ้าต้องการ focus radio ถัดไป สามารถเพิ่มโค้ดนี้
+            // let radios = Array.from(document.querySelectorAll('input[type=radio][name^="attendance-"]'));
+            // let idx = radios.indexOf(e.target);
+            // if (idx >= 0 && idx < radios.length - 1) radios[idx + 1].focus();
+        }).catch(err => {
+            alert('เกิดข้อผิดพลาดในการบันทึก');
+        });
+        e.preventDefault(); // ไม่ submit แบบปกติ
+    });
+});
+    // Auto-submit form when date is changed
+    document.getElementById('date-picker').addEventListener('change', function() {
+        document.getElementById('date-picker-form').submit();
+    });
+    document.getElementById('class_group-select').addEventListener('change', function() {
+        document.getElementById('filter-form').submit();
+    });
+    document.getElementById('date-picker').addEventListener('change', function() {
+        document.getElementById('filter-form').submit();
+    });    
+</script>
+{% endblock %}

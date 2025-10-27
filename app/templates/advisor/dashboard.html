@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+
+{% block sidebar %}
+    {% include 'advisor/_sidebar.html' %} {# Assuming an advisor-specific sidebar exists #}
+{% endblock %}
+
+{% block main_content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="h2"><i class="bi bi-person-video2 me-2"></i> {{ title }}</h1>
+        {% if classrooms %}
+        <p class="text-muted">ห้องเรียนในที่ปรึกษา: {{ classrooms|map(attribute='name')|join(', ') }}</p>
+        {% else %}
+        <p class="text-muted">ท่านยังไม่มีห้องเรียนในที่ปรึกษา</p>
+        {% endif %}
+    </div>
+</div>
+
+{% if not classrooms %}
+<div class="text-center text-muted py-5">
+    <h4><i class="bi bi-info-circle"></i> ไม่มีข้อมูล</h4>
+    <p>กรุณาติดต่อผู้ดูแลระบบเพื่อกำหนดห้องเรียนในที่ปรึกษา</p>
+</div>
+{% else %}
+    {# --- ATTENTION SECTION --- #}
+    {% if attention_students %}
+    <h4 class="mb-3"><i class="bi bi-exclamation-triangle-fill text-danger"></i> นักเรียนที่ต้องให้ความสนใจ <small class="text-muted">({{ attention_students|length }} คน)</small></h4>
+    <div class="card shadow-sm mb-5">
+        <div class="list-group list-group-flush">
+            {% for student in attention_students %}
+            <a href="{{ url_for('advisor.student_profile', student_id=student.id) }}" class="list-group-item list-group-item-action">
+                <div class="d-flex w-100 justify-content-between">
+                    <h5 class="mb-1">{{ student.first_name }} {{ student.last_name }}</h5>
+                    {% if student.status != 'กำลังศึกษา' %}
+                        <span class="badge bg-danger rounded-pill">{{ student.status }}</span>
+                    {% else %}
+                        <span class="badge bg-warning text-dark rounded-pill">มีการแจ้งเตือน</span>
+                    {% endif %}
+                </div>
+                <p class="mb-1 text-muted">รหัสนักเรียน: {{ student.student_id }}</p>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {# --- ALL STUDENTS SECTION --- #}
+    <h4 class="mb-3"><i class="bi bi-people-fill text-primary"></i> นักเรียนทั้งหมดในห้องเรียน <small class="text-muted">({{ all_students|length }} คน)</small></h4>
+    <div class="card shadow-sm">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="text-center">เลขที่</th>
+                        <th>รหัสนักเรียน</th>
+                        <th>ชื่อ-สกุล</th>
+                        <th>สถานะปัจจุบัน</th>
+                        <th class="text-end">การกระทำ</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for enrollment in all_enrollments %}
+                    {% set student = enrollment.student %} {# Helper variable for easier access #}
+                    {% set non_active_statuses = ['ลาออก', 'พ้นสภาพ', 'พักการเรียน'] %}
+                    <tr class="{% if student.status in non_active_statuses %}table-danger text-muted text-decoration-line-through{% endif %}">
+                        <td class="text-center">{{ enrollment.roll_number }}</td>
+                        <td>{{ student.student_id }}</td>
+                        <td>{{ student.name_prefix or '' }}{{ student.first_name }} {{ student.last_name }}</td>
+                        <td>
+                            {% set status_color = 'bg-success' %}
+                            {% if student.status in ['ลาออก', 'พ้นสภาพ'] %}
+                                {% set status_color = 'bg-danger' %}
+                            {% elif student.status == 'พักการเรียน' %}
+                                {% set status_color = 'bg-warning text-dark' %}
+                            {% endif %}
+                            <span class="badge {{ status_color }}">{{ student.status }}</span>
+                        </td>
+                        <td class="text-end">
+                            <a href="{{ url_for('advisor.student_profile', student_id=student.id) }}" class="btn btn-sm btn-outline-primary">ดูรายละเอียด</a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="text-center text-muted">ไม่พบข้อมูลนักเรียน</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+{% endif %}
+{% endblock %}

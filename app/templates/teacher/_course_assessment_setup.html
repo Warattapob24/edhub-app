@@ -1,0 +1,186 @@
+{# FILE: app/templates/teacher/_course_assessment_setup.html #}
+
+{# --- MACRO สำหรับแสดงผล Topic Tree (จากไฟล์เดิม) --- #}
+{% macro render_selected_topics(topics, selected_ids) %}
+    <ul class="list-unstyled mb-0">
+        {% for topic in topics %}
+            {% if topic.id in selected_ids %}
+            <li data-topic-id="{{ topic.id }}">
+                <i class="bi bi-check-circle-fill text-success small"></i> {{ topic.name }}
+                {# Recursively render children if they exist #}
+                {% if topic.children %}
+                    {% set displayed_children = [] %}
+                    {% for child in topic.children if child.id in selected_ids %}
+                        {% do displayed_children.append(child) %}
+                    {% endfor %}
+                    
+                    {% if displayed_children %}
+                        <div class="ps-4">
+                            {{ render_selected_topics(displayed_children, selected_ids) }}
+                        </div>
+                    {% endif %}
+                {% endif %}
+            </li>
+            {% endif %}
+        {% endfor %}
+    </ul>
+{% endmacro %}
+
+<div class="card border-primary mb-4 shadow-sm">
+    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-calculator-fill me-2"></i>แผงสรุปคะแนนอัจฉริยะ</h5>
+        <button class="btn btn-light btn-sm" disabled>
+            <i class="bi bi-bullseye me-1"></i> ตั้งเป้าหมายสัดส่วน
+        </button>
+    </div>
+    <div class="card-body">
+        <div class="row text-center">
+            <div class="col">
+                <div class="h6 text-muted">คะแนนเก็บ</div>
+                <div id="summary-collected-score" class="display-6 fw-bold">0</div>
+            </div>
+            <div class="col">
+                <div class="h6 text-muted">สอบกลางภาค</div>
+                <div id="summary-midterm-score" class="display-6 fw-bold">0</div>
+            </div>
+            <div class="col">
+                <div class="h6 text-muted">สอบปลายภาค</div>
+                <div id="summary-final-score" class="display-6 fw-bold">0</div>
+            </div>
+            <div class="col border-start">
+                <div class="h6 text-primary">คะแนนรวมทั้งสิ้น</div>
+                <div id="summary-total-score" class="display-6 fw-bold text-primary">0</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<h4 class="mb-3">ผังการประเมินรายหน่วยการเรียนรู้</h4>
+<div class="accordion" id="learningUnitsAccordion">
+    
+    {% for unit in units %}
+    <div class="accordion-item" id="unit-accordion-item-{{ unit.id }}">
+        <h2 class="accordion-header" id="heading-unit-{{ unit.id }}">
+            <button class="accordion-button {% if not loop.first %}collapsed{% endif %}" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-unit-{{ unit.id }}" aria-expanded="{{ 'true' if loop.first else 'false' }}" aria-controls="collapse-unit-{{ unit.id }}">
+                <strong>หน่วยการเรียนรู้ที่ {{ loop.index }}:</strong>&nbsp;{{ unit.title }}
+            </button>
+        </h2>
+        <div id="collapse-unit-{{ unit.id }}" class="accordion-collapse collapse {% if loop.first %}show{% endif %}" aria-labelledby="heading-unit-{{ unit.id }}" data-bs-parent="#learningUnitsAccordion">
+            <div class="accordion-body">
+                <div class="row g-4">
+                    <div class="col-lg-6">
+                        <h6 class="border-bottom pb-2 mb-3"><i class="bi bi-pencil-square me-2"></i>A: รายการคะแนนเก็บ (Graded Items)</h6>
+                        <div id="graded-items-list-{{ unit.id }}">
+                            <p class="text-muted fst-italic">(ยังไม่มีรายการคะแนนเก็บ)</p>
+                        </div>
+                        <button class="btn btn-sm btn-success mt-3" data-bs-toggle="modal" data-bs-target="#addAssessmentItemModal" data-unit-id="{{ unit.id }}">
+                            <i class="bi bi-plus-circle me-1"></i> เพิ่มรายการคะแนนเก็บ
+                        </button>
+                    </div>
+
+                    <div class="col-lg-6">
+                        <h6 class="border-bottom pb-2 mb-3"><i class="bi bi-clipboard-check me-2"></i>B: หัวข้อการประเมินจากแม่แบบ (Templates)</h6>
+                        <p class="text-muted small mb-2">เลือกหัวข้อเชิงคุณภาพเพื่อใช้ประเมินนักเรียนในหน่วยนี้</p>
+                        
+                        {% for tpl in templates %}
+                            <div class="card mb-2">
+                                <div class="card-header bg-light p-2 d-flex justify-content-between align-items-center">
+                                    <span class="small fw-bold">{{ tpl.name }}</span>
+                                    <button class="btn btn-xs btn-outline-primary select-topics-btn" 
+                                            data-bs-toggle="modal" data-bs-target="#selectTopicsModal"
+                                            data-template-id="{{ tpl.id }}"
+                                            data-template-name="{{ tpl.name }}">
+                                        <i class="bi bi-check2-square"></i> เลือก
+                                    </button>
+                                </div>
+                                <div class="card-body p-2" id="selected-topics-{{ unit.id }}-{{ tpl.id }}">
+                                     {% set top_level_topics = tpl.topics|selectattr('parent_id', 'equalto', none) %}
+                                     {% if top_level_topics|length > 0 %}
+                                        {{ render_selected_topics(top_level_topics, selected_topic_ids) }}
+                                     {% else %}
+                                        <p class="text-muted small mb-0 fst-italic">ยังไม่ได้เลือกหัวข้อ</p>
+                                     {% endif %}
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+
+                    <div class="col-12">
+                         <h6 class="border-bottom pb-2 mb-3 mt-3"><i class="bi bi-calendar-event me-2"></i>C: การสอบ (Examinations)</h6>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-check form-switch mb-2">
+                                  <input class="form-check-input" type="checkbox" role="switch" id="midterm-switch-{{ unit.id }}">
+                                  <label class="form-check-label" for="midterm-switch-{{ unit.id }}">เปิดใช้คะแนนสอบกลางภาค</label>
+                                </div>
+                                <div class="input-group input-group-sm mb-3">
+                                  <input type="number" class="form-control" placeholder="กรอกคะแนน" disabled>
+                                  <span class="input-group-text">คะแนน</span>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check form-switch mb-2">
+                                  <input class="form-check-input" type="checkbox" role="switch" id="final-switch-{{ unit.id }}">
+                                  <label class="form-check-label" for="final-switch-{{ unit.id }}">เปิดใช้คะแนนสอบปลายภาค</label>
+                                </div>
+                                 <div class="input-group input-group-sm mb-3">
+                                  <input type="number" class="form-control" placeholder="กรอกคะแนน" disabled>
+                                  <span class="input-group-text">คะแนน</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <p class="text-muted">ไม่มีหน่วยการเรียนรู้ในแผนการสอนนี้</p>
+    {% endfor %}
+</div>
+
+<div class="modal fade" id="addAssessmentItemModal" tabindex="-1" aria-labelledby="addAssessmentItemModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="addAssessmentItemModalLabel">เพิ่มรายการคะแนนเก็บ</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form id="addAssessmentItemForm">
+        <div class="modal-body">
+            <input type="hidden" id="learningUnitId" name="learning_unit_id">
+            <div class="mb-3">
+                <label for="itemName" class="form-label">ชื่อรายการ</label>
+                <input type="text" class="form-control" id="itemName" name="name" required placeholder="เช่น ทดสอบย่อย, ปฏิบัติ, การบ้าน">
+            </div>
+            <div class="mb-3">
+                <label for="maxScore" class="form-label">คะแนนเต็ม</label>
+                <input type="number" class="form-control" id="maxScore" name="max_score" required min="0">
+            </div>
+            <div class="mb-3">
+                <label for="itemType" class="form-label">ประเภทการประเมิน</label>
+                <select class="form-select" id="itemType" name="assessment_dimension_id" required>
+                    <option selected disabled value="">-- เลือกประเภท --</option>
+                    {# This will be populated by a backend query in the final version #}
+                    <option value="1">K (ความรู้)</option>
+                    <option value="2">P (กระบวนการ)</option>
+                    <option value="3">A (เจตคติ)</option>
+                </select>
+            </div>
+             <div class="mb-3">
+                <label for="indicatorType" class="form-label">ประเภทตัวชี้วัด</label>
+                <select class="form-select" id="indicatorType" name="indicator_type" required>
+                    <option value="FORMATIVE">ตัวชี้วัดระหว่างทาง (Formative)</option>
+                    <option value="SUMMATIVE">ตัวชี้วัดปลายทาง (Summative)</option>
+                </select>
+                <div class="form-text">ตัวชี้วัดปลายทาง หากนักเรียนไม่ผ่าน อาจส่งผลให้ติด 'ร'</div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+            <button type="submit" form="addAssessmentItemForm" class="btn btn-primary">บันทึก</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>

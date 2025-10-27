@@ -1,0 +1,99 @@
+{# FILE: app/templates/teacher/_reflection_tab.html #}
+<style>
+    .per-room-log-controls button.active {
+        background-color: var(--bs-primary);
+        color: white;
+    }
+    #per-room-log-container {
+        border-left: 3px solid #dee2e6;
+    }
+</style>
+
+<div id="reflection-wrapper" data-unit-id="{{ unit.id }}">
+    <div id="dashboard-container" class="mb-4">
+        <h4 class="mb-3">แดชบอร์ดสรุปผลการเรียนรู้: {{ unit.title }}</h4>
+        <div id="dashboard-loader" class="text-center p-5">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p class="mt-2 text-muted">กำลังประมวลผลข้อมูล...</p>
+        </div>
+        <div id="dashboard-content" class="d-none">
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover text-center" style="vertical-align: middle;">
+                    <thead class="table-light">
+                        <tr>
+                            <th rowspan="2">ห้องเรียน</th>
+                            <th rowspan="2">นร.</th>
+                            <th rowspan="2">คะแนนเต็ม</th>
+                            <th rowspan="2">คะแนนเฉลี่ย</th>
+                            <th rowspan="2">S.D.</th>
+                            <th colspan="4">ผลการประเมิน (จำนวน นร.)</th>
+                            <th rowspan="2">งานไม่สมบูรณ์</th>
+                        </tr>
+                        <tr>
+                            <th>ดีเยี่ยม (80%+)</th>
+                            <th>ดี (70-79%)</th>
+                            <th>พอใช้ (50-69%)</th>
+                            <th>ต้องปรับปรุง (&lt;50%)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dashboard-table-body">
+                        </tbody>
+                    <tfoot id="dashboard-table-foot">
+                        </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <hr>
+    <div id="logging-container" class="d-none">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+             <h4 class="mb-0">บันทึกหลังการสอน</h4>
+             <div id="save-status-indicator" class="text-muted fst-italic"></div>
+        </div>
+       
+        <div class="p-3 border rounded bg-light mb-3">
+             <form id="overall-log-form">
+                <div class="mb-3">
+                    <label for="log_content_overall" class="form-label fw-bold">1. บันทึกภาพรวมของหน่วย</label>
+                    <textarea class="form-control" id="log_content_overall" name="log_content" rows="5" placeholder="สรุปผลการสอน, กิจกรรมที่ได้ผลดี, หรือข้อสังเกตทั่วไปที่พบในทุกห้อง..."></textarea>
+                </div>
+                <div class="text-start">
+                    <a class="btn btn-sm btn-link text-decoration-none" data-bs-toggle="collapse" href="#detailed-log-collapse" role="button">
+                        [+] เพิ่มบันทึกฉบับละเอียด (ปัญหาและแนวทางแก้ไข)
+                    </a>
+                </div>
+                <div class="collapse" id="detailed-log-collapse">
+                    <div class="mt-3">
+                        <div class="mb-3">
+                            <label for="problems_obstacles" class="form-label">2. ปัญหาและอุปสรรค</label>
+                            <textarea class="form-control" id="problems_obstacles" name="problems_obstacles" rows="3" placeholder="ระบุปัญหาที่พบ เช่น เนื้อหายากไป, สื่อไม่พร้อม, เวลาไม่พอ..."></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label for="solutions" class="form-label">3. แนวทางแก้ไข หรือข้อเสนอแนะ</label>
+                            <textarea class="form-control" id="solutions" name="solutions" rows="3" placeholder="แนวทางการปรับปรุงกิจกรรม, การช่วยเหลือนักเรียน..."></textarea>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+
+        <div>
+             <a class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" href="#per-room-log-collapse" role="button">
+                <i class="bi bi-plus-lg"></i> เพิ่มบันทึกเจาะจงรายห้อง
+            </a>
+            <div class="collapse mt-3" id="per-room-log-collapse">
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="list-group per-room-log-controls" id="per-room-log-nav">
+                            </div>
+                    </div>
+                    <div class="col-md-9">
+                        <div id="per-room-log-content">
+                            </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

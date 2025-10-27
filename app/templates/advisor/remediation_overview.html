@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+
+{% block sidebar %}
+    {% include 'advisor/_sidebar.html' %}
+{% endblock %}
+
+{% block main_content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="h2"><i class="bi bi-journal-x me-2"></i> {{ title }}</h1>
+        <p class="text-muted">ห้องเรียน {{ classroom.name }} | ภาคเรียนที่ {{ semester.term }}/{{ semester.academic_year.year }}</p>
+    </div>
+</div>
+
+<div class="alert alert-warning">
+    <h5 class="alert-heading">ภาพรวม</h5>
+    <p class="mb-0">มีรายการผลการเรียนที่ไม่ผ่านเกณฑ์ทั้งหมด <strong>{{ stats.total_failing }}</strong> รายการ</p>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th class="ps-3">เลขที่-ชื่อสกุล</th>
+                    <th>รายวิชา</th>
+                    <th class="text-center">ผลการเรียน</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for grade_obj, enrollment in failing_students|sort(attribute='1.roll_number') %}
+                <tr>
+                    <td class="ps-3">{{ enrollment.roll_number }}. {{ grade_obj.student.name_prefix }}{{ grade_obj.student.first_name }} {{ grade_obj.student.last_name }}</td>
+                    <td>{{ grade_obj.course.subject.name }}</td>
+                    <td class="text-center">
+                        {% if grade_obj.final_grade == 'มส' %}<span class="badge bg-danger fs-6">มส</span>
+                        {% elif grade_obj.final_grade == 'ร' %}<span class="badge bg-warning text-dark fs-6">ร</span>
+                        {% else %}<span class="badge bg-secondary fs-6">0</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="3" class="text-center text-muted p-5">
+                        <i class="bi bi-check2-circle fs-1 text-success"></i>
+                        <h4 class="mt-2">ยอดเยี่ยม!</h4>
+                        <p>ไม่พบนักเรียนที่มีผลการเรียนไม่ผ่านเกณฑ์ในขณะนี้</p>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

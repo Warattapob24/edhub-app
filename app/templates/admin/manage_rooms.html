@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+
+{% block sidebar %}
+    {% include 'admin/_sidebar.html' %}
+{% endblock %}
+
+{% block main_content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="bi bi-building"> {{ title }}</h2>
+</div>
+<div class="row">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header"><h5 id="form-title" class="mb-0">เพิ่มห้องเรียนใหม่</h5></div>
+            <div class="card-body">
+                <form id="room-form" action="{{ url_for('admin.save_room') }}" method="POST">
+                    {{ form.hidden_tag() }} <input type="hidden" name="room_id" id="room_id">
+                    <div class="mb-3">
+                        <label for="name" class="form-label">ชื่อห้อง</label>
+                        <input type="text" class="form-control" name="name" id="name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="capacity" class="form-label">ความจุ (คน)</label>
+                        <input type="number" class="form-control" name="capacity" id="capacity">
+                    </div>
+                    <div class="mb-3">
+                        <label for="room_type" class="form-label">ประเภทห้อง (ถ้ามี)</label>
+                        <input type="text" class="form-control" name="room_type" id="room_type" placeholder="เช่น ห้องปฏิบัติการคอมพิวเตอร์">
+                    </div>
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary">บันทึก</button>
+                        <button type="button" id="cancel-edit-btn" class="btn btn-outline-secondary" style="display: none;">ยกเลิกการแก้ไข</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-body">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>ชื่อห้อง</th>
+                            <th>ประเภท</th>
+                            <th>ความจุ</th>
+                            <th>การกระทำ</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for room in rooms %}
+                        <tr>
+                            <td>{{ room.name }}</td>
+                            <td>{{ room.room_type or '-' }}</td>
+                            <td>{{ room.capacity or '-' }}</td>
+                            <td>
+                                <button class="btn btn-sm btn-warning edit-btn"
+                                        data-id="{{ room.id }}"
+                                        data-name="{{ room.name }}"
+                                        data-capacity="{{ room.capacity or '' }}"
+                                        data-type="{{ room.room_type or '' }}">
+                                    <i class="bi bi-pencil-fill"></i> แก้ไข
+                                </button>
+                                <form class="d-inline" action="{{ url_for('admin.delete_room', room_id=room.id) }}" method="POST" onsubmit="return confirm('ยืนยันการลบห้องนี้?');">
+                                    {{ form.hidden_tag() }}
+                                    <button type="submit" class="btn btn-sm btn-danger"><i class="bi bi-trash-fill"></i> ลบ</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" class="text-center text-muted">ยังไม่มีข้อมูลห้องเรียน</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('room-form');
+    const formTitle = document.getElementById('form-title');
+    const roomIdInput = document.getElementById('room_id');
+    const cancelBtn = document.getElementById('cancel-edit-btn');
+
+    document.querySelectorAll('.edit-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            formTitle.textContent = 'แก้ไขข้อมูลห้องเรียน';
+            roomIdInput.value = this.dataset.id;
+            document.getElementById('name').value = this.dataset.name;
+            document.getElementById('capacity').value = this.dataset.capacity;
+            document.getElementById('room_type').value = this.dataset.type;
+
+            cancelBtn.style.display = 'block';
+            window.scrollTo(0, 0);
+        });
+    });
+
+    cancelBtn.addEventListener('click', function() {
+        formTitle.textContent = 'เพิ่มห้องเรียนใหม่';
+        form.reset();
+        roomIdInput.value = '';
+        this.style.display = 'none';
+    });
+});
+</script>
+{% endblock %}

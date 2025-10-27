@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="h3">{{ title }}</h1>
+<p>สรุปผลสัมฤทธิ์ทางการเรียนรายวิชา (ภาพรวม)</p>
+<hr>
+
+<table class="table table-bordered table-sm">
+    <thead class="table-light text-center">
+        <tr>
+            <th rowspan="2">รหัสวิชา</th>
+            <th rowspan="2">รายวิชา</th>
+            <th rowspan="2">หน่วยกิต</th>
+            <th rowspan="2">ครูผู้สอน</th>
+            <th rowspan="2">จำนวน นร.</th>
+            <th colspan="8">จำนวนนักเรียนที่ได้ระดับผลการเรียน</th>
+            <th rowspan="2">รวม</th>
+            <th rowspan="2">ผลการเรียนเฉลี่ย</th>
+        </tr>
+        <tr>
+            <th>4</th>
+            <th>3.5</th>
+            <th>3</th>
+            <th>2.5</th>
+            <th>2</th>
+            <th>1.5</th>
+            <th>1</th>
+            <th>0</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for data in summary_data %}
+        <tr>
+            <td>{{ data.subject.subject_code }}</td>
+            <td>{{ data.subject.name }}</td>
+            <td class="text-center">{{ data.subject.default_credits }}</td>
+            <td>{{ data.teacher.full_name }}</td>
+            <td class="text-center">{{ data.total_students }}</td>
+            <td class="text-center">{{ data.grade_counts.get('4', 0) }}</td>
+            <td class="text-center">{{ data.grade_counts.get('3.5', 0) }}</td>
+            <td class="text-center">{{ data.grade_counts.get('3', 0) }}</td>
+            <td class="text-center">{{ data.grade_counts.get('2.5', 0) }}</td>
+            <td class="text-center">{{ data.grade_counts.get('2', 0) }}</td>
+            <td class="text-center">{{ data.grade_counts.get('1.5', 0) }}</td>
+            <td class="text-center">{{ data.grade_counts.get('1', 0) }}</td>
+            <td class="text-center">{{ data.grade_counts.get('0', 0) }}</td>
+            <td class="text-center fw-bold">{{ data.total_students }}</td>
+            <td class="text-center fw-bold">{{ "%.2f"|format(data.gpa) }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

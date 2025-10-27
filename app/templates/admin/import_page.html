@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% from 'admin/_macros.html' import render_import_page %}
+
+{% block title %}EdHub {{ title }}{% endblock %}
+
+{% block sidebar %}
+    {% include 'admin/_sidebar.html' %}
+{% endblock %}
+
+{% block main_content %}
+    {{ render_import_page(title, icon_class, download_url, upload_form, required_columns) }}
+{% endblock %}

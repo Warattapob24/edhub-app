@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-3">
+        {% include 'admin/_admin_menu.html' %}
+    </div>
+    <div class="col-md-9">
+        <h1><i class="fas fa-brain"></i> เครื่องมือจัดตารางสอนอัตโนมัติ</h1>
+        <p>
+            มหาเวทบทนี้จะรวบรวมข้อมูลทั้งหมด (รายวิชา, ห้องเรียน, ครู, กฎ และคำขอพร)
+            เพื่อสร้างตารางสอนฉบับร่างที่ดีที่สุดขึ้นมา
+        </p>
+
+        <div class="card border-primary mb-4">
+            <div class="card-header bg-primary text-white">
+                <h4>เริ่มจัดตารางสอน</h4>
+            </div>
+            <div class="card-body">
+                <form action="{{ url_for('admin.run_scheduler') }}" method="POST">
+                    <div class="row">
+                        <div class="col-md-5">
+                            <label for="academic_year" class="form-label">สำหรับปีการศึกษา:</label>
+                            <input type="number" name="academic_year" class="form-control" value="{{ now.year + 543 }}">
+                        </div>
+                        <div class="col-md-5">
+                            <label for="semester" class="form-label">สำหรับภาคเรียนที่:</label>
+                            <select name="semester" class="form-select">
+                                <option value="1">1</option>
+                                <option value="2">2</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2 d-flex align-items-end">
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="fas fa-play-circle"></i> เริ่ม!
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+<div class="card mt-4">
+    <div class="card-header">
+        <h4>ผลลัพธ์การจัดตารางสอนล่าสุด</h4>
+    </div>
+    <div class="card-body">
+        {% if conflicts is not none %}
+            {% if conflicts %}
+                <div class="alert alert-warning">
+                    <strong>พบข้อขัดแย้ง {{ conflicts|length }} รายการ</strong>
+                    <p>รายวิชาต่อไปนี้ไม่สามารถจัดลงตารางได้เนื่องจากเงื่อนไขแน่นเกินไป:</p>
+                    <ul>
+                        {% for conflict in conflicts %}
+                        <li>วิชา <strong>{{ conflict.subject_name }}</strong> สำหรับห้อง <strong>{{ conflict.class_group_name }}</strong></li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            {% else %}
+                <div class="alert alert-success">
+                    <strong>จัดตารางสอนสำเร็จ!</strong> ไม่พบข้อขัดแย้งใดๆ
+                </div>
+            {% endif %}
+        {% else %}
+            <p class="text-muted">ยังไม่มีการจัดตารางสอน กรุณากดปุ่ม "เริ่ม" เพื่อดำเนินการ</p>
+        {% endif %}
+    </div>
+</div>
+    </div>
+</div>
+{% endblock %}

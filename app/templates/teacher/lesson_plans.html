@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+{% block sidebar %}
+    {% include 'teacher/_sidebar.html' %}
+{% endblock %}
+
+{% block main_content %}
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2><i class="bi bi-person-workspace me-2"></i> หน้าหลักสำหรับครู</h2>
+        <div>
+            {% if current_semester %}
+                <span class="badge bg-info fs-6">ภาคเรียนปัจจุบัน: {{ current_semester.term }}/{{ current_semester.academic_year.year }}</span>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h5><i class="bi bi-journals me-2"></i> แผนการสอนที่รับผิดชอบในภาคเรียนนี้</h5>
+        </div>
+        <div class="card-body">
+            {% if grouped_plans %}
+                <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+                    {% for group_key, data in grouped_plans.items() %} {# Changed variable name from plan_id #}
+                        {# Now data contains either a 'plan' object or just 'courses' #}
+                        {% set courses = data.courses|sort(attribute='classroom.name') %}
+                        {% set representative_course = courses[0] if courses else None %} {# Get subject/year info #}
+                        <div class="col">
+                            <div class="card h-100">
+                                <div class="card-body d-flex flex-column">
+                                    {% if representative_course %}
+                                    <h5 class="card-title">{{ representative_course.subject.subject_code }} - {{ representative_course.subject.name }}</h5>
+                                    <p class="card-text text-muted">กลุ่มสาระฯ: {{ representative_course.subject.subject_group.name }}</p>
+                                    <div class="mb-3">
+                                        <small class="text-muted">ห้องเรียนที่สอน:</small>
+                                        <div>
+                                        {% for course in courses %}
+                                            <span class="badge bg-light text-dark me-1">{{ course.classroom.name }}</span>
+                                        {% endfor %}
+                                        </div>
+                                    </div>
+                                    {% else %}
+                                    <h5 class="card-title text-muted">ข้อมูลไม่สมบูรณ์</h5>
+                                    {% endif %}
+                                    <div class="mt-auto d-flex justify-content-between align-items-center">
+                                        {% if data.plan %} {# Check if a plan exists for this group item #}
+                                            {# If plan exists, show Workspace button #}
+                                            <a href="{{ url_for('teacher.workspace', plan_id=data.plan.id) }}" class="btn btn-sm btn-outline-primary me-1">
+                                                <i class="bi bi-pencil-square"></i> เข้าสู่ Workspace
+                                            </a>
+                                        {% else %}
+                                            {# If no plan exists, show Create/Import button #}
+                                            {% if representative_course and current_semester %}
+                                                <button type="button" class="btn btn-sm btn-success import-plan-button"
+                                                        data-bs-toggle="modal" data-bs-target="#importPlanModal"
+                                                        data-subject-id="{{ representative_course.subject_id }}"
+                                                        data-subject-name="{{ representative_course.subject.name }}"
+                                                        data-target-year-id="{{ current_semester.academic_year_id }}"
+                                                        data-target-year-name="{{ current_semester.academic_year.year }}"
+                                                        data-target-semester-term="{{ current_semester.term }}">
+                                                    <i class="bi bi-plus-circle-fill"></i> สร้าง/นำเข้าแผนการสอน
+                                                </button>
+                                            {% else %}
+                                                 <span class="text-muted small">รอข้อมูล Course/Semester</span>
+                                            {% endif %}
+                                        {% endif %}
+                                    </div>
+                                    </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="text-center text-muted py-5">
+                    <h4><i class="bi bi-inbox"></i></h4>
+                    <p>ยังไม่มีรายวิชาที่ได้รับมอบหมายในภาคเรียนนี้</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="modal fade" id="importPlanModal" tabindex="-1" aria-labelledby="importPlanModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="importPlanModalLabel">สร้าง/นำเข้าแผนการสอน</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="importSubjectId">
+                    <input type="hidden" id="importTargetYearId">
+                    <p>วิชา: <strong id="importSubjectName">[ชื่อวิชา]</strong><br>
+                        สำหรับปีการศึกษา: <strong id="importTargetYearName">[ปีเป้าหมาย]</strong> / <strong id="importTargetSemesterTerm">[เทอมเป้าหมาย]</strong>
+                    </p>
+                    <hr>
+                    <h6><i class="bi bi-search"></i> ค้นหาแผนการสอนเดิมของวิชานี้:</h6>
+                    <div id="previousPlansList" class="list-group mb-3" style="max-height: 250px; overflow-y: auto;">
+                        <div class="list-group-item text-center">
+                            <div class="spinner-border spinner-border-sm" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            กำลังค้นหา...
+                        </div>
+                    </div>
+                    <hr>
+                    <h6><i class="bi bi-chevron-right"></i> เลือกดำเนินการ:</h6>
+                    <div class="d-grid gap-2">
+                         <button type="button" class="btn btn-primary" id="confirmImportBtn" disabled>
+                             <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                             <i class="bi bi-download"></i> นำเข้าแผนที่เลือก
+                         </button>
+                         <button type="button" class="btn btn-outline-success" id="confirmCreateBlankBtn">
+                             <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                             <i class="bi bi-file-earmark-plus"></i> เริ่มต้นสร้างแผนใหม่ (แผนเปล่า)
+                         </button>
+                    </div>
+                    <div id="import-status" class="mt-2 text-danger small"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal fade" id="viewLogsModal" tabindex="-1" aria-labelledby="viewLogsModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="viewLogsModalLabel">บันทึกหลังสอน (ฉบับเดิม)</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="previousLogsContent">
+                    <div class="text-center">
+                        <div class="spinner-border" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ปิด</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="{{ url_for('static', filename='js/lesson_plan_import.js') }}"></script> {# <-- ADDED THIS #}
+{% endblock %}

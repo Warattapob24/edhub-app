@@ -1,0 +1,56 @@
+{
+    "roles": [
+        "Admin",
+        "DepartmentHead",
+        "Teacher",
+        "Student"
+    ],
+    "users": [
+        {
+            "username": "admin",
+            "full_name": "Warattapob Tumnahard",
+            "roles": [
+                "Admin"
+            ]
+        },
+        {
+            "username": "head_sci",
+            "full_name": "หัวหน้าสาระวิทย์",
+            "roles": [
+                "DepartmentHead",
+                "Teacher"
+            ]
+        },
+        {
+            "username": "teacher_a",
+            "full_name": "ครู A",
+            "roles": [
+                "Teacher"
+            ]
+        },
+        {
+            "username": "warattapob",
+            "full_name": "Warattapob Tumnahard",
+            "roles": [
+                "DepartmentHead",
+                "Teacher"
+            ]
+        }
+    ],
+    "learning_areas": [
+        "ภาษาไทย",
+        "คณิตศาสตร์",
+        "วิทยาศาสตร์และเทคโนโลยี",
+        "สังคมศึกษา ศาสนา และวัฒนธรรม",
+        "สุขศึกษาและพลศึกษา",
+        "ศิลปะ",
+        "การงานอาชีพ",
+        "ภาษาต่างประเทศ"
+    ],
+    "grade_levels": [
+        "มัธยมศึกษาปีที่ 1",
+        "มัธยมศึกษาปีที่ 2",
+        "มัธยมศึกษาปีที่ 3",
+        "มัธยมศึกษาปีที่ 4"
+    ]
+}

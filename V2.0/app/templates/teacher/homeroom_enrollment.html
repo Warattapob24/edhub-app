@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Homeroom Enrollment</title>
+</head>
+<body>
+    <h1>Homeroom Enrollment Management</h1>
+
+    <h2>Register New Student</h2>
+    <form id="enrollment-form">
+        <label for="academic_year_select">Academic Year:</label>
+        <select id="academic_year_select" name="academic_year_id" required>
+            <option value="">Select Academic Year</option>
+            {% for year in academic_years %}
+            <option value="{{ year.id }}">{{ year.year }}</option>
+            {% endfor %}
+        </select>
+        <br>
+
+        <label for="classroom_select">Classroom:</label>
+        <select id="classroom_select" name="classroom_id" required>
+            <option value="">Select Classroom</option>
+            {% for classroom in classrooms %}
+            <option value="{{ classroom.id }}">{{ classroom.name }}</option>
+            {% endfor %}
+        </select>
+        <br>
+
+        <label for="student_select">Student:</label>
+        <select id="student_select" name="student_id" required>
+            <option value="">Select Student</option>
+            {% for student in students %}
+            <option value="{{ student.id }}">{{ student.id_code }} - {{ student.first_name }} {{ student.last_name }}</option>
+            {% endfor %}
+        </select>
+        <br>
+
+        <button type="submit">Enroll Student</button>
+    </form>
+
+    <div id="status-message"></div>
+
+    <hr>
+
+    <h2>Current Enrollments</h2>
+    <table border="1">
+        <thead>
+            <tr>
+                <th>Academic Year</th>
+                <th>Classroom</th>
+                <th>Student ID</th>
+                <th>Student Name</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for enrollment in enrollments %}
+            <tr>
+                <td>{{ enrollment.academic_year.year }}</td>
+                <td>{{ enrollment.classroom.name }}</td>
+                <td>{{ enrollment.student.id_code }}</td>
+                <td>{{ enrollment.student.first_name }} {{ enrollment.student.last_name }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            $('#enrollment-form').submit(function(event) {
+                event.preventDefault();
+                var formData = {
+                    'academic_year_id': $('#academic_year_select').val(),
+                    'classroom_id': $('#classroom_select').val(),
+                    'student_id': $('#student_select').val()
+                };
+
+                $.ajax({
+                    type: 'POST',
+                    url: '/teacher/homeroom_enrollment',
+                    contentType: 'application/json',
+                    data: JSON.stringify(formData),
+                    dataType: 'json',
+                    success: function(response) {
+                        $('#status-message').text(response.message);
+                        if (response.status === 'success') {
+                            location.reload(); // Reload the page to show new enrollment
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        var errorMessage = xhr.responseJSON.message || 'An error occurred.';
+                        $('#status-message').text(errorMessage);
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html>

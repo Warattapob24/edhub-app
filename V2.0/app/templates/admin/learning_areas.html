@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-4">
+        <h2>เพิ่มกลุ่มสาระฯ ใหม่</h2>
+        <form method="POST" action="">
+            {{ form.hidden_tag() }}
+            <div class="mb-3">
+                {{ form.name.label(class="form-label") }}
+                {{ form.name(class="form-control") }}
+            </div>
+            {{ form.submit(class="btn btn-primary") }}
+        </form>
+    </div>
+    <div class="col-md-8">
+        <h2>กลุ่มสาระฯ ทั้งหมด</h2>
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th scope="col">#</th>
+                    <th scope="col">ชื่อกลุ่มสาระฯ</th>
+                    <th scope="col">การกระทำ</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for area in areas %}
+                <tr>
+                    <th scope="row">{{ loop.index }}</th>
+                    <td>{{ area.name }}</td>
+                    <td>
+                        <form action="{{ url_for('admin.delete_learning_area', id=area.id) }}" method="POST" onsubmit="return confirm('คุณแน่ใจหรือไม่ว่าต้องการลบ?');">
+                            <button type="submit" class="btn btn-danger btn-sm"><i class="bi bi-trash"></i> ลบ</button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="3" class="text-center">ยังไม่มีข้อมูลกลุ่มสาระฯ</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+{% block sidebar %}
+    {% include 'admin/_sidebar.html' %}
+{% endblock %}
+{% block main_content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2><i class="bi bi-person-lines-fill"></i> {{ title }}</h2>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">สรุปข้อมูล</h5>
+    </div>
+    <div class="card-body">
+        <p>กรุณาตรวจสอบข้อมูลด้านล่างก่อนยืนยันการนำเข้า (แถวที่มีคำเตือน <span class="badge bg-warning text-dark">คำเตือน</span> จะยังถูกนำเข้า แต่ข้อมูลบางส่วนอาจไม่สมบูรณ์)</p>
+        <div class="row text-center">
+            <div class="col-md-4">
+                <div class="card bg-light">
+                    <div class="card-body">
+                        <h4 class="mb-0">{{ data|length }}</h4>
+                        <small class="text-muted">จำนวนรายการทั้งหมด</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card bg-light">
+                    <div class="card-body">
+                        <h4 class="mb-0">{{ data|selectattr('status', 'equalto', 'New')|list|length }}</h4>
+                        <small class="text-muted">นักเรียนใหม่</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card bg-light">
+                    <div class="card-body">
+                        <h4 class="mb-0">{{ data|selectattr('status', 'equalto', 'Update')|list|length }}</h4>
+                        <small class="text-muted">อัปเดตข้อมูล</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="text-center">แถวที่</th>
+                        <th>รหัสนักเรียน</th>
+                        <th>ชื่อ-นามสกุล</th>
+                        <th>ห้องเรียน</th>
+                        <th class="text-center">สถานะ</th>
+                        <th>คำเตือน</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in data %}
+                    <tr {% if row.warnings %}class="table-warning"{% endif %}>
+                        <td class="text-center">{{ row.row_num }}</td>
+                        <td>{{ row.student_id }}</td>
+                        <td>{{ row.name_prefix }}{{ row.first_name }} {{ row.last_name }}</td>
+                        <td>
+                            {{ row.classroom_name }} 
+                            {% if row.classroom_found %}
+                                <span class="badge bg-success-subtle text-success-emphasis rounded-pill">✓ พบ</span>
+                            {% else %}
+                                <span class="badge bg-danger-subtle text-danger-emphasis rounded-pill">✗ ไม่พบ</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if row.status == 'New' %}
+                                <span class="badge bg-primary">ใหม่</span>
+                            {% else %}
+                                <span class="badge bg-info">อัปเดต</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% for warning in row.warnings %}
+                                <span class="badge bg-warning-subtle text-warning-emphasis rounded-pill">{{ warning }}</span>
+                            {% endfor %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="card-footer text-end">
+        <a href="{{ url_for('admin.import_students') }}" class="btn btn-secondary">ยกเลิก</a>
+        <form action="{{ url_for('admin.execute_student_import') }}" method="POST" class="d-inline" onsubmit="return confirm('คุณยืนยันที่จะนำเข้าข้อมูลทั้งหมดนี้ใช่หรือไม่?');">
+            {{ form.csrf_token }}
+            <button type="submit" class="btn btn-primary"><i class="bi bi-check-circle-fill"></i> ยืนยันและนำเข้าข้อมูล</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

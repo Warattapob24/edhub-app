@@ -1,0 +1,439 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+{% block sidebar %}{% include 'academic/_sidebar.html' %}{% endblock %}
+
+{# ========================================================== #}
+{# [FIX] คัดลอก MACRO ที่ขาดหายไปมาวางไว้ที่นี่ #}
+{# ========================================================== #}
+{% macro render_assessment_summary_bar(summary) %}
+    {% if summary %}
+        {% set total = summary.values()|map('int', 0)|sum %}
+        {% if total > 0 %}
+            <div class="progress" style="height: 20px;" title="{% for k,v in summary.items() %}{{ k }}: {{ v }} {% endfor %}">
+                {% set color_map = {'ดีเยี่ยม': 'bg-success', 'ดี': 'bg-primary', 'ผ่าน': 'bg-info', 'ไม่ผ่าน': 'bg-danger'} %}
+                {% set sorted_labels = ['ดีเยี่ยม', 'ดี', 'ผ่าน', 'ไม่ผ่าน'] %}
+                {% for label in sorted_labels %}
+                    {% set value = summary.get(label)|int(0) %}
+                    {% if value > 0 %}
+                        <div class="progress-bar {{ color_map.get(label, 'bg-secondary') }}"
+                             style="width: {{ (value / total) * 100 }}%"></div>
+                    {% endif %}
+                {% endfor %}
+            </div>
+        {% else %}
+            <span class="text-muted small">ไม่มีข้อมูล</span>
+        {% endif %}
+    {% else %}
+        <span class="text-muted small">ไม่มีข้อมูล</span>
+    {% endif %}
+{% endmacro %}
+
+{% block main_content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div><h1 class="h2"><i class="bi bi-clipboard2-check-fill me-2"></i> {{ title }}</h1>
+         <p class="text-muted">ภาคเรียน {{ semester.term }}/{{ semester.academic_year.year }}</p>
+    </div>
+</div>
+
+<div class="row mb-4 g-3">
+    <div class="col-md-6"><div class="card shadow-sm h-100"><div class="card-body d-flex align-items-center"><div class="fs-2 text-warning me-3"><i class="bi bi-hourglass-split"></i></div><div><div class="h1 fw-bold mb-0">{{ stats.pending }}</div><div class="text-muted">รายการรอเสนออนุมัติ</div></div></div></div></div>
+    <div class="col-md-6"><div class="card shadow-sm h-100"><div class="card-body d-flex align-items-center"><div class="fs-2 text-success me-3"><i class="bi bi-check-circle-fill"></i></div><div><div class="h1 fw-bold mb-0">{{ stats.approved }}</div><div class="text-muted">รายการเสนออนุมัติแล้ว</div></div></div></div></div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center bg-light">
+                <h6 class="mb-0">ภาพรวมผลการประเมินที่รอเสนออนุมัติ</h6>
+                {% if assessment_stats|length > 1 %}<select class="form-select form-select-sm w-auto" id="chart-template-selector">
+                    {% for stat in assessment_stats.values() %}<option value="{{ stat.id }}">{{ stat.name }}</option>{% endfor %}
+                </select>{% endif %}
+            </div>
+            {# Canvas is rendered; JS handles showing/hiding based on data #}
+            <div class="card-body" style="min-height: 430px; height: 430px; max-height: none;">
+                <canvas id="assessmentChart"></canvas>
+            </div>
+        </div>
+        {# Button logic remains #}
+        <div class="d-flex justify-content-end mb-3">
+            <button class="btn btn-success" id="approve-all-btn" {% if stats.pending == 0 %}disabled{% endif %}><i class="bi bi-check-circle-fill me-2"></i> เสนอผู้อำนวยการเพื่อพิจารณา ({{ stats.pending }} คน)</button>
+        </div>
+
+        {% if records_by_grade_level %}
+        {# --- Outer Accordion: By Grade Level --- #}
+        <div class="accordion" id="gradeLevelAccordion">
+        {% for grade_level_name, classrooms_data in records_by_grade_level|dictsort %}
+            <div class="accordion-item">
+                <h2 class="accordion-header" id="heading-grade-{{ loop.index }}">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-grade-{{ loop.index }}">
+                        <strong>{{ grade_level_name }}</strong>
+                        {# --- THE FIX IS HERE: Safer way to count pending items in grade --- #}
+                        {% set all_records_in_grade = [] %}
+                        {% for class_data in classrooms_data.values() %}{% do all_records_in_grade.extend(class_data['records']) %}{% endfor %}
+                        {% set grade_pending_count = all_records_in_grade | selectattr('0.status', 'equalto', 'Submitted to Academic Affairs') | list | length %}
+                        {# --- END FIX --- #}
+                        {% if grade_pending_count > 0 %}
+                            <span class="badge bg-warning text-dark rounded-pill ms-auto">{{ grade_pending_count }} รายการรอเสนออนุมัติ</span>
+                        {% else %}
+                            <span class="badge bg-success rounded-pill ms-auto"><i class="bi bi-check-circle-fill"></i> เรียบร้อย</span>
+                        {% endif %}
+                    </button>
+                </h2>
+                <div id="collapse-grade-{{ loop.index }}" class="accordion-collapse collapse" data-bs-parent="#gradeLevelAccordion">
+                    <div class="accordion-body p-2">
+                        {# --- Inner Accordion: By Classroom --- #}
+                        <div class="accordion" id="classroomAccordion-{{ loop.index }}">
+                        {% for classroom_name, data in classrooms_data|dictsort %}
+                            <div class="accordion-item">
+                                <h2 class="accordion-header">
+                                    <button class="accordion-button collapsed py-2" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-{{ classroom_name|replace('/', '-') }}">
+                                        ห้องเรียน {{ classroom_name }}
+                                        <small class="text-muted ms-2">| ครูที่ปรึกษา: {{ data.advisors|join(', ') if data.advisors else 'N/A' }}</small>
+                                        {% set pending_count = data.records|selectattr('0.status', 'equalto', 'Submitted to Academic Affairs')|list|length %}
+                                        {% if pending_count > 0 %}
+                                            <span class="badge bg-warning text-dark rounded-pill ms-auto">{{ pending_count }} รอเสนออนุมัติ</span>
+                                        {% else %}
+                                                <span class="badge bg-success rounded-pill ms-auto"><i class="bi bi-check-circle-fill"></i> เสนออนุมัติแล้ว</span>
+                                        {% endif %}
+                                    </button>
+                                </h2>
+                                <div id="collapse-{{ classroom_name|replace('/', '-') }}" class="accordion-collapse collapse" data-bs-parent="#classroomAccordion-{{ loop.index }}">
+                                    <div class="accordion-body p-0">
+                                        <div class="table-responsive">
+                                            <table class="table table-hover align-middle mb-0">
+                                                
+                                                <thead class="table-light">
+                                                    <tr>
+                                                        <th class="ps-3">นักเรียน</th>
+                                                        <th style="width: 40%;">สรุปผลการประเมิน</th>
+                                                        <th class="text-end pe-3">การกระทำ</th>
+                                                    </tr>
+                                                </thead>
+                                                
+                                                <tbody>
+                                                    {% for record, enrollment, summary in data.records if record.status == 'Submitted to Academic Affairs' %}
+                                                    <tr>
+                                                        <td class="ps-3">{{ enrollment.roll_number }}. {{ enrollment.student.first_name }} {{ enrollment.student.last_name }}</td>
+                                                        <td>{{ render_assessment_summary_bar(summary) }}</td> 
+                                                        <td class="text-end pe-3">
+                                                            <button class="btn btn-sm btn-outline-primary review-btn"
+                                                                data-record-id="{{ record.id }}"
+                                                                data-student-name="{{ enrollment.student.first_name }} {{ enrollment.student.last_name }}"
+                                                                data-bs-toggle="modal" data-bs-target="#reviewModal">
+                                                                ตรวจสอบ
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                    {% endfor %}
+                                                </tbody>
+
+                                                <tbody class="border-top">
+                                                    {% for record, enrollment, summary in data.records if record.status != 'Submitted to Academic Affairs' %}
+                                                    <tr class="text-muted">
+                                                        <td class="ps-3">{{ enrollment.roll_number }}. {{ enrollment.student.first_name }} {{ enrollment.student.last_name }}</td>
+                                                        <td>{{ render_assessment_summary_bar(summary) }}</td> 
+                                                        <td class="text-end pe-3">
+                                                            <span class="badge bg-success"><i class="bi bi-check-circle-fill"></i> เสนออนุมัติแล้ว</span>
+                                                            <button class="btn btn-sm btn-outline-secondary review-btn ms-1"
+                                                                data-record-id="{{ record.id }}"
+                                                                data-student-name="{{ enrollment.student.first_name }} {{ enrollment.student.last_name }}"
+                                                                data-bs-toggle="modal" data-bs-target="#reviewModal">
+                                                            ดูข้อมูล
+                                                        </button>
+                                                        </td>
+                                                    </tr>
+                                                    {% endfor %}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                        </div> {# End Inner Accordion #}
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+        </div> {# End Outer Accordion #}
+        {% else %}
+            <div class="text-center text-muted p-5"><i class="bi bi-info-circle fs-1"></i><h4 class="mt-2">ไม่พบข้อมูลผลการประเมิน</h4></div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="modal fade" id="reviewModal" tabindex="-1"><div class="modal-dialog modal-xl"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="reviewModalLabel"></h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body" id="reviewModalBody"></div></div></div></div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // --- [NEW] Helper Functions from Gold Standard ---
+    function createPopoverButton(scores) {
+        if (!scores || scores.length === 0) return ''; 
+        
+        const popoverContent = scores.map(item => {
+            return `<li class='list-group-item p-1 d-flex justify-content-between'><small>${item.subject}</small><span class='badge bg-primary rounded-pill'>${item.score_label}</span></li>`;
+        }).join('');
+        
+        // [FIX] ลบ 'ms-2' ออกเพื่อให้ปุ่มรวมเป็นกลุ่มเดียวกับ Dropdown
+        return `<button class="btn btn-sm btn-outline-secondary" type="button" 
+                        data-bs-toggle="popover" data-bs-html="true" 
+                        title="หลักฐานจากครูผู้สอน" 
+                        data-bs-content="<ul class='list-group list-group-flush'>${popoverContent.replace(/"/g, '&quot;')}</ul>">
+                    <i class="bi bi-info-circle"></i>
+                </button>`;
+    };
+
+    function initPopovers(modalBody) {
+        const popoverTriggerList = [].slice.call(modalBody.querySelectorAll('[data-bs-toggle="popover"]'));
+        popoverTriggerList.map(function (popoverTriggerEl) {
+            return new bootstrap.Popover(popoverTriggerEl, {
+                fallbackPlacements: ['left', 'right', 'top', 'bottom'],
+                container: modalBody,
+                trigger: 'hover focus' // [FIX] เพิ่มพฤติกรรมตามต้นแบบ
+            });
+        });
+    }
+    // --- Approve Button Logic ---
+    const approveBtn = document.getElementById('approve-all-btn');
+    if (approveBtn) {
+        approveBtn.addEventListener('click', function() {
+            Swal.fire({
+                title: 'ยืนยันการเสนอต่อให้ผู้อำนวยการ?', text: "ระบบจะเสนออนุมัติผลการประเมินทั้งหมดที่รออยู่", icon: 'question',
+                showCancelButton: true, confirmButtonText: 'ยืนยันและเสนออนุมัติ'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    // --- THE FIX IS HERE: Get CSRF token *inside* the click handler ---
+                    const csrfToken = document.querySelector('meta[name="csrf-token"]').content; 
+                    
+                    fetch("{{ url_for('academic.forward_to_director') }}", {
+                        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken }
+                    }).then(res => {
+                         // Add check for non-OK responses before parsing JSON
+                         if (!res.ok) {
+                             return res.text().then(text => { throw new Error(res.statusText + ": " + text) });
+                         }
+                         return res.json();
+                    }).then(data => {
+                        if (data.status === 'success') { Swal.fire('สำเร็จ!', data.message, 'success').then(() => location.reload()); } 
+                        else { Swal.fire('ผิดพลาด!', data.message || 'ไม่สามารถเสนออนุมัติได้', 'error'); } // Provide a default message
+                    }).catch(error => { 
+                        console.error('Fetch Error:', error); // Log the actual error
+                        // Display a more informative error or the generic one
+                        Swal.fire('ผิดพลาด!', error.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อ', 'error'); 
+                    });
+                }
+            });
+        });
+    }
+
+    // --- Review Modal Logic (Identical to grade_level_head) ---
+// --- [GOLD STANDARD MODAL] ---
+    let modalChartInstances = {}; 
+    const reviewModal = document.getElementById('reviewModal');
+    if (reviewModal) {
+        reviewModal.addEventListener('show.bs.modal', async function(event) {
+            const button = event.relatedTarget;
+            reviewModal.querySelector('.modal-title').textContent = 'ผลการประเมิน: ' + button.dataset.studentName;
+            const modalBody = reviewModal.querySelector('.modal-body');
+            modalBody.innerHTML = '<div class="text-center p-5"><div class="spinner-border"></div></div>';
+
+            Object.values(modalChartInstances).forEach(chart => chart.destroy());
+            modalChartInstances = {};
+
+            try {
+                const res = await fetch(`/academic/api/assessment-record/${button.dataset.recordId}/details`);
+                
+                if (!res.ok) throw new Error('ไม่สามารถโหลดข้อมูลได้');
+                const data = await res.json();
+                
+                if (!data || data.length === 0) {
+                    modalBody.innerHTML = '<p class="text-muted text-center p-3">ไม่พบข้อมูลการประเมิน</p>';
+                    return;
+                }
+
+                let navTabsHTML = '';
+                let tabContentHTML = '';
+
+                data.forEach((template, index) => {
+                    const isActive = index === 0;
+                    navTabsHTML += `<li class="nav-item" role="presentation"><button class="nav-link ${isActive ? 'active' : ''}" data-bs-toggle="tab" data-bs-target="#modal-pane-${index}" type="button">${template.name}</button></li>`;
+
+                    // [FIX] สร้าง Table Rows (แยกคอลัมน์ Popover)
+                    const tableRows = (template.topics || []).map(t => {
+                        const label = template.rubric_map?.[t.score] ?? t.score ?? '-';
+                        const popoverBtn = createPopoverButton(t.evidence_scores); // <--- เรียกใช้
+                        return `
+                            <tr>
+                                <td>${t.name}</td>
+                                <td class="text-center align-middle">${label} ${popoverBtn}</td>
+                            </tr>
+                        `;
+                    }).join('');
+                    
+                    const hasChartData = template.topics && template.topics.length > 0;
+
+                    // [FIX] ใช้ Layout แบบ Side-by-Side (col-lg-6)
+                    tabContentHTML += `
+                        <div class="tab-pane fade ${isActive ? 'show active' : ''}" id="modal-pane-${index}">
+                            <div class="row mt-3 g-4">
+                                <div class="col-lg-6" style="min-height: 350px;">
+                                    ${hasChartData ? `<canvas id="modalRadarChart-${index}"></canvas>` : `<div class="d-flex h-100 justify-content-center align-items-center text-muted">(ไม่มีข้อมูลกราฟ)</div>`}
+                                </div>
+                                <div class="col-lg-6">
+                                    <div class="table-responsive">
+                                        <table class="table table-sm table-bordered">
+                                            <thead class="table-light">
+                                                <tr>
+                                                    <th>หัวข้อ</th>
+                                                    <th class="text-center" style="width: 25%;">ผลสรุป</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>${tableRows}</tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>`;
+                });
+
+                modalBody.innerHTML = `<ul class="nav nav-tabs">${navTabsHTML}</ul><div class="tab-content">${tabContentHTML}</div>`;
+                
+                initPopovers(modalBody);
+
+                // สร้างกราฟ
+                setTimeout(() => {
+                    data.forEach((template, index) => {
+                        if (template.topics && template.topics.length > 0) {
+                            const ctx = document.getElementById(`modalRadarChart-${index}`);
+                            if (ctx) {
+                                modalChartInstances[index] = new Chart(ctx, {
+                                    type: 'radar',
+                                    data: {
+                                        labels: template.topics.map(t => t.name),
+                                        datasets: [{
+                                            data: template.topics.map(t => Number(t.score ?? 0)),
+                                            backgroundColor: 'rgba(54, 162, 255, 0.2)',
+                                            borderColor: 'rgb(54, 162, 235)'
+                                        }]
+                                    },
+                                    options: {
+                                        responsive: true,
+                                        maintainAspectRatio: false,
+                                        scales: { r: { suggestedMin: 0, suggestedMax: 3, ticks: { stepSize: 1 } } },
+                                        plugins: { legend: { display: false } }
+                                    }
+                                });
+                            }
+                        }
+                    });
+                }, 150);
+
+            } catch (err) {
+                console.error("Error loading/rendering modal details:", err);
+                modalBody.innerHTML = `<div class="alert alert-danger">เกิดข้อผิดพลาดในการโหลดข้อมูล: ${err.message}</div>`;
+            }
+        });
+
+        reviewModal.addEventListener('hidden.bs.modal', function () {
+            Object.values(modalChartInstances).forEach(chart => chart.destroy());
+            modalChartInstances = {};
+            document.querySelectorAll('.popover').forEach(popover => popover.remove());
+        });
+    }
+
+    // --- Stacked Bar Chart Logic (Identical to grade_level_head) ---
+    const chartData = {{ assessment_stats|tojson }};
+    const chartCanvas = document.getElementById('assessmentChart');
+    const templateSelector = document.getElementById('chart-template-selector');
+    let stackedBarChart = null;
+
+    function updateStackedBarChart(templateId) {
+        // --- Ensure chartCanvas exists ---
+        const currentCanvas = document.getElementById('assessmentChart'); 
+        if (!currentCanvas) {
+             console.error("Chart canvas 'assessmentChart' not found in the DOM.");
+             return; 
+        }
+        const chartContainer = currentCanvas.parentElement; // The card-body div
+
+        // --- Get the specific data for the selected template ---
+        let data = null;
+        if (chartData && chartData[templateId]) {
+            data = chartData[templateId];
+        }
+
+        // --- THE FIX: Check for VALID chart data ---
+        // Check if data exists AND has the necessary arrays AND they are not empty
+        const hasValidData = data && 
+                             Array.isArray(data.topic_labels) && data.topic_labels.length > 0 &&
+                             Array.isArray(data.datasets) && data.datasets.length > 0 &&
+                             data.datasets.some(ds => Array.isArray(ds.data) && ds.data.length > 0); // Check if at least one dataset has data points
+
+        if (hasValidData) {
+            // Data is valid: Make sure container is visible and has a canvas
+            chartContainer.style.display = 'block'; 
+            let canvasElement = chartContainer.querySelector('canvas');
+            // If canvas doesn't exist (e.g., after showing placeholder), recreate it
+            if (!canvasElement) {
+                chartContainer.innerHTML = '<canvas id="assessmentChart"></canvas>';
+                canvasElement = document.getElementById('assessmentChart'); // Re-get reference
+                if (!canvasElement) { // Safety check
+                    console.error("Failed to recreate canvas element.");
+                    return;
+                }
+            }
+            
+            // Proceed with chart creation/update
+            if (stackedBarChart) {
+                // Update existing chart
+                stackedBarChart.data.labels = data.topic_labels;
+                stackedBarChart.data.datasets = data.datasets;
+                stackedBarChart.update();
+            } else {
+                // Create new chart
+                stackedBarChart = new Chart(canvasElement, {
+                    type: 'bar',
+                    data: { labels: data.topic_labels, datasets: data.datasets },
+                    options: {
+                        indexAxis: 'y',
+                        scales: {
+                            x: { stacked: true, beginAtZero: true, ticks: { stepSize: 1 } },
+                            y: { stacked: true }
+                        },
+                        responsive: true,
+                        maintainAspectRatio: false, // 🔥 ปิดการล็อกอัตราส่วน
+                        plugins: {
+                            legend: { position: 'bottom' }
+                        }
+                    }
+                });
+            }
+        } else {
+            // Data is invalid or empty: Destroy chart and show placeholder
+            if (stackedBarChart) {
+                stackedBarChart.destroy();
+                stackedBarChart = null;
+            }
+            chartContainer.style.display = 'flex'; 
+            chartContainer.style.justifyContent = 'center';
+            chartContainer.style.alignItems = 'center';
+            // Use a unique class for the placeholder to avoid conflicts
+            chartContainer.innerHTML = '<p class="text-muted chart-placeholder-message"><i class="bi bi-bar-chart-line me-2"></i>ไม่มีข้อมูลสำหรับแสดงกราฟ</p>'; 
+        }
+        // --- END FIX ---
+    }
+
+    if (templateSelector && chartCanvas) { 
+        templateSelector.addEventListener('change', (e) => updateStackedBarChart(e.target.value));
+        if (templateSelector.value && chartData[templateSelector.value] && chartData[templateSelector.value].datasets.length > 0) {
+             updateStackedBarChart(templateSelector.value);
+        } else if (chartCanvas) { chartCanvas.parentElement.style.display = 'none'; }
+    } else if (chartCanvas) { chartCanvas.parentElement.style.display = 'none'; }
+});
+</script>
+{% endblock %}

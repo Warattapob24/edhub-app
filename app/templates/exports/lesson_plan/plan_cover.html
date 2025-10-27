@@ -1,0 +1,43 @@
+{# FILE: app/templates/exports/lesson_plan/plan_cover.html #}
+{# Single cover page for the entire lesson plan export #}
+
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <title>ปกแผนการจัดการเรียนรู้ - {{ data.plan_info.subject_name }}</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap');
+        @page { size: A4; margin: 1.5cm; }
+        body { font-family: 'Sarabun', sans-serif; font-size: 11pt; line-height: 1.6; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 26cm; text-align: center; }
+        .cover-content { max-width: 85%; }
+        .school-logo img { max-height: 3.5cm; max-width: 3.5cm; object-fit: contain; margin-bottom: 1cm; }
+        h1 { font-size: 24pt; font-weight: bold; margin-bottom: 1cm; }
+        .info-block { font-size: 16pt; line-height: 1.8; margin-bottom: 2cm; }
+        .teacher-info { font-size: 14pt; margin-top: 3cm; }
+        .school-footer { font-size: 14pt; margin-top: 2cm; }
+    </style>
+</head>
+<body>
+    <div class="cover-content">
+        <div class="school-logo">
+             {% if data.school_info.school_logo_url %}<img src="{{ data.school_info.school_logo_url }}" alt="School Logo">{% endif %}
+        </div>
+        <h1>แผนการจัดการเรียนรู้</h1>
+        <div class="info-block">
+            รายวิชา {{ data.plan_info.subject_name }} ({{ data.plan_info.subject_code }})<br>
+            ปีการศึกษา {{ data.plan_info.academic_year }}
+        </div>
+        <div class="teacher-info">
+            จัดทำโดย<br><br>
+            {{ data.plan_info.teacher_names }}<br>
+            ตำแหน่ง ครู
+        </div>
+         <div class="school-footer">
+             โรงเรียน{{ data.school_info.school_name or '....................' }}<br>
+             สังกัด {{ data.school_info.school_affiliation or '....................' }}<br>
+             อำเภอ {{ data.school_info.school_district or '....................' }} จังหวัด {{ data.school_info.school_province or '....................' }}
+         </div>
+    </div>
+</body>
+</html>

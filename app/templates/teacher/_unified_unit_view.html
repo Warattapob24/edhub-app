@@ -1,0 +1,61 @@
+<div class="container-fluid">
+    <!-- 1. ข้อมูลพื้นฐานหน่วย -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5><i class="bi bi-book"></i> หน่วยการเรียนรู้: {{ unit.title }}</h5>
+        </div>
+        <div class="card-body">
+            <p><strong>คำอธิบาย:</strong> {{ unit.description or "ยังไม่ได้กรอก" }}</p>
+            <p><strong>เวลาเรียน:</strong> {{ unit.duration or "-" }} ชั่วโมง</p>
+        </div>
+    </div>
+
+    <!-- 2. ตัวชี้วัด -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5><i class="bi bi-bullseye"></i> ตัวชี้วัด</h5>
+            <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#indicatorModal">
+                <i class="bi bi-plus-lg"></i> เพิ่มตัวชี้วัด
+            </button>
+        </div>
+        <div class="card-body">
+            <div id="indicator-display-area" class="list-group"></div>
+            <select id="indicator-selector" multiple></select>
+        </div>
+    </div>
+
+    <!-- 3. เกณฑ์การประเมิน -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5><i class="bi bi-list-check"></i> เกณฑ์การประเมิน</h5>
+            <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#criteriaModal">
+                <i class="bi bi-plus-lg"></i> เพิ่มเกณฑ์
+            </button>
+        </div>
+        <div class="card-body" id="criteria-list">
+            {% for c in unit.criteria %}
+                <div class="list-group-item">{{ c.description }} ({{ c.weight }} คะแนน)</div>
+            {% else %}
+                <div class="text-muted">ยังไม่มีเกณฑ์การประเมิน</div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- 4. คะแนนการสอบ -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5><i class="bi bi-pencil-square"></i> คะแนนการสอบ</h5>
+        </div>
+        <div class="card-body row">
+            {% for exam in ["กลางภาค", "ปลายภาค"] %}
+                <div class="col-md-6 mb-3">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input exam-score-switch" type="checkbox" id="exam-{{ loop.index }}">
+                        <label class="form-check-label" for="exam-{{ loop.index }}">{{ exam }}</label>
+                    </div>
+                    <input type="number" class="form-control mt-2" placeholder="คะแนน" disabled>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>

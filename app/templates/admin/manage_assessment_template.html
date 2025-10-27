@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+{% block sidebar %}
+    {% include 'admin/_sidebar.html' %}
+{% endblock %}
+
+{# --- Macro for rendering topic tree recursively --- #}
+{% macro render_topic_tree(topics) %}
+<ul class="list-group">
+    {% for topic in topics|sort(attribute='id') %}
+        <li class="list-group-item" data-id="{{ topic.id }}">
+            <div class="d-flex justify-content-between align-items-center">
+                <span>{{ topic.name }}</span>
+                <div>
+                    <button class="btn btn-sm btn-outline-success add-subtopic-btn" title="เพิ่มหัวข้อย่อย"><i class="bi bi-plus-circle"></i></button>
+                    <button class="btn btn-sm btn-outline-danger delete-topic-btn" title="ลบ"><i class="bi bi-trash"></i></button>
+                </div>
+            </div>
+            {% if topic.children %}
+                <div class="mt-2 ms-4">
+                    {{ render_topic_tree(topic.children) }}
+                </div>
+            {% endif %}
+        </li>
+    {% endfor %}
+</ul>
+{% endmacro %}
+
+{% block main_content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-0">
+              <li class="breadcrumb-item"><a href="{{ url_for('admin.list_assessment_templates') }}">คลังแม่แบบการประเมิน</a></li>
+              <li class="breadcrumb-item active" aria-current="page">{{ tpl.name }}</li>
+            </ol>
+        </nav>
+        <h2><i class="bi bi-pencil-ruler"></i> {{ title }}</h2>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-5">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-bar-chart-steps"></i> จัดการเกณฑ์การประเมิน (Rubric)</h5>
+                <button class="btn btn-sm btn-primary" id="addRubricBtn"><i class="bi bi-plus-lg"></i> เพิ่มระดับ</button>
+            </div>
+            <div class="card-body">
+                <ul class="list-group" id="rubricList">
+                    {% for level in tpl.rubric_levels|sort(attribute='value', reverse=true) %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center" data-id="{{ level.id }}">
+                            <span><strong>{{ level.label }}</strong> (ค่าคะแนน: {{ level.value }})</span>
+                            <button class="btn btn-sm btn-outline-danger delete-rubric-btn"><i class="bi bi-trash"></i></button>
+                        </li>
+                    {% else %}
+                        <li id="no-rubric-item" class="list-group-item text-muted text-center">ยังไม่มีเกณฑ์การประเมิน</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-7">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-list-nested"></i> จัดการหัวข้อการประเมิน</h5>
+                <button class="btn btn-sm btn-primary" id="addTopicBtn"><i class="bi bi-plus-lg"></i> เพิ่มหัวข้อหลัก</button>
+            </div>
+            <div class="card-body" id="topicTree">
+                {% if tpl.topics %}
+                    {{ render_topic_tree(tpl.topics|selectattr('parent_id', 'none')|list) }}
+                {% else %}
+                    <p id="no-topic-item" class="text-muted text-center">ยังไม่มีหัวข้อการประเมิน</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const tplId = {{ tpl.id }};
+    const csrfTokenTopic = '{{ topic_form.csrf_token._value() }}';
+    const csrfTokenRubric = '{{ rubric_form.csrf_token._value() }}';
+
+    // --- Rubric Management ---
+    document.getElementById('addRubricBtn').addEventListener('click', async () => {
+        const { value: formValues } = await Swal.fire({
+            title: 'เพิ่มระดับคะแนนใหม่',
+            html: `
+                <input id="swal-label" class="swal2-input" placeholder="ชื่อระดับ (เช่น ดีเยี่ยม)">
+                <input id="swal-value" type="number" step="0.5" class="swal2-input" placeholder="ค่าคะแนน">`,
+            focusConfirm: false,
+            preConfirm: () => ({
+                label: document.getElementById('swal-label').value,
+                value: document.getElementById('swal-value').value,
+                csrf_token: csrfTokenRubric
+            })
+        });
+
+        if (formValues && formValues.label && formValues.value) {
+            const response = await fetch(`/admin/api/templates/${tplId}/rubrics`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(formValues)
+            });
+            const data = await response.json();
+            if (response.ok) {
+                location.reload(); 
+            } else {
+                Swal.fire('เกิดข้อผิดพลาด', 'กรุณากรอกข้อมูลให้ครบถ้วน', 'error');
+            }
+        }
+    });
+
+    document.getElementById('rubricList').addEventListener('click', async (e) => {
+        if (e.target.closest('.delete-rubric-btn')) {
+            const listItem = e.target.closest('li');
+            const levelId = listItem.dataset.id;
+            const result = await Swal.fire({
+                title: 'ยืนยันการลบ?',
+                text: "การกระทำนี้ไม่สามารถย้อนกลับได้!",
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                cancelButtonText: 'ยกเลิก',
+                confirmButtonText: 'ใช่, ลบเลย!'
+            });
+            if (result.isConfirmed) {
+                const response = await fetch(`/admin/api/rubric-levels/${levelId}`, { method: 'DELETE' });
+                if (response.ok) listItem.remove();
+            }
+        }
+    });
+
+    // --- Topic Management ---
+    async function handleAddTopic(parentId = null) {
+        const { value: name } = await Swal.fire({
+            title: parentId ? 'เพิ่มหัวข้อย่อยใหม่' : 'เพิ่มหัวข้อหลักใหม่',
+            input: 'text',
+            inputLabel: 'ชื่อหัวข้อ',
+            inputPlaceholder: 'กรอกชื่อหัวข้อที่นี่...',
+            showCancelButton: true,
+            confirmButtonText: 'บันทึก'
+        });
+
+        if (name) {
+            const response = await fetch(`/admin/api/templates/${tplId}/topics`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ name: name, parent_id: parentId, csrf_token: csrfTokenTopic })
+            });
+            if (response.ok) {
+                location.reload();
+            } else {
+                Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถบันทึกได้', 'error');
+            }
+        }
+    }
+
+    document.getElementById('addTopicBtn').addEventListener('click', () => handleAddTopic(null));
+
+    document.getElementById('topicTree').addEventListener('click', async (e) => {
+        const addBtn = e.target.closest('.add-subtopic-btn');
+        const deleteBtn = e.target.closest('.delete-topic-btn');
+
+        if (addBtn) {
+            const parentId = addBtn.closest('li').dataset.id;
+            handleAddTopic(parentId);
+        } else if (deleteBtn) {
+            const listItem = deleteBtn.closest('li');
+            const topicId = listItem.dataset.id;
+            const result = await Swal.fire({
+                title: 'ยืนยันการลบ?',
+                text: "หัวข้อย่อยทั้งหมดจะถูกลบไปด้วย!",
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                cancelButtonText: 'ยกเลิก',
+                confirmButtonText: 'ใช่, ลบเลย!'
+            });
+            if (result.isConfirmed) {
+                const response = await fetch(`/admin/api/topics/${topicId}`, { method: 'DELETE' });
+                if (response.ok) listItem.remove();
+            }
+        }
+    });
+});
+</script>
+{% endblock %}

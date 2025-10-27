@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <title>ปถ.05 โครงสร้างคะแนน</title>
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap');
+    body { font-family: 'Sarabun', sans-serif; font-size: 9pt; }
+    .container { width: 95%; margin: 20px auto; }
+    h3, p { margin: 2px 0; text-align: center; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; table-layout: fixed; }
+    th, td { border: 1px solid black; padding: 3px; text-align: center; vertical-align: middle; word-wrap: break-word; }
+    th { background-color: #f2f2f2; font-weight: bold; }
+    .left-align { text-align: left; padding-left: 5px; vertical-align: top; } /* Align top for long text */
+    /* Column widths */
+    .col-num { width: 5%; }
+    .col-desc { width: 34%; }
+    .col-k, .col-p, .col-a { width: 5%; }
+    .col-unit-total { width: 6%; }
+    .col-midterm, .col-final { width: 6%; }
+    .col-remark { width: 18%; font-size: 8pt;} /* Smaller font for remarks */
+     /* Style for page breaks */
+     thead { display: table-header-group; }
+     tr { page-break-inside: avoid; }
+     table { page-break-inside: auto; }
+     .page-break { page-break-before: always; }
+     
+     /* [FIX 1.0] Removed .rotate-text CSS block */
+
+     .unit-summary-row { font-weight: bold; background-color: #f8f9fa; } /* Style summary row */
+     .grand-total-row { font-weight: bold; background-color: #dee2e6; } /* Style grand total row */
+    thead tr:last-child th { /* Target only the last row of the thead */
+        padding-top: 2px;
+        padding-bottom: 2px;
+    }     
+</style>
+</head>
+<body>
+    {# Add a class for potential page breaking control before this content #}
+    <div class="container score-structure-page">
+        <h3>ตัวชี้วัด/ผลการเรียนรู้</h3>
+        <p>
+            รายวิชา {{ course_info.subject_name }} รหัสวิชา {{ course_info.subject_code }} เวลาเรียน {{ course_info.hours_per_week }} ชั่วโมง/สัปดาห์<br>
+            ชื่อครูผู้สอน {{ course_info.teachers | join(', ') }} กลุ่มสาระการเรียนรู้ {{ course_info.subject_group }}
+        </p>
+        <p>
+            {# [FIX 2.0] Use %g format for numbers #}
+            อัตราส่วนคะแนนระหว่างภาค : ปลายภาค เท่ากับ {{ "%g"|format(score_structure.ratio_collected + score_structure.ratio_midterm) }} : {{ "%g"|format(score_structure.ratio_final) }}
+        </p>
+
+        <table>
+            <thead>
+                {# --- Calculate Colspans Dynamically --- #}
+                {% set show_midterm = score_structure.midterm_total > 0 %}
+                {% set show_final = score_structure.final_total > 0 %}
+                {% set between_term_colspan = 3 %} {# K, P, A #}
+                {# --- End Calculation --- #}
+
+                <tr>
+                    <th rowspan="2" class="col-num">ข้อที่</th>
+                    <th rowspan="2" class="col-desc">ตัวชี้วัด/ผลการเรียนรู้</th>
+                    {# Adjust colspan based on whether Midterm is shown #}
+                    {# [FIX 2.0] Use %g format for numbers #}
+                    <th colspan="{{ between_term_colspan + (1 if show_midterm else 0) }}">คะแนนระหว่างภาคเรียน ({{ "%g"|format(score_structure.ratio_collected + score_structure.ratio_midterm) }})</th>
+                    <th rowspan="2" class="col-unit-total">รวม</th>
+                    {% if show_final %}
+                        {# [FIX 2.0] Use %g format for numbers #}
+                        <th rowspan="2" class="col-final">สอบ<br>ปลายภาค<br>({{ "%g"|format(score_structure.ratio_final) }})</th>
+                    {% endif %}
+                    <th rowspan="2" class="col-remark">งานสำคัญที่กำหนด<br>ในผลการเรียน "ร"</th>
+                </tr>
+                <tr>
+                    {# [FIX 1.0] Removed .rotate-text class, added <br> #}
+                    <th class="col-k">ความรู้<br>(K)</th>
+                    <th class="col-p">ทักษะ<br>(P)</th>
+                    <th class="col-a"><h5>คุณธรรม</h5>(A)</th>
+                    {% if show_midterm %}
+                        {# [FIX 2.0] Use %g format for numbers #}
+                        <th class="col-midterm">สอบ<br>กลางภาค<br>({{ "%g"|format(score_structure.ratio_midterm) }})</th>
+                    {% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for unit in score_structure.units %}
+                    {% set outer_loop_index = loop.index %}
+                    {# Unit Header Row - Adjust colspan #}
+                    {% set header_colspan = 6 + (1 if show_midterm else 0) + (1 if show_final else 0) %}
+                    <tr>
+                        <td colspan="{{ header_colspan }}" class="left-align" style="background-color: #e9ecef;">
+                            <strong>หน่วยที่ {{ outer_loop_index }}: {{ unit.title }}</strong>
+                        </td>
+                        {# Empty cells need to match header structure #}
+                        {% if show_final %} <td style="background-color: #e9ecef;"></td> {% endif %}
+                        <td style="background-color: #e9ecef;"></td>
+                    </tr>
+
+                    {# [FIX 7.3.3] Item Rows (Now looping Indicators) #}
+                    {% for item in unit['items'] %}
+                    <tr>
+                        <td>{{ outer_loop_index }}.{{ loop.index }}</td>
+                        <td class="left-align">{{ item.indicator_description }}</td>
+                        
+                        {# K, P, A cells are now EMPTY per user request #}
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        
+                        {% if show_midterm %}<td></td>{% endif %} {# Midterm score placeholder #}
+                        <td></td> {# Unit total placeholder #}
+                        {% if show_final %}<td></td>{% endif %} {# Final score placeholder #}
+                        
+                        {# Remark cell is now EMPTY #}
+                        <td></td>
+                    </tr>
+                    {% else %}
+                    {# Row when no items AND no scores (e.g. new unit) #}
+                    {% if not unit.k_total and not unit.p_total and not unit.a_total %}
+                    {% set no_item_empty_cells = 3 + (1 if show_midterm else 0) + 1 + (1 if show_final else 0) + 1 %}
+                    <tr>
+                        <td>{{ outer_loop_index }}</td>
+                        <td class="left-align"><i>(ยังไม่มีตัวชี้วัด)</i></td>
+                        {% for _ in range(no_item_empty_cells) %}<td></td>{% endfor %}
+                    </tr>
+                    {% endif %}
+                    {% endfor %}
+
+                    {# [FIX 7.3.3] Unit Summary Row (Now contains scores) #}
+                    <tr class="unit-summary-row">
+                        <td colspan="2" style="text-align:right;">รวมคะแนนหน่วยที่ {{ outer_loop_index }}</td>
+                        {# K/P/A scores from GradedItems (Tab 2) #}
+                        <td>{{ ("%g"|format(unit.k_total)) if unit.k_total > 0 else '' }}</td>
+                        <td>{{ ("%g"|format(unit.p_total)) if unit.p_total > 0 else '' }}</td>
+                        <td>{{ ("%g"|format(unit.a_total)) if unit.a_total > 0 else '' }}</td>
+                        
+                        {% if show_midterm %}
+                            <td>{{ ("%g"|format(unit.midterm_score)) if unit.midterm_score > 0 else ''}}</td>
+                        {% endif %}
+                        <td>{{ "%g"|format(unit.unit_collected_total) }}</td>
+                        {% if show_final %}
+                            <td>{{ ("%g"|format(unit.final_score)) if unit.final_score > 0 else ''}}</td>
+                        {% endif %}
+                        
+                        {# [FIX 7.3.3] Summative text moved back here #}
+                        <td class="left-align col-remark">
+                            {% for name in unit.summative_item_names %}
+                                {{ name }} ตัวชี้วัดปลายทาง<br>
+                            {% endfor %}
+                        </td>
+                    </tr>
+                {% endfor %}
+
+                {# --- Grand Total Rows --- #}
+                <tr class="grand-total-row">
+                    <td colspan="2" style="text-align:right;">รวมคะแนนทั้งหมด</td>
+                    {% set total_k = score_structure.units | map(attribute='k_total') | sum %}
+                    {% set total_p = score_structure.units | map(attribute='p_total') | sum %}
+                    {% set total_a = score_structure.units | map(attribute='a_total') | sum %}
+                    <td>{{ ("%g"|format(total_k)) if total_k > 0 else ''}}</td>
+                    <td>{{ ("%g"|format(total_p)) if total_p > 0 else ''}}</td>
+                    <td>{{ ("%g"|format(total_a)) if total_a > 0 else ''}}</td>
+                    {% if show_midterm %}
+                        <td>{{ "%g"|format(score_structure.midterm_total) }}</td>
+                    {% endif %}
+                    <td>{{ "%g"|format(score_structure.collected_total) }}</td>
+                    {% if show_final %}
+                        <td>{{ "%g"|format(score_structure.final_total) }}</td>
+                    {% endif %}
+                    <td></td> {# No grand total remark #}
+                </tr>
+                <tr class="grand-total-row">
+                    {% set ratio_label_colspan = 5 %}
+                    <td colspan="{{ ratio_label_colspan }}" style="text-align:right;">คะแนนรวมปรับตามสัดส่วน (เต็ม {{ "%g"|format(score_structure.total_score_scaled) }})</td>
+                    {% if show_midterm %}
+                        <td>{{ "%g"|format(score_structure.ratio_midterm) }}</td>
+                    {% endif %}
+                    <td>{{ "%g"|format(score_structure.ratio_collected) }}</td>
+                    {% if show_final %}
+                        <td>{{ "%g"|format(score_structure.ratio_final) }}</td>
+                    {% endif %}
+                    <td></td>
+                </tr>
+            </tbody>
+        </table>
+
+    {# --- [FIX 7.3.9] Pre-calculate unit numbers for breakdown section --- #}
+    {% set during_semester_units = [] %}
+    {% set midterm_units = [] %}
+    {% set final_units = [] %}
+
+    {% for unit in score_structure.units %}
+        {# 1. "ระหว่างภาคเรียน" = หน่วยที่ *ไม่* มีคะแนนสอบปลายภาค #}
+        {% if not unit.final_score or unit.final_score == 0 %}
+            {% do during_semester_units.append(loop.index) %}
+        {% endif %}
+        {# 2. "กลางภาคเรียน" = หน่วยที่ *มี* คะแนนสอบกลางภาค #}
+        {% if unit.midterm_score and unit.midterm_score > 0 %}
+            {% do midterm_units.append(loop.index) %}
+        {% endif %}
+        {# 3. "ปลายภาคเรียน" = หน่วยที่ *มี* คะแนนสอบปลายภาค #}
+        {% if unit.final_score and unit.final_score > 0 %}
+            {% do final_units.append(loop.index) %}
+        {% endif %}
+    {% endfor %}
+
+    {# [UPDATED] Assessment Period Breakdown Section #}
+        <div style="font-size: 8pt; margin-top: 20px; text-align: left; padding-left: 5%;">
+            <p style="margin-bottom: 5px;">
+                <i class="bi bi-book"></i> <strong>การประเมินผลระหว่างภาคเรียน {{ "%g"|format(score_structure.ratio_collected + score_structure.ratio_midterm) }} คะแนน</strong>
+            </p>
+            <ul style="list-style-type: none; padding-left: 20px; margin-bottom: 10px;">
+                {# [FIX 7.3.9] Logic based on user request #}
+                <li>ตัวชี้วัด/ผลการเรียนรู้ที่ประเมิน ระหว่างภาคเรียน หน่วยที่ <span>{{ during_semester_units | join(', ') if during_semester_units else '......' }}</span></li>
+                
+                {# Hide if no midterm units #}
+                {% if midterm_units %}
+                <li>ตัวชี้วัด/ผลการเรียนรู้ที่ประเมิน กลางภาคเรียน หน่วยที่ <span>{{ midterm_units | join(', ') }}</span></li>
+                {% endif %}
+            </ul>
+
+            {# Hide if no final units #}
+            {% if final_units %}
+            <p style="margin-bottom: 5px;">
+                <i class="bi bi-book-fill"></i> <strong>การประเมินผลปลายภาคเรียน {{ "%g"|format(score_structure.ratio_final) }} คะแนน</strong>
+            </p>
+            <ul style="list-style-type: none; padding-left: 20px;">
+                {# [FIX 7.3.9] Logic based on user request #}
+                <li>ตัวชี้วัด/ผลการเรียนรู้ที่ประเมิน ปลายภาคเรียน หน่วยที่ <span>{{ final_units | join(', ') }}</span></li>
+            </ul>
+            {% endif %}
+        </div>
+
+    </div> {# End Container #}
+</body>
+</html>
+</html>

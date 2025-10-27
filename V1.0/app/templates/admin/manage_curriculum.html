@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-3">
+        {% include 'admin/_admin_menu.html' %}
+    </div>
+    <div class="col-md-9">
+        <div class="row">
+            <div class="col-md-8">
+                <h3>คัมภีร์หลักสูตรแกนกลาง</h3>
+                
+                <table class="table table-hover align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>ปี/เทอม</th>
+                            <th>สายชั้น</th>
+                            <th>รายวิชา</th>
+                            <th>ดำเนินการ</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {# --- วนลูปจากตัวแปร 'entries' ที่ส่งมาจาก route --- #}
+                        {% for entry in entries %}
+                        <tr>
+                            <td>{{ entry.academic_year }}/{{ entry.semester }}</td>
+                            <td>{{ entry.grade_level.name }}</td>
+                            <td>
+                                {{ entry.subject.subject_code }}
+                                <br>
+                                <small class="text-muted">{{ entry.subject.name }}</small>
+                            </td>
+                            <td>
+                                <form action="{{ url_for('admin.delete_curriculum_entry', id=entry.id) }}" method="POST" onsubmit="return confirm('ต้องการลบรายการนี้ใช่หรือไม่?');">
+                                    <button type="submit" class="btn btn-danger btn-sm">ลบ</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="4" class="text-center text-muted">ยังไม่มีการกำหนดหลักสูตร</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header"><h4>เพิ่มหลักสูตร</h4></div>
+                    <div class="card-body">
+                        {# --- ใช้ตัวแปร 'form' (CurriculumForm) ที่ส่งมาจาก route --- #}
+                        <form method="POST">
+                            {{ form.hidden_tag() }}
+                            <div class="mb-3">{{ form.academic_year.label(class="form-label") }} {{ form.academic_year(class="form-control") }}</div>
+                            <div class="mb-3">{{ form.semester.label(class="form-label") }} {{ form.semester(class="form-control") }}</div>
+                            <div class="mb-3">{{ form.grade_level.label(class="form-label") }} {{ form.grade_level(class="form-control") }}</div>
+                            <div class="mb-3">{{ form.subjects.label(class="form-label") }} {{ form.subjects(class="form-control", size=10) }}</div>
+                            {{ form.submit(class="btn btn-primary w-100") }}
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-3">
+        {% include 'admin/_admin_menu.html' %}
+    </div>
+    <div class="col-md-9">
+        <h1>นำเข้าข้อมูลนักเรียนจากไฟล์ CSV หรือ Excel</h1>
+        <hr>
+        <div class="card bg-light">
+            <div class="card-body">
+                <h5 class="card-title">คำแนะนำ</h5>
+                <p class="card-text">
+                    ไฟล์ต้องมีคอลัมน์ตามลำดับดังนี้ (Header ต้องเป็นภาษาอังกฤษตัวเล็กทั้งหมด):
+                </p>
+                <ul>
+                    <li><code>student_id</code> (รหัสนักเรียน)</li>
+                    <li><code>prefix</code> (คำนำหน้าชื่อ)</li>
+                    <li><code>first_name</code> (ชื่อจริง)</li>
+                    <li><code>last_name</code> (นามสกุล)</li>
+                    <li><code>class_number</code> (เลขที่)</li>
+                    <li><code>grade_level_name</code> (ชื่อสายชั้น, **ต้องตรงกับที่สร้างไว้ในระบบ** เช่น มัธยมศึกษาปีที่ 1)</li>
+                    <li><code>room_number</code> (หมายเลขห้อง, **ต้องตรงกับที่สร้างไว้**)</li>
+                    <li><code>academic_year</code> (ปีการศึกษา, **ต้องตรงกับที่สร้างไว้**)</li>
+                </ul>
+            </div>
+        </div>
+        
+        <form method="POST" enctype="multipart/form-data" class="mt-4">
+            {{ form.hidden_tag() }}
+            <div class="mb-3">
+                {{ form.upload_file.label(class="form-label") }}
+                {{ form.upload_file(class="form-control") }}
+                {% for error in form.upload_file.errors %}
+                    <span class="text-danger">{{ error }}</span>
+                {% endfor %}
+            </div>
+            {{ form.submit(class="btn btn-primary") }}
+            <a href="{{ url_for('admin.manage_students') }}" class="btn btn-secondary">ยกเลิก</a>
+        </form>
+    </div>
+</div>
+{% endblock %}

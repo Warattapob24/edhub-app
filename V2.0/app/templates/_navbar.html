@@ -1,0 +1,68 @@
+<nav class="navbar navbar-expand-lg bg-body-tertiary bg-dark" data-bs-theme="dark">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="{{ url_for('main.index') }}">🎓 EdHub App</a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                {% if current_user.is_authenticated %}
+                    
+                    {% if current_user.has_role('Admin') %}
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                            <i class="bi bi-gear-fill"></i> ผู้ดูแลระบบ
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="{{ url_for('admin.manage_users') }}">จัดการผู้ใช้</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.bulk_enroll') }}">จัดการนักเรียนเข้าห้องเรียน</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.manage_courses') }}">คลังรายวิชา</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.manage_learning_areas') }}">จัดการกลุ่มสาระฯ</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.manage_structure') }}">โครงสร้างสายชั้น</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.manage_academic_years') }}">จัดการปีการศึกษา</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.manage_dimensions') }}">จัดการมิติการประเมิน</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.manage_competencies') }}">คลังสมรรถนะ</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.manage_characteristics') }}">คลังคุณลักษณะฯ</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.manage_assessment_methods') }}">คลังวิธีการวัดผล</a></li>
+                        </ul>
+                    </li>
+                    {% endif %}
+                    
+                    {% if current_user.has_role('Teacher') %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('teacher.dashboard') }}">
+                            <i class="bi bi-person-workspace"></i> แดชบอร์ดครู
+                        </a>
+                    </li>
+                    {% endif %}
+                    
+                    {% if current_user.has_role('DepartmentHead') %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('department.dashboard') }}">
+                            <i class="bi bi-diagram-3-fill"></i> แดชบอร์ดกลุ่มสาระฯ
+                        </a>
+                    </li>
+                    {% endif %}
+
+                {% endif %}
+            </ul>
+            
+            <ul class="navbar-nav ms-auto">
+                {% if current_user.is_authenticated %}
+                <li class="nav-item">
+                    <span class="navbar-text me-2">ยินดีต้อนรับ, {{ current_user.full_name }}</span>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="{{ url_for('main.logout') }}">ออกจากระบบ</a>
+                </li>
+                {% else %}
+                <li class="nav-item">
+                    <a class="nav-link" href="{{ url_for('main.login') }}">เข้าสู่ระบบ</a>
+                </li>
+                {% endif %}
+            </ul>
+        </div>
+    </div>
+</nav>

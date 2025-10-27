@@ -1,0 +1,358 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h1 class="h3">แผนการสอน</h1>
+        <h2 class="h5 text-muted">{{ section.course.course_code }} - {{ section.course.name_thai }}</h2>
+    </div>
+    <a href="{{ url_for('teacher.manage_learning_unit', section_id=section.id) }}" class="btn btn-success">
+        <i class="bi bi-plus-circle"></i> เพิ่มหน่วยการเรียนรู้ใหม่
+    </a>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header"><strong>สรุปโครงสร้างคะแนนรวม</strong></div>
+    <div class="card-body">
+        <div class="row text-center">
+            <div class="col"><h5 class="card-title">{{ total_scores.assignment }}</h5><p class="card-text text-muted">คะแนนเก็บ</p></div>
+            {% if total_scores.midterm > 0 %}
+            <div class="col"><h5 class="card-title">{{ total_scores.midterm }}</h5><p class="card-text text-muted">กลางภาค</p></div>
+            {% endif %}
+            {% if total_scores.final > 0 %}
+            <div class="col"><h5 class="card-title">{{ total_scores.final }}</h5><p class="card-text text-muted">ปลายภาค</p></div>
+            {% endif %}
+            <div class="col border-start"><h5 class="card-title">{{ total_scores.course_total }}</h5><p class="card-text fw-bold">รวมทั้งสิ้น</p></div>
+            {% if total_scores.ratio != "0:0" %}
+            <div class="col border-start"><h5 class="card-title">{{ total_scores.ratio }}</h5><p class="card-text text-muted">อัตราส่วน</p></div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<hr>
+{% for unit in learning_units %}
+<div class="card mb-4" id="unit-card-{{ unit.id }}">
+    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+        <div>
+            <h5 class="mb-0"><strong>หน่วยการเรียนรู้ที่ {{ loop.index }}:</strong> {{ unit.title }}</h5>
+        </div>
+        <div>
+            {% if unit.start_period and unit.end_period %}
+            <span class="badge bg-primary rounded-pill me-2">คาบที่ {{ unit.start_period }} - {{ unit.end_period }}</span>
+            {% endif %}
+            <a href="{{ url_for('teacher.manage_learning_unit', section_id=section.id, unit_id=unit.id) }}" class="btn btn-warning btn-sm">
+                <i class="bi bi-pencil-fill"></i> แก้ไข
+            </a>
+            <button class="btn btn-danger btn-sm delete-unit-btn" data-unit-id="{{ unit.id}}"><i class="bi bi-trash-fill"></i> ลบ</button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6">
+                <h6><i class="bi bi-bullseye"></i> มาตรฐานการเรียนรู้/ตัวชี้วัด</h6>
+                <p class="text-muted small">{{ unit.learning_standard or 'N/A' }}</p>
+                <h6><i class="bi bi-card-checklist"></i> จุดประสงค์การเรียนรู้</h6>
+                <p class="text-muted small">{{ unit.learning_objectives or 'N/A' }}</p>
+                <h6><i class="bi bi-person-gear"></i> สมรรถนะสำคัญของผู้เรียน</h6>
+                <p class="text-muted small">
+                    {% for comp in unit.competencies %}{{ comp.name }}{% if not loop.last %}, {% endif %}{% else %}N/A{% endfor %}
+                </p>
+                <h6><i class="bi bi-heart"></i> คุณลักษณะอันพึงประสงค์</h6>
+                <p class="text-muted small">
+                    {% for item in unit.desirable_characteristics %}{{ item.name }}{% if not loop.last %}, {% endif %}{% else %}N/A{% endfor %}
+                </p>
+            </div>
+            <div class="col-md-6">
+                <h6><i class="bi bi-lightbulb"></i> สาระสำคัญ</h6>
+                <p class="text-muted small">{{ unit.core_concepts or 'N/A' }}</p>
+                <h6><i class="bi bi-book"></i> สาระการเรียนรู้</h6>
+                <p class="text-muted small">{{ unit.learning_content or 'N/A' }}</p>
+                <h6><i class="bi bi-clipboard2-check"></i> การวัดและประเมินผล</h6>
+                <p class="text-muted small">
+                    {% for item in unit.assessment_methods %}{{ item.name }}{% if not loop.last %}, {% endif %}{% else %}N/A{% endfor %}
+                </p>
+            </div>
+        </div>
+
+        <div class="mt-4 pt-3 border-top">
+            <h6><i class="bi bi-pencil-square"></i> ส่วนประกอบของคะแนน</h6>
+            <button type="button" class="btn btn-outline-primary btn-sm mb-2 add-component-btn" data-bs-toggle="modal" data-bs-target="#addComponentModal" data-unit-id="{{ unit.id }}"><i class="bi bi-plus"></i> เพิ่มคะแนนเก็บ</button>
+            <div class="d-inline-block" id="exam-controls-{{ unit.id }}">
+                <button type="button" class="btn btn-outline-secondary btn-sm mb-2 toggle-exam-input" data-unit-id="{{ unit.id }}" data-exam-type="midterm"><i class="bi bi-plus-slash-minus"></i> กลางภาค</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm mb-2 toggle-exam-input" data-unit-id="{{ unit.id }}" data-exam-type="final"><i class="bi bi-plus-slash-minus"></i> ปลายภาค</button>
+                
+                <div class="mt-2 p-2 border rounded d-none" id="exam-input-midterm-{{ unit.id }}">
+                     <div class="input-group input-group-sm">
+                        <span class="input-group-text">คะแนนกลางภาค</span>
+                        <input type="number" step="0.5" class="form-control exam-score-input" placeholder="กรอกคะแนน">
+                        <button class="btn btn-success save-exam-score" type="button" data-exam-type="midterm" data-unit-id="{{ unit.id }}">บันทึก</button>
+                    </div>
+                </div>
+                <div class="mt-2 p-2 border rounded d-none" id="exam-input-final-{{ unit.id }}">
+                     <div class="input-group input-group-sm">
+                        <span class="input-group-text">คะแนนปลายภาค</span>
+                        <input type="number" step="0.5" class="form-control exam-score-input" placeholder="กรอกคะแนน">
+                        <button class="btn btn-success save-exam-score" type="button" data-exam-type="final" data-unit-id="{{ unit.id }}">บันทึก</button>
+                    </div>
+                </div>
+            </div>
+
+            <ul class="list-group" id="component-list-{{ unit.id }}">
+                {% for component in unit.grade_components %}
+                <li class="list-group-item" id="component-item-{{ component.id }}">
+                    {% if component.is_midterm_exam or component.is_final_exam %}
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            {{ component.name }}
+                            {% if component.is_midterm_exam %}<span class="badge bg-warning text-dark ms-2">สอบกลางภาค</span>{% endif %}
+                            {% if component.is_final_exam %}<span class="badge bg-danger ms-2">สอบปลายภาค</span>{% endif %}
+                        </div>
+                        <div>
+                           <span class="badge bg-secondary" style="min-width: 80px; font-size: 0.9rem;">{{ component.total_max_score | round(2) }} คะแนน</span>
+                           <button class="btn btn-outline-danger btn-sm delete-component-btn" data-component-id="{{ component.id }}"><i class="bi bi-trash"></i></button>
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div id="component-info-{{ component.id }}">
+                            {{ component.name }}
+                            {% if component.is_midway_indicator %}<span class="badge bg-primary ms-2">ตัวชี้วัดระหว่างทาง</span>{% endif %}
+                            {% if component.is_critical_indicator %}<span class="badge bg-danger ms-2">ตัวชี้วัดปลายทาง</span>{% endif %}
+                        </div>
+                        <div>
+                            {% set scores = component_scores[component.id] %}
+                            {% set color = 'bg-success' if scores.current == scores.total else ('bg-danger' if scores.current > scores.total else 'bg-warning') %}
+                            <button class="btn {{ color }} btn-sm manage-aspects-btn" data-bs-toggle="modal" data-bs-target="#manageAspectsModal" data-component-id="{{ component.id }}" style="min-width: 150px;">
+                                จัดการ: {{ scores.current | round(2) }} / {{ scores.total | round(2) }}
+                            </button>
+                            <button class="btn btn-outline-warning btn-sm edit-component-btn" data-bs-toggle="modal" data-bs-target="#addComponentModal" data-component-id="{{ component.id }}"><i class="bi bi-pencil"></i></button>
+                            <button class="btn btn-outline-danger btn-sm delete-component-btn" data-component-id="{{ component.id }}"><i class="bi bi-trash"></i></button>
+                        </div>
+                    </div>
+                    {% endif %}
+                </li>
+                {% else %}
+                <li class="list-group-item text-muted text-center no-components">ยังไม่มีรายการเก็บคะแนน</li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+</div>
+{% endfor %}
+
+<div class="modal fade" id="addComponentModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="component-modal-title"></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="component-form">
+          <div class="modal-body">
+              <input type="hidden" id="modal-unit-id" name="unit_id">
+              <input type="hidden" id="modal-component-id" name="component_id">
+              <div class="mb-3">
+                  <label for="component-name" class="form-label">ชื่อรายการ</label>
+                  <input type="text" class="form-control" id="component-name" name="name" required>
+              </div>
+              <div class="mb-3">
+                  <label for="component-score" class="form-label">คะแนนเต็ม</label>
+                  <input type="number" step="0.5" class="form-control" id="component-score" name="total_max_score" required>
+              </div>
+              <div id="indicator-options">
+                  <hr>
+                  <div class="form-check mb-2">
+                      <input class="form-check-input" type="checkbox" id="is_midway_indicator" name="is_midway_indicator">
+                      <label class="form-check-label" for="is_midway_indicator">เป็นตัวชี้วัดระหว่างทาง</label>
+                  </div>
+                  <div class="form-check mb-2">
+                      <input class="form-check-input" type="checkbox" id="is_critical_indicator" name="is_critical_indicator">
+                      <label class="form-check-label" for="is_critical_indicator">เป็นตัวชี้วัดปลายทาง</label>
+                  </div>
+              </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ปิด</button>
+            <button type="submit" class="btn btn-primary">บันทึก</button>
+          </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="manageAspectsModal" tabindex="-1" data-bs-backdrop="static">
+    </div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const csrfToken = '{{ csrf_token() }}';
+    
+    // Modal instances
+    const componentModalEl = document.getElementById('addComponentModal');
+    const componentModal = new bootstrap.Modal(componentModalEl);
+    const aspectModalEl = document.getElementById('manageAspectsModal');
+    const aspectModal = new bootstrap.Modal(aspectModalEl);
+
+    // Form elements
+    const componentForm = document.getElementById('component-form');
+    const aspectForm = document.getElementById('aspect-form');
+
+    // Helper function for sending API requests
+    async function sendRequest(url, method, body) {
+        const options = {
+            method: method,
+            headers: { 'X-CSRFToken': csrfToken, 'Content-Type': 'application/json' },
+        };
+        if (body) {
+            options.body = JSON.stringify(body);
+        }
+        const response = await fetch(url, options);
+        const data = await response.json();
+        if (!response.ok) {
+            const errorMessages = data.errors ? Object.values(data.errors).join(', ') : (data.message || 'เกิดข้อผิดพลาด');
+            throw new Error(errorMessages);
+        }
+        return data;
+    }
+
+    // --- Learning Unit Functions ---
+    async function handleDeleteUnit(unitId) {
+        if (!confirm('คุณแน่ใจหรือไม่ว่าต้องการลบหน่วยการเรียนรู้นี้และคะแนนทั้งหมดที่เกี่ยวข้อง?')) return;
+        try {
+            await sendRequest(`/teacher/unit/${unitId}/delete`, 'POST');
+            window.location.reload();
+        } catch (error) {
+            alert(`การลบล้มเหลว: ${error.message}`);
+        }
+    }
+
+    // --- Exam Score Functions ---
+    async function handleSaveExamScore(unitId, examType) {
+        const input = document.querySelector(`#exam-input-${examType}-${unitId} .exam-score-input`);
+        const score = input.value;
+        if (!score || parseFloat(score) <= 0) {
+            alert('กรุณากรอกคะแนนที่ถูกต้อง');
+            return;
+        }
+        try {
+            await sendRequest(`/teacher/unit/${unitId}/add_exam_score`, 'POST', { exam_type: examType, score: score });
+            window.location.reload();
+        } catch (error) {
+            alert(`บันทึกคะแนนสอบล้มเหลว: ${error.message}`);
+        }
+    }
+
+    // --- Grade Component Functions ---
+    function setupComponentModalForAdd(unitId) {
+        componentForm.reset();
+        componentModalEl.querySelector('.modal-title').textContent = 'เพิ่มรายการเก็บคะแนน';
+        componentForm.querySelector('#modal-unit-id').value = unitId;
+        componentForm.querySelector('#modal-component-id').value = '';
+        componentModalEl.querySelector('#indicator-options').style.display = 'block';
+    }
+
+    async function setupComponentModalForEdit(componentId) {
+        componentForm.reset();
+        try {
+            const data = await sendRequest(`/teacher/component/${componentId}/data`, 'GET');
+            componentModalEl.querySelector('.modal-title').textContent = 'แก้ไขรายการเก็บคะแนน';
+            componentForm.querySelector('#modal-component-id').value = componentId;
+            componentForm.querySelector('#modal-unit-id').value = ''; // Not needed for edit
+            componentForm.querySelector('#component-name').value = data.name;
+            componentForm.querySelector('#component-score').value = data.total_max_score;
+
+            if (data.is_exam) {
+                componentModalEl.querySelector('#indicator-options').style.display = 'none';
+            } else {
+                componentModalEl.querySelector('#indicator-options').style.display = 'block';
+                componentForm.querySelector('#is_midway_indicator').checked = data.is_midway_indicator;
+                componentForm.querySelector('#is_critical_indicator').checked = data.is_critical_indicator;
+            }
+        } catch (error) {
+            alert(`ไม่สามารถโหลดข้อมูลได้: ${error.message}`);
+            componentModal.hide();
+        }
+    }
+
+    async function handleComponentFormSubmit(event) {
+        event.preventDefault();
+        const unitId = componentForm.querySelector('#modal-unit-id').value;
+        const componentId = componentForm.querySelector('#modal-component-id').value;
+        const isEdit = !!componentId;
+
+        const formData = new FormData(componentForm);
+        const data = Object.fromEntries(formData.entries());
+        
+        const url = isEdit ? `/teacher/component/${componentId}/edit` : `/teacher/unit/${unitId}/add_component`;
+        
+        try {
+            await sendRequest(url, 'POST', data);
+            window.location.reload(); // Reload to see changes
+        } catch (error) {
+            alert(`บันทึกล้มเหลว: ${error.message}`);
+        }
+    }
+    
+    async function handleDeleteComponent(componentId) {
+        if (!confirm('คุณแน่ใจหรือไม่ว่าต้องการลบรายการเก็บคะแนนนี้?')) return;
+        try {
+            await sendRequest(`/teacher/component/${componentId}/delete`, 'POST');
+            window.location.reload();
+        } catch (error) {
+            alert(`การลบล้มเหลว: ${error.message}`);
+        }
+    }
+
+    // --- Main Event Listener ---
+    document.body.addEventListener('click', async (e) => {
+        const button = e.target.closest('button');
+        if (!button) return;
+
+        // Unit deletion
+        if (button.matches('.delete-unit-btn')) {
+            e.preventDefault();
+            handleDeleteUnit(button.dataset.unitId);
+        }
+        
+        // Exam score input toggle
+        if (button.matches('.toggle-exam-input')) {
+            e.preventDefault();
+            const { unitId, examType } = button.dataset;
+            document.getElementById(`exam-input-${examType}-${unitId}`).classList.toggle('d-none');
+        }
+        
+        // Save exam score
+        if (button.matches('.save-exam-score')) {
+            e.preventDefault();
+            const { unitId, examType } = button.dataset;
+            handleSaveExamScore(unitId, examType);
+        }
+
+        // Open Add Component Modal
+        if (button.matches('.add-component-btn')) {
+            setupComponentModalForAdd(button.dataset.unitId);
+        }
+
+        // Open Edit Component Modal
+        if (button.matches('.edit-component-btn')) {
+            await setupComponentModalForEdit(button.dataset.componentId);
+        }
+        
+        // Delete Component
+        if (button.matches('.delete-component-btn')) {
+            e.preventDefault();
+            handleDeleteComponent(button.dataset.componentId);
+        }
+    });
+    
+    // Form submission listener
+    if (componentForm) {
+        componentForm.addEventListener('submit', handleComponentFormSubmit);
+    }
+});
+</script>
+{% endblock %}

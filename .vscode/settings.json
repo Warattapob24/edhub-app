@@ -1,0 +1,14 @@
+{
+    "sqltools.connections": [
+        {
+            "previewLimit": 50,
+            "driver": "SQLite",
+            "name": "EdHub DB",
+            "database": "app.db"
+        }
+    ],
+    "sqltools.useNodeRuntime": true,
+    "python.analysis.extraPaths": [
+        "./V1.0"
+    ]
+}

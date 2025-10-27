@@ -1,0 +1,282 @@
+{# CHANGED: สืบทอดจาก base.html ตามสถาปัตยกรรมใหม่ #}
+{% extends "base.html" %}
+
+{% block styles %}
+<link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet">
+<style>
+    .position-card { cursor: pointer; transition: all 0.2s ease-in-out; }
+    .position-card:hover { transform: translateY(-3px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+</style>
+{% endblock %}
+{% block title %}EdHub {{ title }}{% endblock %}
+{# ADDED: เรียกใช้ Sidebar ของ Admin #}
+{% block sidebar %}
+    {% include 'admin/_sidebar.html' %}
+{% endblock %}
+
+{# CHANGED: เนื้อหาหลักต้องอยู่ใน block 'main_content' #}
+{% block main_content %}
+
+
+<input type="hidden" id="csrf_token" value="{{ csrf_token() }}">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2><i class="bi bi-diagram-3"></i> {{ title }}</h2>
+</div>
+<div class="row g-4">
+    <div class="col-12">
+        <div class="card position-card" data-bs-toggle="modal" data-bs-target="#positionModal" data-type="director">
+            <div class="card-body">
+                <h5 class="card-title">ผู้อำนวยการสถานศึกษา</h5>
+                <p class="card-text">
+                    <strong>ผู้อำนวยการ:</strong>
+                    {% if director_id and users|selectattr('id', 'equalto', director_id)|first %}
+                        {{ (users|selectattr('id', 'equalto', director_id)|first).full_name }}
+                    {% else %}
+                        <span class="text-muted">- ยังไม่กำหนด -</span>
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <h4 class="mb-0">ฝ่ายงานบริหาร</h4>
+            <button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#addDepartmentModal">
+                <i class="bi bi-plus-lg"></i> เพิ่มฝ่ายงานใหม่
+            </button>
+        </div>
+        <div class="row g-3">
+            {# ******** START: แก้ไขส่วนนี้ ******** #}
+            {% for dept in departments %}
+            <div class="col-md-6">
+                <div class="card position-card" data-bs-toggle="modal" data-bs-target="#positionModal" data-type="department" data-id="{{ dept.id }}">
+                    <div class="card-body">
+                        <h5 class="card-title">{{ dept.name }}</h5>
+                        <p class="card-text mb-1"><strong>รองผู้อำนวยการฝ่าย:</strong> {{ dept.vice_director.full_name if dept.vice_director else '-' }}</p>
+                        <p class="card-text mb-1"><strong>หัวหน้าฝ่าย:</strong> {{ dept.head.full_name if dept.head else '-' }}</p>
+                        <small class="text-muted">สมาชิก {{ dept.members | length }} คน</small>
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <div class="col-12">
+                <div class="alert alert-info" role="alert">
+                    ยังไม่มีข้อมูลฝ่ายงานบริหารในระบบ
+                </div>
+            </div>
+            {% endfor %}
+            {# ******** END: แก้ไขส่วนนี้ ******** #}
+        </div>
+    </div>
+
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <h4 class="mb-0">กลุ่มสาระการเรียนรู้</h4>
+            <a href="{{ url_for('admin.list_subject_groups') }}" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-pencil-fill"></i> จัดการกลุ่มสาระฯ และสมาชิก
+            </a>
+        </div>
+        <div class="row g-3">
+            {% for group in subject_groups %}
+            <div class="col-md-6">
+                <div class="card position-card" data-bs-toggle="modal" data-bs-target="#positionModal" data-type="subject_group" data-id="{{ group.id }}">
+                    <div class="card-body">
+                        <h5 class="card-title">{{ group.name }}</h5>
+                        <p class="card-text mb-1"><strong>หัวหน้ากลุ่มสาระฯ:</strong> {{ group.head.full_name if group.head else '-' }}</p>
+                        <small class="text-muted">สมาชิก {{ group.members | length }} คน</small>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="positionModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalTitle">แก้ไขตำแหน่ง</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="modalForm">
+            <div id="director-field" class="mb-3 d-none">
+                <label for="modal-director-select" class="form-label">ผู้อำนวยการ (Director)</label>
+                <select id="modal-director-select" name="director_id"></select>
+            </div>
+            <div id="vice-director-field" class="mb-3 d-none">
+                <label for="modal-vice-director-select" class="form-label">รองผู้อำนวยการฝ่าย</label>
+                <select id="modal-vice-director-select" name="vice_director_id"></select>
+            </div>
+            <div id="head-field" class="mb-3 d-none">
+                <label for="modal-head-select" class="form-label" id="modal-head-label">หัวหน้า</label>
+                <select id="modal-head-select" name="head_id"></select>
+            </div>
+            <div id="members-field" class="mb-3 d-none">
+                <label for="modal-members-select" class="form-label">สมาชิกฝ่าย</label>
+                <select id="modal-members-select" name="member_ids" multiple></select>
+            </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <span id="modal-save-status" class="me-auto text-muted"></span>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ปิด</button>
+        <button type="button" id="modalSaveBtn" class="btn btn-primary">บันทึกการเปลี่ยนแปลง</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="addDepartmentModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">เพิ่มฝ่ายงานบริหารใหม่</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="addDepartmentForm" action="{{ url_for('admin.add_department') }}" method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-body">
+          <label for="department_name" class="form-label">ชื่อฝ่ายงาน (เช่น ฝ่ายวิชาการ, ฝ่ายปกครอง)</label>
+          <input type="text" class="form-control" id="department_name" name="name" required>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+          <button type="submit" class="btn btn-primary">สร้างฝ่ายงาน</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const csrfToken = document.getElementById('csrf_token').value;
+    const positionModalEl = document.getElementById('positionModal');
+    const positionModal = new bootstrap.Modal(positionModalEl);
+    
+    // Modal Form Elements
+    const modal = {
+        title: positionModalEl.querySelector('#modalTitle'),
+        saveBtn: positionModalEl.querySelector('#modalSaveBtn'),
+        status: positionModalEl.querySelector('#modal-save-status'),
+        fields: {
+            director: positionModalEl.querySelector('#director-field'),
+            vice: positionModalEl.querySelector('#vice-director-field'),
+            head: positionModalEl.querySelector('#head-field'),
+            headLabel: positionModalEl.querySelector('#modal-head-label'),
+            members: positionModalEl.querySelector('#members-field'),
+        },
+        selects: {
+            director: new TomSelect('#modal-director-select', { placeholder: 'เลือกผู้อำนวยการ...' }),
+            vice: new TomSelect('#modal-vice-director-select', { placeholder: 'เลือกรองฯ...' }),
+            head: new TomSelect('#modal-head-select', { placeholder: 'เลือกหัวหน้า...' }),
+            members: new TomSelect('#modal-members-select', { plugins: ['remove_button'], placeholder: 'เลือกสมาชิก...' }),
+        }
+    };
+
+    let currentEntity = {};
+
+    positionModalEl.addEventListener('show.bs.modal', async (event) => {
+        const card = event.relatedTarget;
+        currentEntity = {
+            type: card.dataset.type,
+            id: card.dataset.id || null
+        };
+
+        Object.values(modal.selects).forEach(ts => { ts.clear(); ts.clearOptions(); });
+        Object.values(modal.fields).forEach(f => f.classList.add('d-none'));
+        modal.title.textContent = 'กำลังโหลดข้อมูล...';
+
+        try {
+            let apiUrl = `/admin/api/position-details?type=${currentEntity.type}`;
+            if (currentEntity.id) {
+                apiUrl += `&id=${currentEntity.id}`;
+            }
+            const response = await fetch(apiUrl);
+            if (!response.ok) throw new Error(`Failed to fetch details, status: ${response.status}`);
+            const data = await response.json();
+
+            // Configure modal based on type
+            if (currentEntity.type === 'director') {
+                modal.title.textContent = 'แก้ไขตำแหน่งผู้อำนวยการ';
+                modal.fields.director.classList.remove('d-none');
+                modal.selects.director.addOptions(data.all_users);
+                modal.selects.director.setValue(data.director_id, true);
+            } else if (currentEntity.type === 'department') {
+                modal.title.textContent = `แก้ไขฝ่าย: ${data.name}`;
+                modal.fields.vice.classList.remove('d-none');
+                modal.fields.head.classList.remove('d-none');
+                modal.fields.members.classList.remove('d-none');
+                modal.fields.headLabel.textContent = 'หัวหน้าฝ่าย';
+
+                modal.selects.vice.addOptions(data.all_users);
+                modal.selects.head.addOptions(data.all_users);
+                modal.selects.members.addOptions(data.all_users);
+
+                modal.selects.vice.setValue(data.vice_id, true);
+                modal.selects.head.setValue(data.head_id, true);
+                modal.selects.members.setValue(data.member_ids, true);
+            } else if (currentEntity.type === 'subject_group') {
+                modal.title.textContent = `แก้ไขกลุ่มสาระฯ: ${data.name}`;
+                modal.fields.head.classList.remove('d-none');
+                modal.fields.headLabel.textContent = 'หัวหน้ากลุ่มสาระฯ';
+                
+                modal.selects.head.addOptions(data.potential_heads);
+                modal.selects.head.setValue(data.head_id, true);
+            }
+        } catch (error) {
+            console.error(error);
+            modal.title.textContent = 'เกิดข้อผิดพลาด';
+        }
+    });
+
+    modal.saveBtn.addEventListener('click', async () => {
+        let url = '';
+        let payload = {};
+
+        if (currentEntity.type === 'director') {
+            url = "{{ url_for('admin.update_director') }}";
+            payload = { user_id: modal.selects.director.getValue() };
+        } else if (currentEntity.type === 'department') {
+            url = `/admin/positions/department/${currentEntity.id}/positions`;
+            payload = {
+                head_id: modal.selects.head.getValue(),
+                vice_director_id: modal.selects.vice.getValue(),
+                member_ids: modal.selects.members.getValue()
+            };
+        } else if (currentEntity.type === 'subject_group') {
+            url = `/admin/positions/subject-group/${currentEntity.id}/head`;
+            payload = { head_id: modal.selects.head.getValue() };
+        }
+
+        if (!url) return;
+
+        modal.status.textContent = 'กำลังบันทึก...';
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+                body: JSON.stringify(payload)
+            });
+            const result = await response.json();
+            if (result.status === 'success') {
+                positionModal.hide();
+                window.location.reload();
+            } else {
+                throw new Error(result.message);
+            }
+        } catch (error) {
+            console.error(error);
+            modal.status.textContent = 'ผิดพลาด!';
+        }
+    });
+});
+</script>
+{% endblock %}

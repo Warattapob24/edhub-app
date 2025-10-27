@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h4>แก้ไขคาบเรียน</h4>
+                </div>
+                <div class="card-body">
+                    {# ใน route เราส่ง form object ที่ผูกกับข้อมูลเก่ามาแล้ว #}
+                    {# ดังนั้นฟอร์มจะแสดงข้อมูลเดิมโดยอัตโนมัติ #}
+                    <form method="POST" action=""> {# action="" จะส่งข้อมูลกลับไปที่ URL เดิม #}
+                        {{ form.hidden_tag() }}
+                        <div class="mb-3">
+                            {{ form.period_number.label(class="form-label") }}
+                            {{ form.period_number(class="form-control") }}
+                        </div>
+                        <div class="mb-3">
+                            {{ form.name.label(class="form-label") }}
+                            {{ form.name(class="form-control") }}
+                        </div>
+                        <div class="mb-3">
+                            {{ form.start_time.label(class="form-label") }}
+                            {{ form.start_time(class="form-control") }}
+                        </div>
+                        <div class="mb-3">
+                            {{ form.end_time.label(class="form-label") }}
+                            {{ form.end_time(class="form-control") }}
+                        </div>
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                            <a href="{{ url_for('admin.manage_school_periods') }}" class="btn btn-secondary me-md-2">ยกเลิก</a>
+                            {{ form.submit(class="btn btn-primary") }}
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

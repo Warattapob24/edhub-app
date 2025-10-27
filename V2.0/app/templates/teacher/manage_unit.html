@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+{% from "_form_helpers.html" import render_field %}
+
+{% block content %}
+<h1 class="h3 mb-3">
+    {% if unit %}
+        แก้ไขหน่วยการเรียนรู้
+    {% else %}
+        เพิ่มหน่วยการเรียนรู้ใหม่
+    {% endif %}
+</h1>
+<h2 class="h5 text-muted mb-4">{{ section.course.course_code }} - {{ section.course.name_thai }}</h2>
+
+<div class="card">
+    <div class="card-body">
+        <form method="POST" id="learning-unit-form" novalidate>
+            {{ form.hidden_tag() }}
+            
+            <div style="display: none;">
+                {{ form.competencies }}
+                {{ form.desirable_characteristics }}
+                {{ form.assessment_methods }}
+            </div>
+
+            <div class="row mb-3">
+                <div class="col-md-8">{{ render_field(form.title) }}</div>
+                <div class="col-md-2">{{ render_field(form.start_period) }}</div>
+                <div class="col-md-2">{{ render_field(form.end_period) }}</div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-6">{{ render_field(form.learning_standard, rows=4) }}</div>
+                <div class="col-md-6">{{ render_field(form.learning_objectives, rows=4) }}</div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-6">{{ render_field(form.core_concepts, rows=4) }}</div>
+                <div class="col-md-6">{{ render_field(form.learning_content, rows=4) }}</div>
+            </div>
+             <div class="mb-3">{{ render_field(form.activities, rows=4) }}</div>
+             <div class="mb-3">{{ render_field(form.media_sources, rows=4) }}</div>
+            
+            <hr>
+            <h5 class="mb-3">องค์ประกอบเพิ่มเติม</h5>
+
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">สมรรถนะสำคัญของผู้เรียน</label>
+                    <div class="border rounded p-3 bg-light" id="selected-competencies">
+                        <span class="text-muted small">ยังไม่ได้เลือกรายการ</span>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary mt-2 select-options-btn" data-bs-toggle="modal" data-bs-target="#selectOptionsModal" data-category="competencies">
+                        <i class="bi bi-plus-circle"></i> เลือก...
+                    </button>
+                </div>
+
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">คุณลักษณะอันพึงประสงค์</label>
+                    <div class="border rounded p-3 bg-light" id="selected-characteristics">
+                        <span class="text-muted small">ยังไม่ได้เลือกรายการ</span>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary mt-2 select-options-btn" data-bs-toggle="modal" data-bs-target="#selectOptionsModal" data-category="characteristics">
+                        <i class="bi bi-plus-circle"></i> เลือก...
+                    </button>
+                </div>
+
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">การวัดและประเมินผลการเรียนรู้</label>
+                    <div class="border rounded p-3 bg-light" id="selected-assessment-methods">
+                        <span class="text-muted small">ยังไม่ได้เลือกรายการ</span>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary mt-2 select-options-btn" data-bs-toggle="modal" data-bs-target="#selectOptionsModal" data-category="assessment-methods">
+                        <i class="bi bi-plus-circle"></i> เลือก...
+                    </button>
+                </div>
+            </div>
+
+            <div class="modal fade" id="selectOptionsModal" tabindex="-1" aria-labelledby="selectOptionsModalLabel" aria-hidden="true">
+              <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                  <div class="modal-header">
+                    <h5 class="modal-title" id="selectOptionsModalLabel">เลือก...</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                  </div>
+                  <div class="modal-body">
+                    <div id="options-container">
+                        </div>
+                  </div>
+                  <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ปิด</button>
+                    <button type="button" class="btn btn-primary" id="saveOptionsBtn">บันทึกการเลือก</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="mt-4">
+                <a href="{{ url_for('teacher.manage_learning_plan', section_id=section.id) }}" class="btn btn-secondary">ยกเลิก</a>
+                <button type="submit" class="btn btn-primary">บันทึกข้อมูล</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const csrfToken = '{{ csrf_token() }}';
+    const selectModal = new bootstrap.Modal(document.getElementById('selectOptionsModal'));
+    const modalTitle = document.getElementById('selectOptionsModalLabel');
+    const optionsContainer = document.getElementById('options-container');
+    const saveOptionsBtn = document.getElementById('saveOptionsBtn');
+    const form = document.getElementById('learning-unit-form');
+    let currentCategory = '';
+    
+    let unitId = null;
+    let initialData = {
+        'competencies': [],
+        'characteristics': [],
+        'assessment_methods': []
+    };
+    
+    {% if unit %}
+        unitId = {{ unit.id | tojson }};
+        initialData['competencies'] = {{ unit.competency_sub_items|map(attribute='id')|list | tojson }};
+        initialData['characteristics'] = {{ unit.characteristic_sub_items|map(attribute='id')|list | tojson }};
+        initialData['assessment_methods'] = {{ unit.method_sub_items|map(attribute='id')|list | tojson }};
+    {% endif %}
+
+    const categoryMap = {
+        'competencies': { title: 'เลือกสมรรถนะสำคัญของผู้เรียน', apiUrl: '/teacher/api/competencies' },
+        'characteristics': { title: 'เลือกคุณลักษณะอันพึงประสงค์', apiUrl: '/teacher/api/characteristics' },
+        'assessment-methods': { title: 'เลือกการวัดและประเมินผล', apiUrl: '/teacher/api/assessment_methods' }
+    };
+    
+    // Function to update UI on the main page
+    function updateSelectedItemsUI() {
+        const categories = ['competencies', 'characteristics', 'assessment_methods'];
+        categories.forEach(category => {
+            const container = document.getElementById(`selected-${category.replace('_', '-')}`);
+            const selectedIds = initialData[category];
+            if (selectedIds && selectedIds.length > 0) {
+                const names = selectedIds.map(id => {
+                    const el = document.querySelector(`#options-container input[value="${id}"]`);
+                    return el ? el.nextElementSibling.textContent : null;
+                }).filter(Boolean);
+                container.innerHTML = names.map(name => `<span class="badge bg-secondary me-1 mb-1">${name}</span>`).join('');
+            } else {
+                container.innerHTML = `<span class="text-muted small">ยังไม่ได้เลือกรายการ</span>`;
+            }
+        });
+    }
+
+    document.querySelectorAll('.select-options-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            currentCategory = this.dataset.category.replace('-', '_');
+            const categoryInfo = categoryMap[this.dataset.category];
+            if (categoryInfo) {
+                modalTitle.textContent = categoryInfo.title;
+                loadOptions(categoryInfo.apiUrl, initialData[currentCategory]);
+            }
+        });
+    });
+
+    async function loadOptions(apiUrl, selectedIds) {
+        optionsContainer.innerHTML = '<div class="text-center text-muted">กำลังโหลด...</div>';
+        try {
+            const response = await fetch(apiUrl);
+            if (!response.ok) throw new Error('Failed to fetch data');
+            const data = await response.json();
+            
+            if (data.length === 0) {
+                optionsContainer.innerHTML = '<div class="text-center text-muted">ไม่พบรายการในฐานข้อมูล</div>';
+                return;
+            }
+
+            optionsContainer.innerHTML = data.map(item => `
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" value="${item.id}" id="option-${currentCategory}-${item.id}" ${selectedIds.includes(item.id) ? 'checked' : ''}>
+                    <label class="form-check-label" for="option-${currentCategory}-${item.id}">${item.name}</label>
+                </div>
+            `).join('');
+        } catch (error) {
+            optionsContainer.innerHTML = `<div class="text-center text-danger">เกิดข้อผิดพลาดในการโหลดข้อมูล: ${error.message}</div>`;
+            console.error(error);
+        }
+    }
+
+    saveOptionsBtn.addEventListener('click', function() {
+        const selectedCheckboxes = optionsContainer.querySelectorAll('input:checked');
+        const selectedIds = Array.from(selectedCheckboxes).map(cb => parseInt(cb.value));
+        initialData[currentCategory] = selectedIds;
+        
+        updateSelectedItemsUI();
+        selectModal.hide();
+    });
+    
+    // Handle form submission via AJAX
+    form.addEventListener('submit', async function(event) {
+        event.preventDefault();
+        
+        const formData = new FormData(form);
+        const data = Object.fromEntries(formData.entries());
+        data.competencies = initialData.competencies;
+        data.desirable_characteristics = initialData.characteristics;
+        data.assessment_methods = initialData.assessment_methods;
+        
+        const url = unitId ? `/teacher/plan/unit/manage/{{ section.id }}/${unitId}` : `/teacher/plan/unit/manage/{{ section.id }}`;
+        
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify(data)
+            });
+            
+            const result = await response.json();
+            if (response.ok) {
+                window.location.href = "{{ url_for('teacher.manage_learning_plan', section_id=section.id) }}";
+            } else {
+                alert(`บันทึกล้มเหลว: ${result.message}`);
+            }
+        } catch (error) {
+            alert(`เกิดข้อผิดพลาดในการเชื่อมต่อ: ${error.message}`);
+        }
+    });
+
+    updateSelectedItemsUI();
+});
+</script>
+{% endblock %}

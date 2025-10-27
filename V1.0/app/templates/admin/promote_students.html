@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row">
+    <div class="col-md-3">
+        {% include 'admin/_admin_menu.html' %}
+    </div>
+    <div class="col-md-9">
+        <h1>{{ title }}</h1>
+        <p>ระบบจะทำการเลื่อนชั้นนักเรียนทั้งหมดจากปีการศึกษา <strong>{{ latest_year }}</strong> ไปยังปีการศึกษา <strong>{{ latest_year + 1 }}</strong></p>
+        
+        <div class="alert alert-warning">
+            <strong>คำเตือน:</strong> การดำเนินการนี้ไม่สามารถย้อนกลับได้! กรุณาตรวจสอบข้อมูลให้ถูกต้องและสำรองข้อมูลก่อนดำเนินการ
+            <ul>
+                <li>นักเรียนในชั้นสูงสุด (เช่น ม.6) จะถูกเปลี่ยนสถานะเป็น "สำเร็จการศึกษา"</li>
+                <li>นักเรียนในชั้นอื่นๆ จะถูกย้ายไปยังห้องเรียนในปีการศึกษาถัดไป (หากยังไม่มีห้องเรียนใหม่ ระบบจะสร้างให้โดยอัตโนมัติ)</li>
+            </ul>
+        </div>
+
+        <h5 class="mt-4">ภาพรวมนักเรียนที่จะถูกดำเนินการ:</h5>
+        {% for class_group in class_groups %}
+            <h6>{{ class_group.grade_level.name }} / ห้อง {{ class_group.room_number }} ({{ class_group.students.count() }} คน)</h6>
+        {% endfor %}
+
+        <hr>
+        <form action="{{ url_for('admin.execute_promotion') }}" method="POST" onsubmit="return confirm('คุณแน่ใจหรือไม่ว่าต้องการยืนยันการเลื่อนชั้น? การดำเนินการนี้ไม่สามารถย้อนกลับได้');">
+            <input type="hidden" name="from_year" value="{{ latest_year }}">
+            <button type="submit" class="btn btn-danger btn-lg">ยืนยันการเลื่อนชั้น</button>
+            <a href="{{ url_for('admin.manage_students') }}" class="btn btn-secondary btn-lg">ยกเลิก</a>
+        </form>
+    </div>
+</div>
+{% endblock %}

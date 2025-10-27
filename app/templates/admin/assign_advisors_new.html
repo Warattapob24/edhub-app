@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+{% block sidebar %}
+    {% include 'admin/_sidebar.html' %}
+{% endblock %}
+{% block main_content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+     <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-0">
+                <li class="breadcrumb-item"><a href="{{ url_for('admin.list_classrooms') }}">ห้องเรียน</a></li>
+                <li class="breadcrumb-item active" aria-current="page">{{ title }}</li>
+            </ol>
+        </nav>
+        <h2 class="mb-0">{{ classroom.name }}</h2>
+        <p class="text-muted mb-0">
+            <strong>ระดับชั้น:</strong> {{ classroom.grade_level.name }} | 
+            <strong>ปีการศึกษา:</strong> {{ classroom.academic_year.year }}
+        </p>
+    </div>
+    <div class="col-md-4">
+        <label for="classroomSwitcher" class="form-label"><strong>จัดการห้องเรียนอื่น:</strong></label>
+        <select id="classroomSwitcher" class="form-select">
+            {% for c in all_classrooms_in_year %}
+                <option value="{{ url_for('admin.assign_advisors', classroom_id=c.id) }}" 
+                        {% if c.id == classroom.id %}selected{% endif %}>
+                    {{ c.name }}
+                </option>
+            {% endfor %}
+        </select>
+    </div>
+</div>
+
+<div class="row g-4">
+    {# --- คอลัมน์ที่ 1: ครูที่ปรึกษาปัจจุบัน --- #}
+    <div class="col-lg-7">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-person-check-fill"></i> ครูที่ปรึกษาปัจจุบัน ({{ current_advisors|length }} คน)</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>ชื่อ-นามสกุล</th>
+                                <th class="text-end">การกระทำ</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for advisor in current_advisors %}
+                            <tr>
+                                <td>{{ advisor.name_prefix }}{{ advisor.first_name }} {{ advisor.last_name }}</td>
+                                <td class="text-end">
+                                    <form action="{{ url_for('admin.remove_advisor', classroom_id=classroom.id, user_id=advisor.id) }}" method="POST" onsubmit="return confirm('ยืนยันถอดถอนครูที่ปรึกษา?');">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-person-dash-fill"></i> ถอดถอน</button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="2" class="text-center text-muted py-4">ยังไม่มีครูที่ปรึกษาในห้องนี้</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# --- คอลัมน์ที่ 2: เพิ่มครูที่ปรึกษา --- #}
+    <div class="col-lg-5">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-person-plus-fill"></i> มอบหมายครูที่ปรึกษาใหม่</h5>
+            </div>
+            <div class="card-body">
+                <form id="addAdvisorForm" method="POST">
+                     <div class="mb-3">
+                        <label for="user_id_to_add" class="form-label">เลือกครู:</label>
+                        <select id="user_id_to_add" name="user_id" required>
+                            <option value="">-- ค้นหาหรือเลือกครู --</option>
+                            {% for teacher in available_teachers %}
+                                <option value="{{ teacher.id }}">{{ teacher.text }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="d-grid">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-primary"><i class="bi bi-plus-lg"></i> มอบหมาย</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Classroom Switcher
+        const classroomSwitcher = document.getElementById('classroomSwitcher');
+        classroomSwitcher.addEventListener('change', function() {
+            if (this.value) {
+                window.location.href = this.value;
+            }
+        });
+
+        // Add Advisor Form
+        const teacherSelectEl = document.getElementById('user_id_to_add');
+        if (teacherSelectEl) {
+            new TomSelect(teacherSelectEl, { create: false, sortField: { field: "text", direction: "asc" } });
+
+            const addAdvisorForm = document.getElementById('addAdvisorForm');
+            teacherSelectEl.addEventListener('change', function() {
+                if (this.value) {
+                    const actionUrl = `/admin/advisor/add/{{ classroom.id }}/${this.value}`;
+                    addAdvisorForm.action = actionUrl;
+                } else {
+                    addAdvisorForm.action = "";
+                }
+            });
+        }
+    });
+</script>
+{% endblock %}

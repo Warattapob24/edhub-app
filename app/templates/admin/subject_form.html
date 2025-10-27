@@ -1,0 +1,57 @@
+{% extends "admin/layout.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+    <h2>{{ title }}</h2>
+    <hr>
+    <div class="card">
+        <div class="card-body">
+            <form action="" method="post" novalidate>
+                {{ form.hidden_tag() }}
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        {{ form.subject_code.label(class="form-label") }}
+                        {{ form.subject_code(class="form-control") }}
+                        {% for error in form.subject_code.errors %}<span class="text-danger small">{{ error }}</span>{% endfor %}
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        {{ form.credit.label(class="form-label") }}
+                        {{ form.credit(class="form-control") }}
+                        {% for error in form.credit.errors %}<span class="text-danger small">{{ error }}</span>{% endfor %}
+                    </div>
+                </div>
+                <div class="mb-3">
+                    {{ form.name.label(class="form-label") }}
+                    {{ form.name(class="form-control") }}
+                    {% for error in form.name.errors %}<span class="text-danger small">{{ error }}</span>{% endfor %}
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        {{ form.subject_group.label(class="form-label") }}
+                        {{ form.subject_group(class="form-select") }}
+                        {% for error in form.subject_group.errors %}<span class="text-danger small">{{ error }}</span>{% endfor %}
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        {{ form.subject_type.label(class="form-label") }}
+                        {{ form.subject_type(class="form-select") }}
+                        {% for error in form.subject_type.errors %}<span class="text-danger small">{{ error }}</span>{% endfor %}
+                    </div>
+                </div>
+                <div class="mb-3">
+                    {{ form.grade_levels.label(class="form-label") }}
+                    <div class="border rounded p-2" style="height: auto;">
+                        {% for subfield in form.grade_levels %}
+                            <div class="form-check form-check-inline">
+                                {{ subfield(class="form-check-input") }}
+                                {{ subfield.label(class="form-check-label") }}
+                            </div>
+                        {% endfor %}
+                    </div>
+                    {% for error in form.grade_levels.errors %}<span class="text-danger small">{{ error }}</span>{% endfor %}
+                </div>
+                <hr>
+                {{ form.submit(class="btn btn-success") }}
+                <a href="{{ url_for('admin.list_subjects') }}" class="btn btn-secondary">ยกเลิก</a>
+            </form>
+        </div>
+    </div>
+{% endblock %}

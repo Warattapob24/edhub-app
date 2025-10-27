@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+
+{% block sidebar %}
+    {% include 'director/_sidebar.html' %}
+{% endblock %}
+
+{% block main_content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="h2"><i class="bi bi-patch-check-fill me-2"></i> {{ title }}</h1>
+        <p class="text-muted">ภาคเรียนที่ {{ semester.term }}/{{ semester.academic_year.year }}</p>
+    </div>
+    <div>
+        <button class="btn btn-lg btn-success" id="approve-all-btn" {% if stats.pending == 0 %}disabled{% endif %}>
+            <i class="bi bi-check-all me-2"></i> อนุมัติผลการซ่อมทั้งหมด ({{ stats.pending }} คน)
+        </button>
+    </div>
+</div>
+
+{# --- STATS CARDS --- #}
+<div class="row mb-5 g-3">
+    <div class="col-md-6">
+        <div class="card shadow-sm p-3 h-100">
+            <div class="d-flex align-items-center">
+                <div class="fs-2 text-primary me-3"><i class="bi bi-inbox-fill"></i></div>
+                <div>
+                    <div class="h1 fw-bold mb-0">{{ stats.pending }}</div>
+                    <div class="text-muted">รออนุมัติ</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card shadow-sm p-3 h-100">
+            <div class="d-flex align-items-center">
+                <div class="fs-2 text-success me-3"><i class="bi bi-check-circle-fill"></i></div>
+                <div>
+                    <div class="h1 fw-bold mb-0">{{ stats.approved }}</div>
+                    <div class="text-muted">อนุมัติแล้ว</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# --- Helper Macro --- #}
+{% macro render_student_table(students, title, icon_html) %}
+{% if students %}
+    <h4 class="mb-3">{{ icon_html|safe }} {{ title }} <small class="text-muted">({{ students|length }} คน)</small></h4>
+    <div class="card shadow-sm mb-4">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-3">ชื่อ-สกุล</th><th>รายวิชา</th><th>กลุ่มสาระฯ</th><th class="text-center">ผลการซ่อม</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for grade_obj, enrollment in students|sort(attribute='0.student.first_name') %}
+                    <tr>
+                        <td class="ps-3">{{ enrollment.roll_number }}. {{ grade_obj.student.name_prefix }}{{ grade_obj.student.first_name }} {{ grade_obj.student.last_name }}</td>
+                        <td>{{ grade_obj.course.subject.name }} ({{ grade_obj.course.classroom.name }})</td>
+                        <td>{{ grade_obj.course.subject.subject_group.name }}</td>
+                        <td class="text-center">
+                            <span class="badge bg-secondary">{{ grade_obj.original_final_grade }}</span>
+                            <i class="bi bi-arrow-right-short"></i>
+                            <span class="badge bg-success">{{ grade_obj.final_grade }}</span>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+{% endif %}
+{% endmacro %}
+
+{# --- Render Sections --- #}
+{{ render_student_table(pending_approval_students, 'รายการที่รออนุมัติ', '<i class="bi bi-inbox-fill text-primary"></i>') }}
+{{ render_student_table(approved_students, 'รายการที่อนุมัติแล้ว', '<i class="bi bi-check-circle-fill text-success"></i>') }}
+
+{% if not pending_approval_students and not approved_students %}
+<div class="text-center text-muted py-5">
+    <h4><i class="bi bi-folder2-open"></i> ยังไม่มีผลการซ่อมที่เสนอเข้ามาเพื่อรออนุมัติ</h4>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const approveBtn = document.getElementById('approve-all-btn');
+    if (approveBtn) {
+        approveBtn.addEventListener('click', function() {
+            Swal.fire({
+                title: 'ยืนยันการอนุมัติทั้งหมด?',
+                text: "ระบบจะทำการอนุมัติผลการซ่อมที่เสนอเข้ามาทั้งหมด และถือเป็นที่สิ้นสุด",
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'ยืนยันและอนุมัติ',
+                cancelButtonText: 'ยกเลิก',
+                confirmButtonColor: '#198754',
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    fetch("{{ url_for('director.approve_all_remediation') }}", {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': '{{ csrf_token() }}'
+                        }
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            Swal.fire('อนุมัติสำเร็จ!', data.message, 'success').then(() => location.reload());
+                        } else {
+                            Swal.fire('ผิดพลาด!', data.message, 'error');
+                        }
+                    })
+                    .catch(err => Swal.fire('ผิดพลาด!', 'การเชื่อมต่อล้มเหลว', 'error'));
+                }
+            });
+        });
+    }
+});
+</script>
+{% endblock %}

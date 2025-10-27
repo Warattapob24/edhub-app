@@ -1,0 +1,391 @@
+{% extends "base.html" %}
+
+{# --- [NEW] Define Macro for reuse --- #}
+{% macro render_summary_details(summary) %}
+    {% if summary %}
+    <div class="border-top pt-2 mt-2">
+        <div class="row align-items-center g-2">
+            {# Score Breakdown #}
+            {% set score_cols = namespace(count=2) %} {# Start with 2 cols (Collected, Total) #}
+            {% if summary.max_midterm_score > 0 %}{% set score_cols.count = score_cols.count + 1 %}{% endif %}
+            {% if summary.max_final_score > 0 %}{% set score_cols.count = score_cols.count + 1 %}{% endif %}
+            {% set col_class = 'col-sm-' + (12 // score_cols.count) | string %}
+
+            <div class="col-md-8">
+                <div class="row text-center gy-2">
+                    <div class="col-6 {{ col_class }}">
+                        <div class="small text-muted">คะแนนเก็บ</div>
+                        <div class="fs-5 fw-bold">{{ "%.1f"|format(summary.collected_score) if summary.collected_score is not none else '-' }}</div>
+                        <small class="text-muted">/ {{ "%.0f"|format(summary.max_collected_score) }}</small>
+                    </div>
+                    {% if summary.max_midterm_score > 0 %}
+                    <div class="col-6 {{ col_class }}">
+                        <div class="small text-muted">กลางภาค</div>
+                        <div class="fs-5 fw-bold">{{ "%.1f"|format(summary.midterm_score) if summary.midterm_score is not none else '-' }}</div>
+                        <small class="text-muted">/ {{ "%.0f"|format(summary.max_midterm_score) }}</small>
+                    </div>
+                    {% endif %}
+                    {% if summary.max_final_score > 0 %}
+                    <div class="col-6 {{ col_class }}">
+                        <div class="small text-muted">ปลายภาค</div>
+                        <div class="fs-5 fw-bold">{{ "%.1f"|format(summary.final_score) if summary.final_score is not none else '-' }}</div>
+                        <small class="text-muted">/ {{ "%.0f"|format(summary.max_final_score) }}</small>
+                    </div>
+                    {% endif %}
+                     <div class="col-6 {{ col_class }}">
+                        <div class="small text-muted">รวม</div>
+                        <div class="fs-5 fw-bold">{{ "%.1f"|format(summary.total_score) if summary.total_score is not none else '-' }}</div>
+                        <small class="text-muted">/ {{ "%.0f"|format(summary.grand_max_score) }}</small>
+                    </div>
+                </div>
+            </div>
+            {# Grade #}
+            <div class="col-md-4 text-center mt-2 mt-md-0 border-md-start">
+                <div class="small text-muted">เกรด</div>
+                <div class="display-5 fw-bold {% if summary.grade in ['0', 'ร', 'มส'] %}text-danger{% elif summary.grade %}text-success{% else %}text-muted{% endif %}">
+                    {{ summary.grade or '-' }}
+                </div>
+            </div>
+        </div>
+         {# Attendance Footer #}
+        <div class="card-footer text-muted small bg-light border-0 py-1 mt-2 rounded">
+            <div class="d-flex justify-content-around flex-wrap">
+                <span class="me-2"><i class="bi bi-check-circle text-success"></i> มา: {{ summary.attendance.PRESENT }}</span>
+                <span class="me-2"><i class="bi bi-clock text-warning"></i> สาย: {{ summary.attendance.LATE }}</span>
+                <span class="me-2"><i class="bi bi-x-circle text-danger"></i> ขาด: {{ summary.attendance.ABSENT }}</span>
+                <span><i class="bi bi-info-circle text-info"></i> ลา: {{ summary.attendance.LEAVE }}</span>
+            </div>
+        </div>
+    </div>
+    {% else %}
+         <p class="text-muted text-center small pt-2 border-top mt-2">ยังไม่มีข้อมูลสรุปสำหรับวิชานี้</p>
+    {% endif %}
+{% endmacro %}
+{# --- End Macro Definition --- #}
+
+
+{% block title %}EdHub {{ title }}{% endblock %}
+
+{% block sidebar %}
+    {% include 'student/_sidebar.html' %}
+{% endblock %}
+
+{% block main_content %}
+{# --- Header with Student Info --- #}
+<div class="d-flex align-items-center mb-4">
+    <i class="bi bi-person-circle fs-1 text-primary me-3"></i>
+    <div>
+        <h1 class="h2 mb-0">{{ student.name_prefix }}{{ student.first_name }} {{ student.last_name }}</h1>
+        <p class="text-muted mb-0">รหัสนักเรียน: {{ student.student_id }} | สถานะ: <strong>{{ student.status }}</strong></p>
+    </div>
+</div>
+
+{# --- WARNINGS SECTION --- #}
+{% if warnings %}
+<div class="alert alert-danger mb-4">
+    <h4 class="alert-heading"><i class="bi bi-exclamation-triangle-fill"></i> การแจ้งเตือน ({{ warnings|length }} รายการ)</h4>
+    <hr>
+    <ul class="mb-0">
+        {% for warning in warnings %}
+        <li><strong>{{ warning.course.subject.name }}:</strong> ขาดเรียนเกิน {{ warning.threshold_percent }}% (ขาดแล้ว {{ warning.absence_count_at_trigger }} ครั้ง)</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+{# --- [NEW] Mobile-First Schedule View --- #}
+<div class="row g-4">
+    
+    {# --- Current Period Column --- #}
+    <div class="col-lg-7">
+        <div class="card shadow-sm border-primary border-2">
+            <div class="card-header bg-primary bg-opacity-10">
+                <h5 class="mb-0 text-primary"><i class="bi bi-clock-fill me-2"></i>คาบเรียนปัจจุบัน</h5>
+            </div>
+            <div class="card-body p-3">
+                {% if current_slot_info %}
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <h3 class="h4 mb-1">
+                                {% if current_slot_info.is_teaching and current_entry_data %}
+                                    {{ current_entry_data.subject }}
+                                {% else %}
+                                    {{ current_slot_info.activity or 'ไม่มีกิจกรรม' }}
+                                {% endif %}
+                            </h3>
+                            <p class="text-muted mb-1">
+                                <i class="bi bi-clock me-1"></i>
+                                <strong>{{ current_slot_info.start }} - {{ current_slot_info.end }}</strong> (คาบที่ {{ current_slot_info.period }})
+                            </p>
+                            {% if current_slot_info.is_teaching and current_entry_data %}
+                                <p class="mb-1"><i class="bi bi-person-video3 me-1"></i> {{ current_entry_data.teachers }}</p>
+                                <p class="mb-0"><i class="bi bi-door-open me-1"></i> ห้อง {{ current_entry_data.room }}</p>
+                            {% endif %}
+                        </div>
+                        {% if current_slot_info.is_teaching and current_entry_data %}
+                            <button class="btn btn-outline-info btn-sm flex-shrink-0 ms-2 collapse-toggle-icon bi bi-plus-circle fs-5"
+                                    style="line-height: 1;"
+                                    type="button" 
+                                    data-bs-toggle="collapse" 
+                                    data-bs-target="#details-current"
+                                    aria-expanded="false" 
+                                    aria-controls="details-current"
+                                    title="ดูข้อมูลคะแนน/เข้าเรียน"></button>
+                        {% endif %}
+                    </div>
+
+                    {# --- Collapsible Details for Current Period --- #}
+                    {% if current_slot_info.is_teaching and current_entry_data %}
+                        <div class="collapse" id="details-current">
+                            {{ render_summary_details(course_summaries.get(current_entry_data.course_id)) }}
+                        </div>
+                    {% endif %}
+                
+                {% else %}
+                    <div class="text-center p-3">
+                        <i class="bi bi-cup-hot-fill fs-1 text-muted"></i>
+                        <h5 class="mt-2 mb-0">นอกเวลาเรียน</h5>
+                        <p class="text-muted">ขณะนี้เป็นเวลาพักหรือนอกเวลาทำการ</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    {# --- Next Period / Today's Schedule Column --- #}
+    <div class="col-lg-5">
+        {# --- Next Period --- #}
+        <div class="card shadow-sm mb-3">
+             <div class="card-header bg-light">
+                <h6 class="mb-0"><i class="bi bi-skip-forward-fill me-2"></i>คาบเรียนถัดไป</h6>
+            </div>
+            <div class="card-body py-2 px-3">
+                {% if next_slot_info %}
+                    <p class="mb-1 fw-semibold">
+                         {% if next_slot_info.is_teaching and next_entry_data %}
+                            {{ next_entry_data.subject }}
+                         {% else %}
+                            {{ next_slot_info.activity or 'N/A' }}
+                         {% endif %}
+                    </p>
+                    <small class="text-muted">
+                        <i class="bi bi-clock me-1"></i> {{ next_slot_info.start }} - {{ next_slot_info.end }}
+                        {% if next_slot_info.is_teaching and next_entry_data %}
+                            <i class="bi bi-door-open ms-2 me-1"></i> {{ next_entry_data.room }}
+                        {% endif %}
+                    </small>
+                {% else %}
+                    <p class="text-muted mb-0 small text-center">ไม่มีคาบเรียนถัดไปในวันนี้</p>
+                {% endif %}
+            </div>
+        </div>
+
+        {# --- Today's Schedule (Accordion) --- #}
+        <div class="accordion" id="todayScheduleAccordion">
+            <div class="accordion-item shadow-sm">
+                <h2 class="accordion-header" id="headingOne">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseTodaySchedule" aria-expanded="false" aria-controls="collapseTodaySchedule">
+                        <i class="bi bi-calendar-event-fill me-2"></i>ตารางเรียนวันนี้ ({{ today_schedule|length }} คาบ)
+                    </button>
+                </h2>
+                <div id="collapseTodaySchedule" class="accordion-collapse collapse" aria-labelledby="headingOne" data-bs-parent="#todayScheduleAccordion">
+                    <div class="accordion-body p-0">
+                        {% if today_schedule %}
+                        <ul class="list-group list-group-flush">
+                            {% for entry in today_schedule %}
+                                {% set summary = course_summaries.get(entry.course_id) %}
+                                <li class="list-group-item p-2 {% if entry.is_current %}list-group-item-primary{% endif %}">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div class="me-2" style="flex-basis: 70px;">
+                                            <span class="d-block small fw-bold">{{ entry.start }}</span>
+                                            <span class="d-block small text-muted">{{ entry.end }}</span>
+                                        </div>
+                                        <div class="flex-grow-1">
+                                            <span class="fw-semibold">
+                                                {% if entry.is_teaching %}
+                                                    {{ entry.subject }}
+                                                {% else %}
+                                                    <i class="text-muted">{{ entry.activity }}</i>
+                                                {% endif %}
+                                            </span>
+                                            {% if entry.is_teaching %}
+                                                <small class="d-block text-muted">
+                                                    {{ entry.teachers }} (ห้อง {{ entry.room }})
+                                                </small>
+                                            {% endif %}
+                                        </div>
+                                        {% if entry.is_teaching %}
+                                            <button class="btn btn-link btn-sm p-1 collapse-toggle-icon bi bi-plus-circle text-decoration-none"
+                                                    type="button" 
+                                                    data-bs-toggle="collapse" 
+                                                    data-bs-target="#details-{{ entry.course_id }}"
+                                                    aria-expanded="false" 
+                                                    aria-controls="details-{{ entry.course_id }}"
+                                                    title="ดูข้อมูล"></button>
+                                        {% endif %}
+                                    </div>
+                                    {# --- Collapsible Details for each entry --- #}
+                                    {% if entry.is_teaching %}
+                                    <div class="collapse" id="details-{{ entry.course_id }}">
+                                        {{ render_summary_details(summary) }}
+                                    </div>
+                                    {% endif %}
+                                </li>
+                            {% endfor %}
+                        </ul>
+                        {% else %}
+                            <p class="text-muted text-center p-3 mb-0">ไม่มีตารางเรียนสำหรับวันนี้</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{# --- [END NEW] Mobile-First Schedule View --- #}
+
+
+{# --- [REVISED] Collapsible Desktop View (Old View) --- #}
+<div class="accordion mt-4 d-none d-lg-block" id="desktopViewAccordion">
+    <div class="accordion-item">
+        <h2 class="accordion-header" id="headingDesktop">
+            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseDesktopView" aria-expanded="false" aria-controls="collapseDesktopView">
+                <i class="bi bi-layout-text-window-reverse me-2"></i>ดูสรุปผลการเรียนและการประเมิน (มุมมองเดิม)
+            </button>
+        </h2>
+        <div id="collapseDesktopView" class="accordion-collapse collapse" aria-labelledby="headingDesktop">
+            <div class="accordion-body">
+                
+                {# --- Original Content Row (Now inside collapse) --- #}
+                <div class="row g-4">
+                    {# --- Academic Summary Column --- #}
+                    <div class="col-lg-8">
+                        <div class="card shadow-sm">
+                            <div class="card-header bg-primary text-white"><h5 class="mb-0"><i class="bi bi-journals me-2"></i>สรุปผลการเรียนภาคเรียนปัจจุบัน</h5></div>
+                            <div class="card-body p-0">
+                                {% if academic_summary %}
+                                    {% for summary in academic_summary %}
+                                    
+                                    {# --- [REPLACED INCLUDE] --- #}
+                                    {# This is the content from the old dashboard.html loop #}
+                                    <div class="card mb-0 border-0 border-bottom">
+                                        <div class="card-header bg-light border-0">
+                                            <h6 class="mb-1">{{ summary.course.subject.name }}</h6>
+                                            <small class="text-muted">ครูผู้สอน:
+                                                {% for teacher in summary.course.teachers %}
+                                                    {{ teacher.first_name }}{{ ' ครู' if loop.last else ', ' }}
+                                                {% endfor %}
+                                            </small>
+                                        </div>
+                                        <div class="card-body py-3 px-3">
+                                            {{ render_summary_details(summary) }}
+                                        </div>
+                                    </div>
+                                    {# --- [END REPLACED INCLUDE] --- #}
+
+                                    {% endfor %}
+                                {% else %}
+                                <p class="text-muted text-center p-4">ยังไม่มีข้อมูลผลการเรียนในภาคเรียนนี้</p>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    {# --- Assessment Summary Column (Copied from original) --- #}
+                    <div class="col-lg-4">
+                        <div class="card shadow-sm">
+                            <div class="card-header bg-success text-white"><h5 class="mb-0"><i class="bi bi-clipboard2-check-fill me-2"></i>สรุปผลการประเมิน</h5></div>
+                            <div class="card-body">
+                                {% if assessment_summary %}
+                                    {% for template_data in assessment_summary %}
+                                        <h5 class="mt-2 mb-2 border-bottom pb-1">{{ template_data.name }}</h5>
+                                        {% for main_topic in template_data.topics %}
+                                            <div class="mb-2">
+                                                <div class="d-flex justify-content-between align-items-center">
+                                                    <span class="fw-semibold">{{ main_topic.name }}</span>
+                                                    {% if main_topic.advisor_score is not none %}
+                                                        {% set score_val = main_topic.advisor_score %}
+                                                        {% set score_label = template_data.rubric_map.get(score_val, '-') %}
+                                                        <span class="badge fs-6 text-nowrap {% if score_val == 3 %}bg-success{% elif score_val == 2 %}bg-primary{% elif score_val == 1 %}bg-info text-dark{% elif score_val == 0 %}bg-danger{% else %}bg-secondary{% endif %}">{{ score_label }}</span>
+                                                    {% elif main_topic.course_scores %}
+                                                        {% set course_scores = main_topic.course_scores | map(attribute='score') | list %}
+                                                        {% set avg_score = (course_scores | sum / course_scores | length) if course_scores else none %}
+                                                        {% if avg_score is not none %}
+                                                            {% set avg_label = template_data.rubric_map.get(avg_score | round | int, '-') %}
+                                                            <span class="badge fs-6 text-nowrap bg-secondary" title="ผลเฉลี่ยจากรายวิชา">{{ avg_label }}*</span>
+                                                        {% else %}
+                                                            <span class="text-muted small">-</span>
+                                                        {% endif %}
+                                                    {% else %}
+                                                        <span class="text-muted small">-</span>
+                                                    {% endif %}
+                                                </div>
+                                                {% if main_topic.sub_topics %}
+                                                    <ul class="list-unstyled ps-3 mt-1 mb-0">
+                                                        {% for sub_topic in main_topic.sub_topics %}
+                                                        <li class="d-flex justify-content-between align-items-center py-1">
+                                                            <small>{{ sub_topic.name }}</small>
+                                                            {% if sub_topic.advisor_score is not none %}
+                                                                {% set score_val = sub_topic.advisor_score %}
+                                                                {% set score_label = template_data.rubric_map.get(score_val, '-') %}
+                                                                <span class="badge fs-6 text-nowrap {% if score_val == 3 %}bg-success{% elif score_val == 2 %}bg-primary{% elif score_val == 1 %}bg-info text-dark{% elif score_val == 0 %}bg-danger{% else %}bg-secondary{% endif %}">{{ score_label }}</span>
+                                                            {% elif sub_topic.course_scores %}
+                                                                 {% set course_scores = sub_topic.course_scores | map(attribute='score') | list %}
+                                                                 {% set avg_score = (course_scores | sum / course_scores | length) if course_scores else none %}
+                                                                 {% if avg_score is not none %}
+                                                                     {% set avg_label = template_data.rubric_map.get(avg_score | round | int, '-') %}
+                                                                     <span class="badge fs-6 text-nowrap bg-secondary" title="ผลเฉลี่ยจากรายวิชา">{{ avg_label }}*</span>
+                                                                 {% else %}
+                                                                     <span class="text-muted small">-</span>
+                                                                 {% endif %}
+                                                            {% else %}
+                                                                <span class="text-muted small">-</span>
+                                                            {% endif %}
+                                                        </li>
+                                                        {% endfor %}
+                                                    </ul>
+                                                {% endif %}
+                                            </div>
+                                        {% endfor %}
+                                         {% if not loop.last %}<hr class="my-3">{% endif %}
+                                    {% endfor %}
+                                {% else %}
+                                    <p class="text-muted text-center">ยังไม่มีข้อมูลการประเมิน</p>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {# --- End Original Content Row --- #}
+            </div>
+        </div>
+    </div>
+</div>
+{# --- [END] Collapsible Desktop View --- #}
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+{# --- [NEW] Script to toggle collapse icons --- #}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var collapseElements = document.querySelectorAll('.collapse-toggle-icon');
+    collapseElements.forEach(function(el) {
+        var targetSelector = el.dataset.bsTarget;
+        if (!targetSelector) return;
+        
+        var target = document.querySelector(targetSelector);
+        if (target) {
+            target.addEventListener('show.bs.collapse', function() {
+                el.classList.remove('bi-plus-circle');
+                el.classList.add('bi-dash-circle');
+            });
+            target.addEventListener('hide.bs.collapse', function() {
+                el.classList.remove('bi-dash-circle');
+                el.classList.add('bi-plus-circle');
+            });
+        }
+    });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <title>ปถ.05 สรุปผลการเรียน</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap');
+        body { font-family: 'Sarabun', sans-serif; font-size: 8pt; /* Small font */ }
+        .container { width: 98%; margin: 15px auto; }
+        h3, p.header-info { margin: 2px 0; text-align: center; font-size: 8.5pt;}
+        table { width: 100%; border-collapse: collapse; margin-top: 5px; table-layout: fixed; }
+        th, td { border: 1px solid black; padding: 1px; text-align: center; vertical-align: middle; height: 16px; overflow: hidden; }
+        th { background-color: #f2f2f2; font-weight: bold; font-size: 6.5pt; white-space: nowrap;}
+        .student-name { text-align: left; padding-left: 2px; font-size: 7pt; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 0; }
+        tr.needs-attention td { color: red; }
+        tr.student-inactive td { text-decoration: line-through; text-decoration-color: red; color: gray; }
+
+        /* Adjusted widths based on PDF page 10 */
+        .col-roll { width: 4%; }
+        .col-id { width: 6%; }
+        .col-name { width: 22%; }
+        .col-score-raw { width: 5%; } /* Raw collected */
+        .col-score-real { width: 5%; } /* Real collected */
+        .col-midterm-raw { width: 5%; }
+        .col-midterm-real { width: 5%; }
+        .col-midterm-remedial { width: 5%; } /* Midterm remedial */
+        .col-collected-midterm-total { width: 6%; } /* Total collected + midterm */
+        .col-final-raw { width: 5%; }
+        .col-final-real { width: 5%; }
+        .col-final-remedial { width: 5%; } /* Final remedial */
+        .col-grand-total { width: 6%; font-weight: bold; } /* Grand total score */
+        .col-grade { width: 5%; font-weight: bold;} /* Final Grade */
+
+         thead { display: table-header-group; }
+         tr { page-break-inside: avoid; }
+         table { page-break-inside: auto; }
+         .page-break { page-break-before: always; }
+         .vertical-text {
+             writing-mode: vertical-rl; text-orientation: mixed; white-space: nowrap;
+             transform: rotate(0deg); font-size: 6pt; padding: 3px 0px; height: 40px;
+        }
+         .footer-note { font-size: 7pt; text-align: left; margin-top: 5px; }
+
+    </style>
+</head>
+<body>
+    <div class="container summary-page">
+         {# Header - Repeated for each page #}
+         <div class="{{ 'page-break' if false else '' }}"> {# Control page break if needed later #}
+            <h3>การสรุปผลการประเมินรายวิชา {{ course_info.subject_code }} {{ course_info.subject_name }}</h3>
+            <p class="header-info">
+                ชั้น {{ course_info.grade_level }} / {{ course_info.classroom_name.split('/')[-1] if '/' in course_info.classroom_name else course_info.classroom_name }} ครูผู้สอน {{ course_info.teachers | join(', ') }}<br>
+                ภาคเรียนที่ {{ course_info.semester_term }} ปีการศึกษา {{ course_info.academic_year }}
+            </p>
+        </div>
+
+        <table>
+            <thead>
+                {# --- Determine visibility & ratios --- #}
+                {% set show_midterm = score_structure.midterm_total > 0 %}
+                {% set show_final = score_structure.final_total > 0 %}
+                {% set ratio_coll = score_structure.ratio_collected %}
+                {% set ratio_mid = score_structure.ratio_midterm %}
+                {% set ratio_final = score_structure.ratio_final %}
+                {% set mid_period_ratio = ratio_coll + ratio_mid %} {# This is the 80 part #}
+                {% set total_scaled = 100 %} {# Always 100 now #}
+
+                {# --- Row 1: Main Headers --- #}
+                <tr>
+                    <th rowspan="3" class="col-roll">เลขที่</th>
+                    <th rowspan="3" class="col-id">เลข<br>ประจำตัว</th>
+                    <th rowspan="3" class="col-name">ชื่อ - สกุล</th>
+                    {# [FIX 3] rowspan for Mid-Period Header #}
+                    <th colspan="{{ 2 + (3 if show_midterm else 0) + 1 }}">ระหว่างภาคเรียน ({{ "%g"|format(mid_period_ratio | round(1)) }})</th>
+                    {% if show_final %}
+                        {# [FIX 4] Final Exam Header spans 2 columns #}
+                        <th colspan="2">ปลายภาค ({{ "%g"|format(ratio_final | round(1)) }})</th>
+                    {% endif %}
+                    <th rowspan="3" class="col-grand-total vertical-text">รวมคะแนน<br>({{ "%g"|format(total_scaled | round(1)) }})</th>
+                    <th rowspan="3" class="col-grade vertical-text">ระดับ<br>ผลการ<br>เรียน</th>
+                    <th rowspan="3" class="col-remedial-grade vertical-text">ผลการ<br>แก้ตัว</th>
+                </tr>
+                {# --- Row 2: Sub Headers --- #}
+                <tr>
+                    <th colspan="2">ผลการเรียนรู้ฯ</th>
+                    {% if show_midterm %}
+                        <th colspan="3">สอบกลางภาคเรียน</th>
+                    {% endif %}
+                    {# [FIX 3] Mid-period Total is rowspan=3 in Col 1 #}
+                    <th rowspan="2" class="col-mid-period-total vertical-text">รวม<br>({{ "%g"|format(mid_period_ratio | round(1)) }})</th>
+                    {% if show_final %}
+                         {# [FIX 4] Final Exam Header spans 2 columns #}
+                        <th colspan="2">สอบปลายภาคเรียน</th>
+                    {% endif %}
+                </tr>
+                {# --- Row 3: Detail Headers --- #}
+                <tr>
+                    <th class="col-coll-raw vertical-text">รวม(ดิบ)<br>({{ "%g"|format(score_structure.collected_total | round(1))}})</th>
+                    <th class="col-coll-scaled vertical-text">จริง<br>({{ "%g"|format(ratio_coll | round(1))}})</th>
+                    {% if show_midterm %}
+                        <th class="col-mid-raw vertical-text">รวม(ดิบ)<br>({{ "%g"|format(score_structure.midterm_total | round(1))}})</th>
+                        <th class="col-mid-scaled vertical-text">จริง<br>({{ "%g"|format(ratio_mid | round(1))}})</th>
+                        <th class="col-mid-remedial vertical-text">สอบแก้ตัว</th>
+                    {% endif %}
+                    {% if show_final %}
+                        <th class="col-final-raw vertical-text">รวม(ดิบ)<br>({{ "%g"|format(score_structure.final_total | round(1))}})</th>
+                        <th class="col-final-scaled vertical-text">จริง<br>({{ "%g"|format(ratio_final | round(1))}})</th>
+                        {# No Final Remedial column #}
+                    {% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for student in students_data %}
+                 {% set is_inactive = student.status != 'กำลังศึกษา' %}
+                 {# --- Calculate Scores --- #}
+                 {# 1. Raw Collected #}
+                 {% set coll_raw = student.total_collected or 0 %}
+                 {# 3.1 Raw Midterm #}
+                 {% set mid_raw = student.midterm_score or 0 if show_midterm else 0 %}
+                 {# 5.1 Raw Final #}
+                 {% set final_raw = student.final_score or 0 if show_final else 0 %}
+
+                 {# 2. Scaled Collected (Based on ratio_coll calculated relative to 100) #}
+                 {% set scaled_coll = coll_raw %}
+                 {# 3.2 Scaled Midterm (Based on ratio_mid calculated relative to 100) #}
+                 {% set scaled_mid = mid_raw if show_midterm else 0 %}
+                 {# 4. Mid Period Total (Sum of scaled collected and scaled midterm) #}
+                 {% set mid_period_total = scaled_coll + scaled_mid %}
+                 {# 5.2 Scaled Final (Based on ratio_final calculated relative to 100) #}
+                 {% set scaled_final = final_raw if show_final else 0 %}
+                 {# 6. Grand Total Scaled (Sum of ALL scaled parts) #}
+                 {% set grand_total_scaled = mid_period_total + scaled_final %}
+                 {# 7. Grade (From services.py) #}
+                 {% set current_grade = student.final_grade if student.final_grade else '' %}
+                 {# Determine if needs attention based on CURRENT grade #}
+                 {% set needs_attention = current_grade in ['0', 'ร', 'มส'] %}
+
+                <tr class="{{ 'needs-attention' if needs_attention and not is_inactive else '' }} {{ 'student-inactive' if is_inactive else '' }}">
+                    <td>{{ student.roll_number }}</td>
+                    <td>{{ student.student_id }}</td>
+                    <td class="student-name">{{ student.full_name }}</td>
+                    {# 1. Raw Collected #}
+                    <td>{{ "%g"|format(coll_raw | round(1)) }}</td>
+                    {# 2. Scaled Collected #}
+                    <td>{{ "%g"|format(scaled_coll | round(1)) }}</td>
+                    {# 3. Midterm (Conditional) #}
+                    {% if show_midterm %}
+                        {# 3.1 Raw Midterm #}
+                        <td>{{ "%g"|format(mid_raw | round(1)) }}</td>
+                        {# 3.2 Scaled Midterm #}
+                        <td>{{ "%g"|format(scaled_mid| round(1)) }}</td>
+                        {# 3.3 Midterm Remedial #}
+                        <td></td> {# Placeholder #}
+                    {% endif %}
+                    {# 4. Mid Period Total #}
+                    <td>{{ "%g"|format(mid_period_total | round(1)) }}</td>
+                    {# 5. Final (Conditional) #}
+                    {% if show_final %}
+                        {# 5.1 Raw Final #}
+                        <td>{{ "%g"|format(final_raw | round(1)) }}</td>
+                        {# 5.2 Scaled Final #}
+                        <td>{{ "%g"|format(scaled_final | round(1)) }}</td>
+                        {# No Final Remedial column #}
+                    {% endif %}
+                    {# 6. Grand Total #}
+                    <td>{{ "%g"|format(grand_total_scaled | round(1)) }}</td>
+                    {# 7. Grade (Original) #}
+                    <td class="col-grade">{{ student.original_final_grade or student.final_grade }}</td>
+                    {# 8. Remedial Grade #}
+                    <td class="col-remedial-grade">
+                        {# [FIX 5] Show final_grade if remediated AND grade is 1-4, otherwise '-' or original #}
+                        {% if student.remediation_status not in ['None', 'In Progress'] and current_grade in ['1', '1.5', '2', '2.5', '3', '3.5', '4'] %}
+                             {{ current_grade }}
+                        {% else %}
+                             - {# Show '-' if remediation needed/in progress, or if original was passing #}
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+         <p class="footer-note">หมายเหตุ: คะแนนในช่อง "จริง" และ "รวม" เป็นคะแนนตามสัดส่วนที่ปรับเทียบเป็น {{ total_scaled }} คะแนนแล้ว</p>
+    </div>
+</body>
+</html>

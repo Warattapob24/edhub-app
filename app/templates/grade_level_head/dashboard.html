@@ -1,0 +1,599 @@
+{% extends "base.html" %}
+
+{# =================================================================================== #}
+{# MACROS: ฟังก์ชันช่วยสร้าง HTML ที่ใช้ซ้ำๆ เพื่อลดความซ้ำซ้อนของโค้ด #}
+{# =================================================================================== #}
+
+{% macro render_assessment_summary_bar(summary) %}
+    {% if summary %}
+        {% set total = summary.values()|map('int', 0)|sum %}
+        {% if total > 0 %}
+            <div class="progress" style="height: 20px;" title="{% for k,v in summary.items() %}{{ k }}: {{ v }} {% endfor %}">
+                {% set color_map = {'ดีเยี่ยม': 'bg-success', 'ดี': 'bg-primary', 'ผ่าน': 'bg-info', 'ไม่ผ่าน': 'bg-danger'} %}
+                {% set sorted_labels = ['ดีเยี่ยม', 'ดี', 'ผ่าน', 'ไม่ผ่าน'] %}
+                {% for label in sorted_labels %}
+                    {% set value = summary.get(label)|int(0) %}
+                    {% if value > 0 %}
+                        <div class="progress-bar {{ color_map.get(label, 'bg-secondary') }}"
+                             style="width: {{ (value / total) * 100 }}%"></div>
+                    {% endif %}
+                {% endfor %}
+            </div>
+        {% else %}
+            <span class="text-muted small">ไม่มีข้อมูล</span>
+        {% endif %}
+    {% else %}
+        <span class="text-muted small">ไม่มีข้อมูล</span>
+    {% endif %}
+{% endmacro %}
+
+
+{% macro render_empty_state(icon_class, title, message='') %}
+    <div class="text-center text-muted p-5">
+        <i class="{{ icon_class }} fs-1"></i>
+        <h4 class="mt-2">{{ title }}</h4>
+        {% if message %}<p>{{ message }}</p>{% endif %}
+    </div>
+{% endmacro %}
+
+
+{# =================================================================================== #}
+{# PAGE CONTENT #}
+{# =================================================================================== #}
+
+{% block title %}EdHub {{ title }}{% endblock %}
+
+{% block sidebar %}{% include 'grade_level_head/_sidebar.html' %}{% endblock %}
+
+{% block main_content %}
+<!-- Page Header -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="h2"><i class="bi bi-person-badge me-2"></i> {{ title }}</h1>
+        {% if current_user and current_user|attr('led_grade_level') %}
+            <p class="text-muted">สายชั้น: {{ current_user.led_grade_level.name }}</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Summary Cards -->
+<div class="row mb-4 g-3">
+    <div class="col-md-6">
+        <div class="card shadow-sm h-100">
+            <a href="#actions-tab" class="text-decoration-none text-dark tab-link">
+                <div class="card-body d-flex align-items-center">
+                    <div class="fs-2 text-primary me-3"><i class="bi bi-inbox-fill"></i></div>
+                    <div>
+                        <div class="h1 fw-bold mb-0">{{ total_pending if total_pending is defined else 0 }}</div>
+                        <div class="text-muted">รายการรออนุมัติ</div>
+                    </div>
+                </div>
+            </a>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card shadow-sm h-100">
+            <a href="#attention-tab" class="text-decoration-none text-dark tab-link">
+                <div class="card-body d-flex align-items-center">
+                    <div class="fs-2 text-danger me-3"><i class="bi bi-journal-x"></i></div>
+                    <div>
+                        <div class="h1 fw-bold mb-0">{{ failing_students|length if failing_students is defined else 0 }}</div>
+                        <div class="text-muted">นักเรียนที่ต้องดูแลพิเศษ</div>
+                    </div>
+                </div>
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Main Tabbed Card -->
+<div class="card shadow-sm">
+    <div class="card-header">
+        <ul class="nav nav-tabs card-header-tabs" id="main-tabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#actions-tab" type="button">
+                    <i class="bi bi-check2-square"></i> รายการที่ต้องดำเนินการ
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#attention-tab" type="button">
+                    <i class="bi bi-exclamation-triangle"></i> นักเรียนที่ต้องดูแลพิเศษ
+                </button>
+            </li>
+        </ul>
+    </div>
+
+    <div class="tab-content card-body">
+        <!-- Tab 1: Actions Required -->
+        <div class="tab-pane fade show active" id="actions-tab" role="tabpanel">
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center bg-light">
+                    <h6 class="mb-0">ภาพรวมผลการประเมินทั้งหมด</h6>
+                    {% if assessment_stats and assessment_stats|length > 1 %}
+                    <select class="form-select form-select-sm w-auto" id="chart-template-selector">
+                        {% for stat in assessment_stats.values() %}
+                        <option value="{{ stat.id }}">{{ stat.name }}</option>
+                        {% endfor %}
+                    </select>
+                    {% endif %}
+                </div>
+                <div class="card-body" style="min-height: 430px; height: 430px; max-height: none;">
+                    <canvas id="assessmentChart"></canvas>
+                </div>
+            </div>
+
+            <div class="d-flex justify-content-end mb-3">
+                <button class="btn btn-primary" id="forward-all-btn" {% if not total_pending or total_pending == 0 %}disabled{% endif %}>
+                    <i class="bi bi-send-check-fill me-2"></i> เสนอต่อทั้งหมด ({{ total_pending | default(0) }} คน)
+                </button>
+            </div>
+
+            {% if records_by_classroom %}
+            <div class="accordion" id="classroomAccordion">
+                {% for classroom_name, data in records_by_classroom|dictsort %}
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-{{ classroom_name|replace('/', '-') }}">
+                            <strong>ห้องเรียน {{ classroom_name }}</strong>
+                            <small class="text-muted ms-2">| ครูที่ปรึกษา: {{ data.advisors|join(', ') if data.advisors else 'N/A' }}</small>
+
+                            {% set pending_count = data.pending|length %}
+                            {% set forwarded_count = data.forwarded|length %}
+
+                            {% if pending_count > 0 %}
+                                <span class="badge bg-primary rounded-pill ms-auto me-2">{{ pending_count }} รายการรอตรวจสอบ</span>
+                            {% endif %}
+                            {% if forwarded_count > 0 %}
+                                <span class="badge bg-info text-dark rounded-pill">{{ forwarded_count }} รายการส่งต่อแล้ว</span>
+                            {% endif %}
+                        </button>
+                    </h2>
+                    <div id="collapse-{{ classroom_name|replace('/', '-') }}" class="accordion-collapse collapse" data-bs-parent="#classroomAccordion">
+                        <div class="accordion-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-hover align-middle mb-0">
+                                    {% if data.pending %}
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th class="ps-3">นักเรียน</th>
+                                            <th style="width: 40%;">สรุปผล</th>
+                                            <th class="text-end pe-3">การกระทำ</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for record, enrollment, summary in data.pending %}
+                                        <tr>
+                                            <td class="ps-3">{{ enrollment.roll_number }}. {{ enrollment.student.first_name }} {{ enrollment.student.last_name }}</td>
+                                            
+                                            <td>{{ render_assessment_summary_bar(summary) }}</td> 
+                                            
+                                            <td class="text-end pe-3">
+                                                <button class="btn btn-sm btn-outline-primary review-btn"
+                                                        data-record-id="{{ record.id }}"
+                                                        data-student-name="{{ enrollment.student.full_name }}"
+                                                        data-bs-toggle="modal" data-bs-target="#reviewModal">
+                                                    ตรวจสอบ
+                                                </button>
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                    {% endif %}
+                                    {% if data.forwarded %}
+                                    <tbody {% if data.pending %}class="border-top"{% endif %}>
+                                        {% for record, enrollment, summary in data.forwarded %}
+                                        <tr class="text-muted">
+                                            <td class="ps-3">{{ enrollment.roll_number }}. {{ enrollment.student.first_name }} {{ enrollment.student.last_name }}</td>
+                                            
+                                            <td>{{ render_assessment_summary_bar(summary) }}</td> 
+                                            
+                                            <td class="text-end pe-3">
+                                                <span class="badge bg-info text-dark">ส่งต่อแล้ว</span>
+                                                <button class="btn btn-sm btn-outline-secondary review-btn ms-1"
+                                                        data-record-id="{{ record.id }}"
+                                                        data-student-name="{{ enrollment.student.full_name }}"
+                                                        data-bs-toggle="modal" data-bs-target="#reviewModal">
+                                                    ดูข้อมูล
+                                                </button>
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                    {% endif %}
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+                {{ render_empty_state('bi-check2-circle text-success', 'ไม่มีรายการรอตรวจสอบ') }}
+            {% endif %}
+        </div>
+
+        <!-- Tab 2: Students Needing Attention -->
+        <div class="tab-pane fade" id="attention-tab" role="tabpanel">
+            {% if failing_students %}
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="ps-3">เลขที่-ชื่อสกุล</th>
+                            <th>ห้อง</th>
+                            <th>รายวิชา</th>
+                            <th class="text-center">ผลการเรียน</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for grade_obj, enrollment in failing_students|sort(attribute='1.roll_number') %}
+                        <tr>
+                            <td class="ps-3">{{ enrollment.roll_number }}. {{ grade_obj.student.full_name }}</td>
+                            <td>{{ enrollment.classroom.name }}</td>
+                            <td>{{ grade_obj.course.subject.name }}</td>
+                            <td class="text-center">
+                                {% if grade_obj.final_grade == 'มส' %}
+                                    <span class="badge bg-danger fs-6">มส</span>
+                                {% elif grade_obj.final_grade == 'ร' %}
+                                    <span class="badge bg-warning text-dark fs-6">ร</span>
+                                {% else %}
+                                    <span class="badge bg-secondary fs-6">0</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+                {{ render_empty_state('bi-check2-circle text-success', 'ยอดเยี่ยม!', 'ไม่พบนักเรียนที่มีผลการเรียนไม่ผ่านเกณฑ์') }}
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Review Modal -->
+<div class="modal fade" id="reviewModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="reviewModalLabel">กำลังโหลด...</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="reviewModalBody">
+                <div class="text-center p-5"><div class="spinner-border"></div></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+
+{# =================================================================================== #}
+{# PAGE-SPECIFIC SCRIPTS #}
+{# =================================================================================== #}
+{% block scripts %}
+{{ super() }}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // --- Global State & Config ---
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+    let modalChartInstances = {}; // เก็บ instance ของกราฟใน modal
+    
+    // Global variables for the dashboard chart
+    let stackedBarChart = null; 
+    const chartData = {{ assessment_stats|tojson if assessment_stats else '{}' }};
+
+    // --- Initializers ---
+    initForwardAllButton();
+    initReviewModal();
+    initDashboardChart(); // This will use the user's requested function
+    initSummaryCardLinks();
+
+    // --- [GOLD STANDARD MODAL FUNCTIONS] ---
+
+    /**
+     * Helper: สร้างปุ่ม Popover (เวอร์ชันสมบูรณ์ - ไม่มี Margin)
+     */
+    function createPopoverButton(scores) {
+        if (!scores || scores.length === 0) return ''; 
+        
+        const popoverContent = scores.map(item => {
+            return `<li class='list-group-item p-1 d-flex justify-content-between'><small>${item.subject}</small><span class='badge bg-primary rounded-pill'>${item.score_label}</span></li>`;
+        }).join('');
+        
+        // [FIX] ไม่มี 'ms-2'
+        return `<button class="btn btn-sm btn-outline-secondary" type="button" 
+                        data-bs-toggle="popover" data-bs-html="true" 
+                        title="หลักฐานจากครูผู้สอน" 
+                        data-bs-content="<ul class='list-group list-group-flush'>${popoverContent.replace(/"/g, '&quot;')}</ul>">
+                    <i class="bi bi-info-circle"></i>
+                </button>`;
+    };
+
+    /**
+     * Helper: สั่งให้ Popover ทำงาน (เวอร์ชันสมบูรณ์ - มี hover focus)
+     */
+    function initPopovers(modalBody) {
+        const popoverTriggerList = [].slice.call(modalBody.querySelectorAll('[data-bs-toggle="popover"]'));
+        popoverTriggerList.map(function (popoverTriggerEl) {
+            return new bootstrap.Popover(popoverTriggerEl, {
+                fallbackPlacements: ['left', 'right', 'top', 'bottom'],
+                container: modalBody,
+                trigger: 'hover focus' // [FIX] เพิ่มพฤติกรรมตามต้นแบบ
+            });
+        });
+    }
+
+    /**
+     * [GOLD STANDARD] ตั้งค่าการทำงานของ Modal (แก้บั๊ก ReferenceError)
+     */
+    function initReviewModal() {
+        const reviewModal = document.getElementById('reviewModal');
+        if (!reviewModal) return;
+
+        reviewModal.addEventListener('show.bs.modal', async function(event) {
+            const button = event.relatedTarget;
+            const recordId = button.dataset.recordId;
+            const studentName = button.dataset.studentName || '';
+
+            reviewModal.querySelector('.modal-title').textContent = 'ผลการประเมิน: ' + studentName;
+            const modalBody = reviewModal.querySelector('.modal-body');
+            modalBody.innerHTML = '<div class="text-center p-5"><div class="spinner-border"></div></div>';
+
+            Object.values(modalChartInstances).forEach(chart => chart.destroy());
+            modalChartInstances = {};
+
+            try {
+                // [FIX] แก้ API Path ให้ถูกต้องสำหรับไฟล์นี้
+                const res = await fetch(`/grade_level_head/api/assessment-record/${recordId}/details`);
+                
+                if (!res.ok) throw new Error('ไม่สามารถโหลดข้อมูลได้');
+                const data = await res.json();
+                
+                if (!data || data.length === 0) {
+                    modalBody.innerHTML = '<p class="text-muted text-center p-3">ไม่พบข้อมูลการประเมิน</p>';
+                    return;
+                }
+                
+                // [FIX] นี่คือการประกาศตัวแปรที่ถูกต้อง
+                let navTabsHTML = '';
+                let tabContentHTML = '';
+
+                data.forEach((template, index) => {
+                    const isActive = index === 0;
+                    navTabsHTML += `<li class="nav-item" role="presentation"><button class="nav-link ${isActive ? 'active' : ''}" data-bs-toggle="tab" data-bs-target="#modal-pane-${index}" type="button">${template.name}</button></li>`;
+
+                    // [FIX] สร้าง Table Rows (Popover อยู่ใน Cell เดียวกัน)
+                    const tableRows = (template.topics || []).map(t => {
+                        // [FIX] อ่านจาก 'score_label' ที่ API ส่งมาให้โดยตรง
+                        const label = t.score_label ?? t.score ?? '-'; 
+                        const popoverBtn = createPopoverButton(t.evidence_scores); 
+                        return `
+                            <tr>
+                                <td>${t.name}</td>
+                                <td class="text-center align-middle">${label} ${popoverBtn}</td> 
+                            </tr>
+                        `;
+                    }).join('');
+                    
+                    const hasChartData = template.topics && template.topics.length > 0;
+
+                    // [FIX] ใช้ Layout แบบ col-lg-6 (Side-by-Side)
+                    tabContentHTML += `
+                        <div class="tab-pane fade ${isActive ? 'show active' : ''}" id="modal-pane-${index}">
+                            <div class="row mt-3 g-4">
+                                <div class="col-lg-6" style="min-height: 350px;">
+                                    ${hasChartData ? `<canvas id="modalRadarChart-${index}"></canvas>` : `<div class="d-flex h-100 justify-content-center align-items-center text-muted">(ไม่มีข้อมูลกราฟ)</div>`}
+                                </div>
+                                <div class="col-lg-6">
+                                    <div class="table-responsive">
+                                        <table class="table table-sm table-bordered">
+                                            <thead class="table-light">
+                                                <tr>
+                                                    <th>หัวข้อ</th>
+                                                    <th class="text-center" style="width: 40%;">ผลสรุป</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>${tableRows}</tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>`;
+                });
+
+                // [FIX] ใช้ตัวแปรที่ถูกต้อง (navTabsHTML, tabContentHTML)
+                modalBody.innerHTML = `<ul class="nav nav-tabs">${navTabsHTML}</ul><div class="tab-content">${tabContentHTML}</div>`;
+                
+                // สั่งให้ Popover ทำงาน
+                initPopovers(modalBody);
+
+                // สร้างกราฟ
+                setTimeout(() => {
+                    data.forEach((template, index) => {
+                        if (template.topics && template.topics.length > 0) {
+                            const ctx = document.getElementById(`modalRadarChart-${index}`);
+                            if (ctx) {
+                                modalChartInstances[index] = new Chart(ctx, {
+                                    type: 'radar',
+                                    data: {
+                                        labels: template.topics.map(t => t.name),
+                                        datasets: [{
+                                            data: template.topics.map(t => Number(t.score ?? 0)),
+                                            backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                                            borderColor: 'rgb(54, 162, 235)'
+                                        }]
+                                    },
+                                    options: {
+                                        responsive: true,
+                                        maintainAspectRatio: false,
+                                        scales: { r: { suggestedMin: 0, suggestedMax: 3, ticks: { stepSize: 1 } } },
+                                        plugins: { legend: { display: false } }
+                                    }
+                                });
+                            }
+                        }
+                    });
+                }, 150);
+            } catch (err) {
+                console.error('Modal load error:', err);
+                modalBody.innerHTML = `<div class="alert alert-danger">เกิดข้อผิดพลาดในการโหลดข้อมูล: ${err.message}</div>`;
+            }
+        });
+
+        reviewModal.addEventListener('hidden.bs.modal', function() {
+            Object.values(modalChartInstances).forEach(chart => chart.destroy());
+            modalChartInstances = {};
+            document.querySelectorAll('.popover').forEach(popover => popover.remove());
+        });
+    }
+
+    // --- [END GOLD STANDARD] ---
+    /**
+     * ตั้งค่าการทำงานของปุ่ม "ส่งต่อทั้งหมด"
+     */
+    function initForwardAllButton() {
+        const forwardBtn = document.getElementById('forward-all-btn');
+        if (!forwardBtn) return;
+
+        forwardBtn.addEventListener('click', function() {
+            Swal.fire({
+                title: 'ยืนยันการส่งต่อ?',
+                text: "ระบบจะส่งต่อผลการประเมินทั้งหมดที่รอการตรวจสอบให้ฝ่ายวิชาการ",
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: 'ยืนยัน',
+                cancelButtonText: 'ยกเลิก'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    fetch("{{ url_for('grade_level_head.forward_to_academic') }}", {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': csrfToken
+                        }
+                    })
+                    .then(res => res.ok ? res.json() : Promise.reject(new Error('เกิดข้อผิดพลาดจาก Server')))
+                    .then(data => {
+                        if (data.status === 'success') {
+                            Swal.fire('สำเร็จ!', data.message, 'success').then(() => location.reload());
+                        } else {
+                            Swal.fire('ผิดพลาด!', data.message || 'ไม่สามารถส่งต่อได้', 'error');
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Forward Error:', err);
+                        Swal.fire('ผิดพลาด!', 'เกิดข้อผิดพลาดในการเชื่อมต่อ', 'error');
+                    });
+                }
+            });
+        });
+    }
+
+    /**
+     * Renders or updates the main dashboard chart based on a selected template ID.
+     * This is the user-provided function.
+     * @param {string} templateId - The ID of the assessment template to display.
+     */
+    function updateStackedBarChart(templateId) {
+        const chartContainer = document.getElementById('assessmentChart')?.parentElement;
+        if (!chartContainer) return;
+
+        const data = Object.values(chartData).find(stat => String(stat.id) === String(templateId));
+
+        const hasValidData = data && Array.isArray(data.topic_labels) && data.topic_labels.length > 0 &&
+                            Array.isArray(data.datasets) && data.datasets.length > 0 &&
+                            data.datasets.some(ds => Array.isArray(ds.data) && ds.data.length > 0);
+
+        if (hasValidData) {
+            let canvasElement = chartContainer.querySelector('canvas');
+            if (!canvasElement) {
+                chartContainer.innerHTML = '<canvas id="assessmentChart"></canvas>';
+                canvasElement = document.getElementById('assessmentChart');
+            }
+            chartContainer.style.display = 'block';
+
+            if (stackedBarChart) {
+                stackedBarChart.data.labels = data.topic_labels;
+                stackedBarChart.data.datasets = data.datasets;
+                stackedBarChart.update();
+            } else {
+                if (canvasElement) {
+                    stackedBarChart = new Chart(canvasElement, {
+                        type: 'bar',
+                        data: { labels: data.topic_labels, datasets: data.datasets },
+                        options: {
+                            indexAxis: 'y',
+                            scales: {
+                                x: { stacked: true, beginAtZero: true, ticks: { stepSize: 1 } },
+                                y: { stacked: true }
+                            },
+                            responsive: true,
+                            maintainAspectRatio: false, // 🔥 ปิดการล็อกอัตราส่วน
+                            plugins: {
+                                legend: { position: 'bottom' }
+                            }
+                        }
+                    });
+                }
+            }
+        } else {
+            if (stackedBarChart) {
+                stackedBarChart.destroy();
+                stackedBarChart = null;
+            }
+            chartContainer.style.display = 'flex';
+            chartContainer.style.justifyContent = 'center';
+            chartContainer.style.alignItems = 'center';
+            chartContainer.innerHTML = '<p class="text-muted chart-placeholder-message"><i class="bi bi-bar-chart-line me-2"></i>ไม่มีข้อมูลสำหรับแสดงกราฟ</p>';
+        }
+    }
+
+    /**
+     * Sets up the event listener for the chart template selector.
+     */
+    function initDashboardChart() {
+        const templateSelector = document.getElementById('chart-template-selector');
+        
+        if (templateSelector) {
+            templateSelector.addEventListener('change', function() {
+                updateStackedBarChart(this.value);
+            });
+            // Initial render of the chart based on the default selected value.
+            if (templateSelector.value) {
+                updateStackedBarChart(templateSelector.value);
+            }
+        } else if (Object.keys(chartData).length > 0) {
+            // If no selector, but data exists, render the first one.
+            const firstStatData = Object.values(chartData)[0];
+            if (firstStatData) {
+                updateStackedBarChart(firstStatData.id);
+            }
+        } else {
+            // No selector and no data, ensure placeholder is shown.
+            updateStackedBarChart(null);
+        }
+    }
+
+    /**
+     * ทำให้ Card สรุปผลสามารถคลิกเพื่อเปลี่ยน Tab ได้
+     */
+    function initSummaryCardLinks() {
+        document.querySelectorAll('a.tab-link[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                const targetId = this.getAttribute('href');
+                const tab = document.querySelector(`button[data-bs-target="${targetId}"]`);
+                if (tab) {
+                    new bootstrap.Tab(tab).show();
+                }
+            });
+        });
+    }
+
+});
+</script>
+{% endblock %}

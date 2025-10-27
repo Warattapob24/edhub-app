@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+
+{% block sidebar %}
+    {% include 'student/_sidebar.html' %}
+{% endblock %}
+
+{% block main_content %}
+<div class="p-3 p-md-4">
+    <h1 class="h2 mb-4"><i class="bi bi-journal-album me-2 text-primary"></i>ประวัติผลการเรียนทั้งหมด</h1>
+    <p class="text-muted">ข้อมูลเกรดภาพรวมของ {{ student.name_prefix }}{{ student.first_name }} {{ student.last_name }} เรียงตามระดับชั้นและภาคเรียน</p>
+    
+    {% if sorted_history %}
+    <div class="accordion" id="gradeHistoryAccordion">
+        {# Loop through sorted_history: item[0] = grade_level_name, item[1] = semesters_list #}
+        {% for grade_name, semesters_list in sorted_history %}
+        <div class="accordion-item shadow-sm mb-3">
+            {% set safe_grade_name = grade_name | replace(' ', '-') | replace('.', '') %}
+            <h2 class="accordion-header" id="heading{{ safe_grade_name }}">
+                <button class="accordion-button {% if not loop.first %}collapsed{% endif %} bg-light" type="button" data-bs-toggle="collapse" data-bs-target="#collapse{{ safe_grade_name }}" aria-expanded="{% if loop.first %}true{% else %}false{% endif %}" aria-controls="collapse{{ safe_grade_name }}">
+                    <strong class="fs-5 text-primary">ระดับชั้น {{ grade_name }}</strong>
+                </button>
+            </h2>
+            <div id="collapse{{ safe_grade_name }}" class="accordion-collapse collapse {% if loop.first %}show{% endif %}" aria-labelledby="heading{{ safe_grade_name }}" data-bs-parent="#gradeHistoryAccordion">
+                <div class="accordion-body p-0">
+                    
+                    {# Loop through semesters_list: semester[0] = semester_key (e.g., '1/2568'), semester[1] = course_list #}
+                    {% for semester_key, course_list in semesters_list %}
+                    <div class="card card-body border-0 border-bottom border-light">
+                        <h5 class="card-title text-secondary border-bottom pb-2">
+                            <i class="bi bi-calendar-check-fill me-2"></i> ภาคเรียนที่ {{ semester_key }}
+                        </h5>
+                        <ul class="list-group list-group-flush mt-2">
+                            {% for course in course_list %}
+                            <li class="list-group-item d-flex justify-content-between align-items-center py-2 px-0">
+                                <div>
+                                    <span class="badge bg-info text-dark me-2">{{ course.subject_code }}</span>
+                                    <span class="fw-semibold">{{ course.subject_name }}</span>
+                                    <small class="text-muted d-block ms-4">หน่วยกิต: {{ course.credit }}</small>
+                                </div>
+                                {# Final Grade Display Logic #}
+                                <span class="badge fs-5 {% if course.final_grade in ['0', 'ร', 'มส', 'F'] %}bg-danger{% elif course.final_grade in ['4', 'A'] %}bg-success{% elif course.final_grade == 'N/A' %}bg-secondary{% else %}bg-primary{% endif %}">
+                                    {{ course.final_grade }}
+                                </span>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+        <div class="alert alert-info text-center mt-4">
+            <i class="bi bi-info-circle-fill me-2"></i>
+            ไม่พบประวัติผลการเรียนย้อนหลัง
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

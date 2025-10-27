@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h2>จัดการมิติการประเมิน</h2>
+        <a href="{{ url_for('admin.add_dimension') }}"><button>+ เพิ่มมิติใหม่</button></a>
+    </div>
+    <hr>
+    <table>
+        <thead>
+            <tr>
+                <th>รหัสย่อ</th>
+                <th>ชื่อเต็ม</th>
+                <th>คำอธิบาย</th>
+                <th>ดำเนินการ</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for dim in dimensions %}
+            <tr>
+                <td><strong>{{ dim.code }}</strong></td>
+                <td>{{ dim.name }}</td>
+                <td>{{ dim.description or 'N/A' }}</td>
+                <td>
+                    <a href="{{ url_for('admin.edit_dimension', id=dim.id) }}">แก้ไข</a> |
+                    <form action="{{ url_for('admin.delete_dimension', id=dim.id) }}" method="POST" style="display: inline;" onsubmit="return confirm('คุณแน่ใจหรือไม่?');">
+                        <button type="submit" style="background: none; border: none; color: red; cursor: pointer; padding: 0;">ลบ</button>
+                    </form>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="4" style="text-align: center;">ยังไม่มีมิติการประเมินที่สร้างไว้</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+{% endblock %}

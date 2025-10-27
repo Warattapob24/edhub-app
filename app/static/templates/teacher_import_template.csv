@@ -1,0 +1,4 @@
+temp_id,name_prefix,first_name,last_name,email,roles,homeroom_classroom,department_head_of,subject_group_member_of
+teacher01,นาย,สมชาย,ใจดี,,Teacher,ม.1/1,กลุ่มสาระการเรียนรู้คณิตศาสตร์,
+teacher02,นางสาว,สมศรี,แข็งแรง,,Teacher,ม.1/2,,กลุ่มสาระการเรียนรู้คณิตศาสตร์
+teacher03,ดร.,อดิศร,คงมั่น,adisorn.k@edhub.com,"Teacher,DepartmentHead",,กลุ่มสาระการเรียนรู้ภาษาไทย

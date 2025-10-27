@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+{% block sidebar %}
+    {% include 'admin/_sidebar.html' %}
+{% endblock %}
+
+{% block main_content %}
+    <h2 class="bi bi-plus-lg"> {{ title }}</h2>
+    <hr>
+    <div class="card">
+        <div class="card-body">
+            <form action="" method="post" novalidate>
+                {{ form.hidden_tag() }}
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        {{ form.username.label(class="form-label") }}
+                        {{ form.username(class="form-control") }}
+                        {% for error in form.username.errors %}<span class="text-danger small">{{ error }}</span>{% endfor %}
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        {{ form.email.label(class="form-label") }}
+                        {{ form.email(class="form-control") }}
+                        {% for error in form.email.errors %}<span class="text-danger small">{{ error }}</span>{% endfor %}
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        {{ form.name_prefix.label(class="form-label") }}
+                        {{ form.name_prefix(class="form-control") }}
+                        {% for error in form.name_prefix.errors %}<span class="text-danger small">{{ error }}</span>{% endfor %}
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        {{ form.first_name.label(class="form-label") }}
+                        {{ form.first_name(class="form-control") }}
+                        {% for error in form.first_name.errors %}<span class="text-danger small">{{ error }}</span>{% endfor %}
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        {{ form.last_name.label(class="form-label") }}
+                        {{ form.last_name(class="form-control") }}
+                        {% for error in form.last_name.errors %}<span class="text-danger small">{{ error }}</span>{% endfor %}
+                    </div>
+                </div>
+                <div class="mb-3">
+                    {{ form.job_title.label(class="form-label") }}
+                    {{ form.job_title(class="form-control") }}
+                    {% for error in form.job_title.errors %}<span class="text-danger small">{{ error }}</span>{% endfor %}
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        {{ form.password.label(class="form-label") }}
+                        {{ form.password(class="form-control") }}
+                        {% for error in form.password.errors %}<span class="text-danger small">{{ error }}</span>{% endfor %}
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        {{ form.password2.label(class="form-label") }}
+                        {{ form.password2(class="form-control") }}
+                        {% for error in form.password2.errors %}<span class="text-danger small">{{ error }}</span>{% endfor %}
+                    </div>
+                </div>
+                <div class="mb-3">
+                    {{ form.roles.label(class="form-label") }}
+                    <div class="border rounded p-2" style="height: auto;">
+                        {% for subfield in form.roles %}
+                            <div class="form-check form-check-inline">
+                                {{ subfield(class="form-check-input") }}
+                                {{ subfield.label(class="form-check-label") }}
+                            </div>
+                        {% endfor %}
+                    </div>
+                    {% for error in form.roles.errors %}<span class="text-danger small">{{ error }}</span>{% endfor %}
+                </div>
+                <hr>
+                {{ form.submit(class="btn btn-success") }}
+                <a href="{{ url_for('admin.list_users') }}" class="btn btn-secondary">ยกเลิก</a>
+            </form>
+        </div>
+    </div>
+{% endblock %}

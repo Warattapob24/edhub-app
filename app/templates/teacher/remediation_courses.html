@@ -1,0 +1,633 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+
+{% block sidebar %}
+    {% include 'teacher/_sidebar.html' %}
+{% endblock %}
+
+{% block styles %}
+{{ super() }}
+<style>
+    /* Styles remain the same */
+    .remediation-group {
+        border-left: 4px solid var(--bs-border-color);
+        padding-left: 1.5rem;
+        margin-bottom: 2.5rem;
+    }
+    .remediation-group.border-danger { --bs-border-color: var(--bs-danger); }
+    .remediation-group.border-warning { --bs-border-color: var(--bs-warning); }
+    .remediation-group.border-secondary { --bs-border-color: var(--bs-secondary); }
+    .remediation-group.border-success { --bs-border-color: var(--bs-success); }
+    .remediation-group.border-primary { --bs-border-color: var(--bs-primary); } /* Added for In Progress */
+    .remediation-group.border-info { --bs-border-color: var(--bs-info); } /* Added for Submitted */
+
+    /* Badge soft colors if not already defined globally */
+    .bg-primary-soft { background-color: rgba(var(--bs-primary-rgb), 0.1); }
+    .text-primary { color: var(--bs-primary) !important; }
+
+</style>
+{% endblock %}
+
+
+{% block main_content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="h2"><i class="bi bi-person-fill-gear me-2"></i> {{ title }}</h1>
+        <p class="text-muted">ภาคเรียนที่ {{ semester.term }}/{{ semester.academic_year.year }}</p>
+    </div>
+    <div>
+        {# Disable button if no students are in 'Completed' state #}
+        <button class="btn btn-lg btn-success" id="submit-all-btn" {% if not completed_students %}disabled{% endif %}>
+            <i class="bi bi-send-check-fill me-2"></i> รวบรวมและส่งผลการซ่อมทั้งหมด
+        </button>
+    </div>
+</div>
+
+{# --- Stats Display (using updated stats keys) --- #}
+{% if stats and stats.total > 0 %}
+<div class="row mb-4 g-3">
+    <div class="col-lg col-md-6">
+        <div class="card shadow-sm p-3 h-100">
+            <div class="d-flex align-items-center">
+                <div class="fs-2 text-secondary me-3"><i class="bi bi-pencil"></i></div>
+                <div>
+                    <div class="h1 fw-bold mb-0">{{ stats.awaiting_action }}</div>
+                    <div class="text-muted">รอเริ่มแก้ไข</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg col-md-6">
+        <div class="card shadow-sm p-3 h-100">
+            <div class="d-flex align-items-center">
+                <div class="fs-2 text-warning me-3"><i class="bi bi-hourglass-split"></i></div>
+                <div>
+                    <div class="h1 fw-bold mb-0">{{ stats.in_progress }}</div>
+                    <div class="text-muted">กำลังดำเนินการ</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg col-md-6">
+        <div class="card shadow-sm p-3 h-100">
+            <div class="d-flex align-items-center">
+                <div class="fs-2 text-success me-3"><i class="bi bi-check2-circle"></i></div>
+                <div>
+                    <div class="h1 fw-bold mb-0">{{ stats.completed }}</div>
+                    <div class="text-muted">เสร็จสิ้น (รอส่งผล)</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg col-md-6">
+        <div class="card shadow-sm p-3 h-100">
+            <div class="d-flex align-items-center">
+                <div class="fs-2 text-info me-3"><i class="bi bi-send-check"></i></div>
+                <div>
+                    <div class="h1 fw-bold mb-0">{{ stats.submitted }}</div>
+                    <div class="text-muted">ส่งผลแล้ว (รออนุมัติ)</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% if stats and stats.total > 0 %}
+<div class="progress-stacked mb-5" style="height: 2.5rem; font-size: 1rem;">
+    {% if stats.percent_completed > 0 %}
+    <div class="progress-bar bg-success" role="progressbar" style="width: {{ stats.percent_completed }}%;" aria-valuenow="{{ stats.percent_completed }}" aria-valuemin="0" aria-valuemax="100" title="เสร็จสิ้น (รอส่ง)">
+        <span class="fw-bold">{{ '%.0f'|format(stats.percent_completed) }}%</span>
+    </div>
+    {% endif %}
+    {% if stats.percent_submitted > 0 %}
+    <div class="progress-bar bg-info" role="progressbar" style="width: {{ stats.percent_submitted }}%;" aria-valuenow="{{ stats.percent_submitted }}" aria-valuemin="0" aria-valuemax="100" title="ส่งผลแล้ว">
+        <span class="fw-bold">{{ '%.0f'|format(stats.percent_submitted) }}%</span>
+    </div>
+    {% endif %}
+    {% if stats.percent_in_progress > 0 %}
+    <div class="progress-bar bg-warning text-dark" role="progressbar" style="width: {{ stats.percent_in_progress }}%;" aria-valuenow="{{ stats.percent_in_progress }}" aria-valuemin="0" aria-valuemax="100" title="กำลังดำเนินการ">
+        <span class="fw-bold">{{ '%.0f'|format(stats.percent_in_progress) }}%</span>
+    </div>
+    {% endif %}
+    {% if stats.percent_awaiting > 0 %}
+    <div class="progress-bar bg-secondary" role="progressbar" style="width: {{ stats.percent_awaiting }}%;" aria-valuenow="{{ stats.percent_awaiting }}" aria-valuemin="0" aria-valuemax="100" title="รอเริ่มแก้ไข">
+        <span class="fw-bold">{{ '%.0f'|format(stats.percent_awaiting) }}%</span>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
+
+{# --- Helper Macro (minor adjustments for clarity) --- #}
+{% macro render_student_table(students, group_title, group_icon, border_class="border-secondary") %}
+    {% if students %}
+    <div class="remediation-group {{ border_class }}">
+        <h4 class="mb-3">{{ group_icon|safe }} {{ group_title }} <small class="text-muted">({{ students|length }} คน)</small></h4>
+        <div class="card shadow-sm mb-4">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0" style="font-size: 0.9rem;">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width: 5%;">เลขที่</th>
+                            <th style="width: 20%;">ชื่อ-สกุล</th>
+                            <th style="width: 25%;">รายวิชา</th>
+                            <th style="width: 10%;" class="text-center">ห้อง</th>
+                            <th style="width: 15%;" class="text-center">เกรดเดิม/ใหม่</th>
+                            <th style="width: 15%;" class="text-center">สถานะการซ่อม</th>
+                            <th style="width: 10%;" class="text-center">จัดการ</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for grade_obj, enrollment in students %}
+                        <tr>
+                            <td>{{ enrollment.roll_number }}</td>
+                            <td>{{ grade_obj.student.name_prefix }}{{ grade_obj.student.first_name }} {{ grade_obj.student.last_name }}</td>
+                            <td>{{ grade_obj.course.subject.subject_code }} - {{ grade_obj.course.subject.name }}</td>
+                            <td class="text-center">{{ grade_obj.course.classroom.name }}</td>
+                            <td class="text-center">
+                                {# Show original grade badge #}
+                                {% set original_grade = grade_obj.original_final_grade or grade_obj.final_grade %} {# Fallback if original is None #}
+                                {% set og_badge_class = 'bg-secondary' %}
+                                {% if original_grade == 'มส' %} {% set og_badge_class = 'bg-danger' %}
+                                {% elif original_grade == 'ร' %} {% set og_badge_class = 'bg-warning text-dark' %}
+                                {% endif %}
+                                <span class="badge {{ og_badge_class }}">{{ original_grade }}</span>
+
+                                {# Show arrow and new grade only if status is NOT 'None' #}
+                                {% if grade_obj.remediation_status != 'None' and grade_obj.final_grade != original_grade %}
+                                    <i class="bi bi-arrow-right-short"></i>
+                                    {# Determine new grade badge color #}
+                                    {% set new_grade = grade_obj.final_grade %}
+                                    {% set ng_badge_class = 'bg-success' %} {# Default success #}
+                                    {% if new_grade in ['0', 'ร', 'มส'] %} {% set ng_badge_class = 'bg-secondary' %} {% endif %}
+                                    <span class="badge {{ ng_badge_class }}">{{ new_grade }}</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% set status = grade_obj.remediation_status %}
+                                {% if status == 'Approved' %}
+                                    <span class="badge bg-success"><i class="bi bi-check-circle-fill me-1"></i> อนุมัติแล้ว</span>
+                                {% elif status.startswith('Submitted') or status == 'Pending Director Approval' %}
+                                    <span class="badge bg-info-soft text-info"><i class="bi bi-send-check me-1"></i> ส่งผลแล้ว</span>
+                                {% elif status == 'Completed' %}
+                                    <span class="badge bg-success-soft text-success"><i class="bi bi-check2-circle me-1"></i> เสร็จสิ้น</span>
+                                {% elif status == 'In Progress' %}
+                                    <span class="badge bg-warning-soft text-warning"><i class="bi bi-hourglass-split me-1"></i> กำลังดำเนินการ</span>
+                                {% else %} {# Status is 'None' #}
+                                    <span class="badge bg-light text-dark"><i class="bi bi-pencil me-1"></i> รอเริ่มแก้ไข</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                {# Button is active unless submitted or approved #}
+                                {% if status.startswith('Submitted') or status == 'Pending Director Approval' or status == 'Approved' %}
+                                    <button class="btn btn-secondary btn-sm" disabled data-bs-toggle="tooltip" title="ส่งผลการซ่อมแล้ว">
+                                        <i class="bi bi-check-all"></i> ส่งแล้ว
+                                    </button>
+                                {% else %}
+                                    <button class="btn btn-outline-primary btn-sm edit-remediation-btn"
+                                            data-course-id="{{ grade_obj.course_id }}"
+                                            data-student-id="{{ grade_obj.student_id }}">
+                                        <i class="bi bi-pencil-square"></i> แก้ไข
+                                    </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+{% endmacro %}
+
+
+{# --- Render the groups using the correct variables passed from the route --- #}
+<h3 class="mb-4 text-secondary"><i class="bi bi-pencil-fill me-2"></i> รอเริ่มดำเนินการ</h3>
+{# Use the variables passed from render_template #}
+{{ render_student_table(ms_students_original, 'เกรดปัจจุบัน "มส"', '<span class="badge fs-5 bg-danger">มส</span>', border_class="border-danger") }}
+{{ render_student_table(r_students_original, 'เกรดปัจจุบัน "ร"', '<span class="badge fs-5 bg-warning text-dark">ร</span>', border_class="border-warning") }}
+{{ render_student_table(zero_students_original, 'เกรดปัจจุบัน "0"', '<span class="badge fs-5 bg-secondary">0</span>', border_class="border-secondary") }}
+
+<hr class="my-5">
+{# Use the variable passed from render_template #}
+{{ render_student_table(in_progress_students, 'กำลังดำเนินการแก้ไข', '<i class="bi bi-hourglass-split text-warning fs-5"></i>', border_class="border-warning") }}
+
+<hr class="my-5">
+{# Use the variable passed from render_template #}
+{{ render_student_table(completed_students, 'ดำเนินการเสร็จสิ้น (รอส่งผล)', '<i class="bi bi-check2-circle text-success fs-5"></i>', border_class="border-success") }}
+
+<hr class="my-5">
+{# Use the variable passed from render_template #}
+{{ render_student_table(submitted_students, 'ส่งผลแล้ว (รออนุมัติ)', '<i class="bi bi-send-check text-info fs-5"></i>', border_class="border-info") }}
+
+
+{# --- Updated Empty State Message Check --- #}
+{% if not ms_students_original and not r_students_original and not zero_students_original and not in_progress_students and not completed_students and not submitted_students %}
+<div class="text-center text-muted py-5">
+    <i class="bi bi-check2-all" style="font-size: 4rem;"></i>
+    <h4 class="mt-3">ยอดเยี่ยม!</h4>
+    <p>ไม่มีนักเรียนในกระบวนการสอนซ่อมในขณะนี้ (สำหรับภาคเรียนนี้)</p>
+</div>
+{% endif %}
+
+{# --- The Modal remains the same --- #}
+<div class="modal fade" id="remediationModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="remediationModalLabel"></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="remediationModalBody"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ปิด</button>
+                <button type="button" class="btn btn-primary" id="saveRemediationBtn">บันทึกการแก้ไข</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+{# --- The JavaScript remains unchanged --- #}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const remediationModalElement = document.getElementById('remediationModal');
+    const pageBody = document.querySelector('body'); // Changed selector for broader event listening
+    if (!remediationModalElement || !pageBody) return;
+
+    const remediationModal = bootstrap.Modal.getOrCreateInstance(remediationModalElement);
+    const modalBody = document.getElementById('remediationModalBody');
+    const modalLabel = document.getElementById('remediationModalLabel');
+    const saveButton = document.getElementById('saveRemediationBtn');
+    let studentDataStore = {};
+
+    // Use event delegation on the body to catch clicks on dynamically added elements if needed
+    pageBody.addEventListener('click', async function (event) {
+        const button = event.target.closest('.edit-remediation-btn');
+        if (!button) return;
+
+        const originalButtonHtml = button.innerHTML;
+        button.innerHTML = `<span class="spinner-border spinner-border-sm"></span>`;
+        button.disabled = true;
+
+        try {
+            const courseId = button.dataset.courseId;
+            const studentId = button.dataset.studentId;
+
+            // Fetch data using the existing API endpoint
+            const response = await fetch(`/teacher/api/remediation/course/${courseId}/student/${studentId}`);
+            if (!response.ok) throw new Error('ไม่สามารถโหลดข้อมูลได้');
+
+            studentDataStore = await response.json();
+            studentDataStore.course_id = courseId; // Ensure course_id is stored
+
+            modalLabel.textContent = `แก้ไขผลการเรียน: ${studentDataStore.student.full_name}`;
+            renderModalContent(studentDataStore); // Render modal with fetched data
+            calculateNewGrade(); // Initial calculation
+            remediationModal.show();
+        } catch (error) {
+            Swal.fire('เกิดข้อผิดพลาด', error.message, 'error');
+        } finally {
+            button.innerHTML = originalButtonHtml;
+            button.disabled = false;
+        }
+    });
+
+    // Recalculate grade on input change within the modal body
+    modalBody.addEventListener('input', function(event) {
+        if (event.target.classList.contains('remediation-score-input') || event.target.id === 'ms-remediated-checkbox') {
+            calculateNewGrade();
+        }
+    });
+
+    // Save button click handler
+    saveButton.addEventListener('click', async function() {
+        this.disabled = true;
+        this.innerHTML = `<span class="spinner-border spinner-border-sm"></span> กำลังบันทึก...`;
+
+        const scoresToSave = [];
+        modalBody.querySelectorAll('.remediation-score-input').forEach(input => {
+            scoresToSave.push({ id: input.dataset.itemId, score: input.value });
+        });
+
+        const msCheckbox = document.getElementById('ms-remediated-checkbox');
+        const isMsRemediated = msCheckbox ? msCheckbox.checked : false;
+
+        const payload = {
+            course_id: studentDataStore.course_id,
+            student_id: studentDataStore.student.id,
+            scores: scoresToSave,
+            ms_remediated: isMsRemediated,
+            // Include original grade if needed for the backend logic (though backend should fetch it)
+            original_grade: studentDataStore.course_grade.original_final_grade
+        };
+
+        try {
+            const response = await fetch("{{ url_for('teacher.save_remediation_data') }}", {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}' },
+                body: JSON.stringify(payload)
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.message || 'Server error');
+            remediationModal.hide();
+            Swal.fire({
+                title: 'สำเร็จ!',
+                text: result.message,
+                icon: 'success',
+                timer: 2000,
+                showConfirmButton: false
+            }).then(() => {
+                location.reload(); // Reload page after successful save
+            });
+        } catch (error) {
+            Swal.fire({
+                title: 'เกิดข้อผิดพลาด!',
+                text: 'ไม่สามารถบันทึกข้อมูลได้: ' + error.message,
+                icon: 'error'
+            });
+            this.disabled = false;
+            this.innerHTML = 'บันทึกการแก้ไข';
+        }
+    });
+
+    function calculateNewGrade() {
+        if (!studentDataStore || !studentDataStore.max_scores) return;
+
+        let finalGrade = '';
+        let hasIncompleteWork = false;
+        let newTotalScore = 0;
+
+        // --- Step 1: Calculate the new total score based on what's currently in the modal ---
+        modalBody.querySelectorAll('.remediation-score-input').forEach(input => {
+            const scoreValue = parseFloat(input.value);
+            if (!isNaN(scoreValue)) {
+                newTotalScore += scoreValue;
+            } else if (input.value.trim() !== '') {
+                 // Handle non-numeric input if needed, maybe flag as error or ignore
+                 console.warn(`Invalid score value in input ${input.dataset.itemId}: ${input.value}`);
+            }
+        });
+
+        // --- Step 2: Determine the grade based on the correct hierarchy ---
+        // Use the ORIGINAL grade fetched from the server for hierarchy checks
+        const originalGrade = studentDataStore.course_grade.original_final_grade;
+        const msCheckbox = document.getElementById('ms-remediated-checkbox');
+
+        // Hierarchy Level 1: Check for 'มส' only if the original grade was 'มส'
+        if (originalGrade === 'มส' && msCheckbox && !msCheckbox.checked) {
+            finalGrade = 'มส';
+        } else {
+            // Hierarchy Level 2: Check for 'ร' (Incomplete essential work)
+            // Check essential items (summative or exams) for blank inputs
+             modalBody.querySelectorAll('.remediation-score-input').forEach(input => {
+                const itemId = input.dataset.itemId;
+                // Find the item details from the initially loaded data
+                const itemData = studentDataStore.remediation_data.scores?.find(s => s.id == itemId); // Use optional chaining
+                const isSummative = itemData?.indicator_type === 'SUMMATIVE';
+                const isExam = itemId?.toString().startsWith('exam_'); // Use optional chaining
+
+                // An essential item is considered incomplete if it's blank
+                if ((isExam || isSummative) && input.value.trim() === '') {
+                    hasIncompleteWork = true;
+                }
+            });
+
+            // If any essential item is incomplete, the grade is 'ร'
+            if (hasIncompleteWork) {
+                finalGrade = 'ร';
+            }
+        }
+
+        // Hierarchy Level 3: Calculate '0'-'4' only if not overridden by 'มส' or 'ร'
+        if (finalGrade === '') {
+            const grandMax = studentDataStore.max_scores.grand_total;
+            const percentage = (grandMax > 0) ? (newTotalScore / grandMax) * 100 : 0;
+
+            function mapToGrade(p) {
+                if (p >= 80) return '4';
+                if (p >= 75) return '3.5';
+                if (p >= 70) return '3';
+                if (p >= 65) return '2.5';
+                if (p >= 60) return '2';
+                if (p >= 55) return '1.5';
+                if (p >= 50) return '1';
+                return '0';
+            }
+            finalGrade = mapToGrade(percentage);
+        }
+
+        // --- Step 3: Update the UI with the calculated results ---
+        const totalScoreElement = document.getElementById('new-total-score');
+        const finalGradeElement = document.getElementById('new-final-grade');
+        if (totalScoreElement) totalScoreElement.textContent = newTotalScore.toFixed(2).replace(/\.00$/, '');
+        if (finalGradeElement) finalGradeElement.textContent = finalGrade;
+    }
+
+    function renderModalContent(data) {
+        let contentHtml = '';
+        // Use original grade for deciding which sections to show initially
+        const originalGrade = data.course_grade.original_final_grade;
+        const currentGrade = data.course_grade.final_grade; // Current saved grade
+        const remediationStatus = data.course_grade.remediation_status || 'None'; // Get status if exists
+
+        if (originalGrade === 'มส') { // Show MS section if original was MS
+            const ms = data.remediation_data.ms;
+            // Check if MS has already been remediated based on saved status
+            const isMsChecked = data.course_grade.ms_remediated_status === true;
+            contentHtml += `
+                <div class="card mb-3">
+                    <div class="card-header bg-danger text-white"><i class="bi bi-calendar-x-fill"></i> <strong>เงื่อนไข "มส" (หมดสิทธิ์สอบ)</strong></div>
+                    <div class="card-body">
+                        <p>นักเรียนมีเวลาเรียนไม่ถึงเกณฑ์ 80%</p>
+                        <ul>
+                            <li>จำนวนคาบเรียนทั้งหมด: <strong>${ms?.total_periods || '?'}</strong></li>
+                            <li>จำนวนที่ขาดเรียน: <strong class="text-danger">${ms?.absent_count || '?'}</strong></li>
+                            <li>คิดเป็น: <strong class="text-danger">${ms?.absence_percentage?.toFixed(2) || '?'}%</strong></li>
+                        </ul>
+                        <hr>
+                        <div class="p-3 border rounded bg-light">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="ms-remediated-checkbox" ${isMsChecked ? 'checked' : ''}>
+                                <label class="form-check-label fw-bold" for="ms-remediated-checkbox">ยืนยันว่านักเรียนได้ทำกิจกรรมซ่อมเสริมเวลาเรียนเรียบร้อยแล้ว</label>
+                            </div>
+                            <small class="form-text text-muted">เมื่อยืนยันแล้ว ระบบจะคำนวณเกรดจากคะแนนเป็นลำดับถัดไป</small>
+                        </div>
+                    </div>
+                </div>`;
+        }
+
+        // Always show the score section if there are scores to potentially remediate
+        if (data.remediation_data.scores) {
+            const score_items = data.remediation_data.scores;
+            // Disable score editing if original was 'มส' AND ms is not yet remediated (checkbox not checked)
+            // Need to check the checkbox dynamically in JS, cannot rely on initial render state here
+            let isDisabledByMS = false;
+            if (originalGrade === 'มส') {
+                const msCheckbox = document.getElementById('ms-remediated-checkbox');
+                isDisabledByMS = (msCheckbox && !msCheckbox.checked); // Check current state if checkbox exists
+            }
+
+
+            contentHtml += `
+                <div class="card mb-3">
+                    <div class="card-header bg-info text-white"><i class="bi bi-pencil-square"></i> <strong>สรุปคะแนนและการแก้ไข</strong></div>
+                     <fieldset id="score-remediation-fieldset" ${isDisabledByMS ? 'disabled' : ''}>
+                        <div class="card-body">
+                            <p>กรอกคะแนนที่ได้จากการซ่อมในช่องที่ยังว่าง หรือแก้ไขคะแนนเดิม:</p>
+                            ${isDisabledByMS ? '<div class="alert alert-warning small py-2"><i class="bi bi-exclamation-triangle-fill"></i> ต้องยืนยันการผ่านเงื่อนไข "มส" ก่อนจึงจะแก้ไขส่วนนี้ได้</div>' : ''}
+                            <table class="table table-sm table-bordered">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>รายการ</th>
+                                        <th class="text-center">ประเภท</th>
+                                        <th class="text-center">คะแนนเต็ม</th>
+                                        <th class="text-center" style="width: 25%;">คะแนนที่ได้</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${score_items.map(item => {
+                                        let typeBadge = '';
+                                        let essentialMarker = '';
+                                        let rowClass = '';
+                                        const isExam = item.id?.toString().startsWith('exam_');
+                                        const isSummative = item.indicator_type === 'SUMMATIVE';
+
+                                        if (isExam) {
+                                            typeBadge = `<span class="badge bg-secondary">ข้อสอบ</span>`;
+                                            essentialMarker = ' <i class="bi bi-asterisk text-danger" title="รายการสำคัญ (มีผลต่อเกรด ร)"></i>';
+                                            rowClass = 'table-secondary'; // Highlight exam rows
+                                        } else if (item.dimension_code) {
+                                            let badgeClass = 'bg-light text-dark';
+                                            switch (item.dimension_code) {
+                                                case 'K': badgeClass = 'bg-primary-subtle text-primary-emphasis'; break;
+                                                case 'P': badgeClass = 'bg-success-subtle text-success-emphasis'; break;
+                                                case 'A': badgeClass = 'bg-info-subtle text-info-emphasis'; break;
+                                            }
+                                            typeBadge = `<span class="badge ${badgeClass}">${item.dimension_code}</span>`;
+                                            if (isSummative) {
+                                                 typeBadge += ` <span class="badge bg-danger-subtle text-danger-emphasis">ปลายทาง</span>`;
+                                                 essentialMarker = ' <i class="bi bi-asterisk text-danger" title="รายการสำคัญ (มีผลต่อเกรด ร)"></i>';
+                                                 rowClass = 'table-danger'; // Highlight summative rows
+                                            }
+                                        }
+
+                                        return `
+                                            <tr class="${rowClass}">
+                                                <td>${item.name} ${essentialMarker}</td>
+                                                <td class="text-center">${typeBadge}</td>
+                                                <td class="text-center">${item.max_score !== null ? item.max_score : '-'}</td>
+                                                <td><input type="number" class="form-control form-control-sm text-center remediation-score-input"
+                                                       data-item-id="${item.id}"
+                                                       value="${item.score !== null && item.score !== undefined ? item.score : ''}"
+                                                       ${item.max_score !== null ? `max="${item.max_score}" min="0"` : ''}
+                                                       step="0.01"  {# Allow decimals #}
+                                                       ></td>
+                                            </tr>`;
+                                    }).join('')}
+                                </tbody>
+                            </table>
+                             <small class="text-muted"><i class="bi bi-asterisk text-danger"></i> รายการสำคัญ หากไม่กรอกคะแนนจะส่งผลให้ได้เกรด "ร"</small>
+                        </div>
+                    </fieldset>
+                </div>`;
+        }
+        contentHtml += `
+            <div class="card">
+                <div class="card-header bg-primary text-white"><i class="bi bi-calculator-fill"></i> <strong>สรุปผลการเรียนหลังแก้ไข</strong></div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col">
+                            <div class="h5">คะแนนรวมใหม่</div>
+                            <div id="new-total-score" class="fs-3 fw-bold text-primary">--</div>
+                            <small class="text-muted">(จากคะแนนเต็ม ${studentDataStore?.max_scores?.grand_total || '?'})</small>
+                        </div>
+                        <div class="col">
+                            <div class="h5">เกรดที่คำนวณได้</div>
+                            <div id="new-final-grade" class="fs-3 fw-bold text-success">--</div>
+                             <small class="text-muted">(เกรดเดิม: ${originalGrade || '?'})</small>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+        modalBody.innerHTML = contentHtml;
+
+        // Re-check MS disable state after rendering
+        const msCheckboxAfterRender = document.getElementById('ms-remediated-checkbox');
+        const scoreFieldset = document.getElementById('score-remediation-fieldset');
+        if (scoreFieldset && originalGrade === 'มส' && msCheckboxAfterRender && !msCheckboxAfterRender.checked) {
+             scoreFieldset.disabled = true;
+        } else if (scoreFieldset) {
+             scoreFieldset.disabled = false;
+        }
+
+    }
+
+
+    // Submit All button handler remains the same
+    const submitAllBtn = document.getElementById('submit-all-btn');
+    if (submitAllBtn) {
+        submitAllBtn.addEventListener('click', function() {
+            Swal.fire({
+                title: 'ยืนยันการส่งผลการซ่อมทั้งหมด?',
+                text: "ระบบจะรวบรวมผลของนักเรียนที่สถานะ 'เสร็จสิ้น' ทั้งหมดและส่งเพื่อขออนุมัติ",
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#6c757d',
+                confirmButtonText: 'ยืนยันและส่ง',
+                cancelButtonText: 'ยกเลิก'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    // Add spinner to button during fetch
+                    this.disabled = true;
+                    this.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>กำลังส่ง...`;
+
+                    fetch("{{ url_for('teacher.submit_all_remediated_grades') }}", {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': '{{ csrf_token() }}'
+                        }
+                    })
+                    .then(res => {
+                        // Check for non-JSON responses or errors
+                        if (!res.ok) {
+                             return res.text().then(text => { throw new Error(text || res.statusText) });
+                        }
+                         return res.json();
+                    })
+                    .then(data => {
+                        if (data.status === 'success') {
+                            Swal.fire('สำเร็จ!', data.message, 'success').then(() => location.reload());
+                        } else {
+                            // Use message from server response
+                            Swal.fire('ผิดพลาด!', data.message || 'ไม่สามารถส่งข้อมูลได้', 'error');
+                             // Restore button state on error
+                             this.disabled = false;
+                             this.innerHTML = `<i class="bi bi-send-check-fill me-2"></i> รวบรวมและส่งผลการซ่อมทั้งหมด`;
+                        }
+                    })
+                    .catch(err => {
+                        Swal.fire('ผิดพลาด!', 'การเชื่อมต่อล้มเหลว หรือเกิดข้อผิดพลาด: ' + err.message, 'error');
+                         // Restore button state on error
+                         this.disabled = false;
+                         this.innerHTML = `<i class="bi bi-send-check-fill me-2"></i> รวบรวมและส่งผลการซ่อมทั้งหมด`;
+                    });
+                }
+            });
+        });
+    }
+
+    // Initialize tooltips (if using Bootstrap 5)
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+      return new bootstrap.Tooltip(tooltipTriggerEl)
+    })
+});
+</script>
+{% endblock %}

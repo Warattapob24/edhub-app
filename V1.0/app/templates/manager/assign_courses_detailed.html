@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ url_for('manager.assign_courses') }}">มอบหมายรายวิชา</a></li>
+            <li class="breadcrumb-item active" aria-current="page">จัดการรายห้อง</li>
+        </ol>
+    </nav>
+
+    <h2>จัดการรายห้อง: <strong>{{ curriculum.subject.name }}</strong></h2>
+    <p class="lead">สำหรับสายชั้น: <strong>{{ curriculum.grade_level.name }}</strong> (ปีการศึกษา {{ curriculum.academic_year }}/{{ curriculum.semester }})</p>
+    <p>ท่านสามารถกำหนดครูผู้สอนสำหรับแต่ละกลุ่มเรียน (ห้อง/ทับ) ได้ที่นี่</p>
+
+    <form action="{{ url_for('manager.execute_bulk_assignment') }}" method="POST">
+        <div class="card">
+            <div class="card-body">
+                <table class="table table-striped table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width: 40%;">กลุ่มเรียน (ห้อง/ทับ)</th>
+                            <th>มอบหมายให้</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {# วนลูปกลุ่มเรียนทั้งหมดในสายชั้นของหลักสูตรนี้ #}
+                        {% for group in curriculum.grade_level.class_groups.order_by('room_number').all() %}
+                        <tr>
+                            <td>
+                                <h5>ห้อง {{ group.room_number }}</h5>
+                            </td>
+                            <td>
+                                <input type="hidden" name="assignment_key-{{ curriculum.id }}-{{ group.id }}" value="{{ curriculum.id }}-{{ group.id }}">
+                                <select name="teacher_id-{{ curriculum.id }}-{{ group.id }}" class="form-select">
+                                    <option value="0">-- ยังไม่มอบหมาย --</option>
+                                    {% for teacher in teachers %}
+                                    <option value="{{ teacher.id }}" {% if assignments_dict.get(group.id) == teacher.id %}selected{% endif %}>
+                                        {{ teacher.full_name }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="2" class="text-center text-muted">ไม่พบกลุ่มเรียนในสายชั้นนี้</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="text-end mt-3">
+            <a href="{{ url_for('manager.assign_courses') }}" class="btn btn-secondary btn-lg">กลับไปหน้าหลัก</a>
+            <button type="submit" class="btn btn-primary btn-lg">บันทึกการเปลี่ยนแปลงทั้งหมด</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

@@ -1,0 +1,144 @@
+{# FILE: app/templates/exports/lesson_plan/learning_unit_plan.html #}
+{# [REVISED v9 - Dynamic Titles & Simpler Indicators] #}
+
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <title>แผนการจัดการเรียนรู้ที่ {{ data.plan_number }}</title>
+    <style>
+        /* CSS styles remain largely the same as v8 */
+        @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap');
+        @page { size: A4; margin: 1.5cm 1.5cm 1.5cm 2cm; }
+        body { font-family: 'Sarabun', sans-serif; font-size: 11pt; line-height: 1.6; }
+        .container { width: 100%; margin: 0 auto; }
+        .header-grid { display: grid; grid-template-columns: 1.7cm auto auto; grid-template-rows: auto auto auto auto; gap: 0px 10px; margin-bottom: 15px; font-size: 10pt; line-height: 1.4; border-bottom: 1px solid #ccc; padding-bottom: 10px; align-items: end; }
+        .header-logo { grid-column: 1 / 2; grid-row: 1 / 5; text-align: bottom; align-self: center; }
+        .header-logo img { max-width: 100%; max-height: 1.7cm; object-fit: contain; }
+        .header-school { grid-column: 2 / 4; grid-row: 1 / 2; text-align: center; font-weight: bold; font-size: 11pt; }
+        .header-plan-title { grid-column: 2 / 4; grid-row: 2 / 3; text-align: center; font-weight: bold; font-size: 12pt; }
+        .header-subject-info { grid-column: 2 / 3; grid-row: 3 / 4; text-align: left; font-weight: bold; }
+        .header-unit-info { grid-column: 3 / 4; grid-row: 3 / 4; text-align: left; }
+        .header-teacher-info { grid-column: 2 / 4; grid-row: 4 / 5; text-align: left; }
+        .plan-table { width: 100%; border-collapse: collapse; margin-top: 10px; table-layout: fixed; border: 1px solid #999; }
+        .plan-table tr { page-break-inside: avoid !important; border-top: 1px solid #999; }
+        .plan-table tr:first-child { border-top: none; }
+        .plan-table td { border: none; border-left: 1px solid #999; padding: 6px 10px; vertical-align: top; font-size: 10pt; line-height: 1.5; }
+        .plan-table td:first-child { border-left: none; width: 50%; }
+        .plan-table td:last-child { width: 50%; }
+        .plan-table tr:nth-child(2) td:first-child, .plan-table tr:nth-child(3) td:first-child { border-top: none; }
+        .activity-cell { vertical-align: top; }
+        .section-title { font-weight: bold; font-size: 10pt; margin-top: 8px; margin-bottom: 2px; text-indent: 0 !important; }
+        .subsection { margin-left: 1.5em; margin-bottom: 6px; }
+        .subsection p, .section p { margin: 1px 0; text-indent: 1.5em; }
+        ul { list-style-type: none; padding-left: 1.5em; margin: 2px 0 6px 0; } /* Adjusted margin */
+        li { margin-bottom: 1px; text-indent: -1.5em; padding-left: 1.5em; }
+        .plan-table .subsection ul { margin-left: 0; padding-left: 1.5em; }
+        .sub-topic-list { margin-left: 1em; padding-left: 1em; margin-top: 0px; margin-bottom: 2px;} /* Tighter sublist */
+        .sub-topic-list li { text-indent: -1em; padding-left: 1em; margin-bottom: 0px; }
+        .pre-wrap { white-space: pre-wrap; word-wrap: break-word; text-indent: 0 !important; margin: 0; padding: 0; }
+        p[style="text-indent: 0;"] { text-indent: 0 !important; }
+        .signature { margin-top: 25px; text-align: right; width: 100%; font-size: 10pt; line-height: 1.4; page-break-inside: avoid !important; }
+        .signature-block { display: inline-block; text-align: center; margin-top: 15px; width: 40%; }
+        .signature p { text-indent: 0; margin: 2px 0; }
+        h4, .header-grid, ul, li, p { page-break-inside: avoid !important; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header-grid">
+            <div class="header-logo"> {% if data.school_info.school_logo_url %}<img src="{{ data.school_info.school_logo_url }}" alt="School Logo">{% endif %} </div>
+            <div class="header-school">โรงเรียน{{ data.school_info.school_name or '..............................' }}</div>
+            <div class="header-plan-title">แผนการจัดการเรียนรู้ที่ {{ data.plan_number }}</div>
+            <div class="header-subject-info"> {{ data.plan_info.subject_group }}<br> รายวิชา {{ data.plan_info.subject_name }} รหัสวิชา {{ data.plan_info.subject_code }}<br> ชั้น {{ data.plan_info.grade_level }} </div>
+            <div class="header-unit-info"> หน่วยการเรียนรู้ที่ {{ data.plan_info.unit_sequence }} เรื่อง {{ data.plan_info.unit_title }}<br> เวลา {{ data.plan_info.total_unit_hours }} ชั่วโมง </div>
+            <div class="header-teacher-info"> ครูผู้สอน {{ data.plan_info.teacher_names }} </div>
+        </div>
+        <table class="plan-table">
+            <tr style="page-break-inside: avoid !important;">
+                <td>
+                    <div class="section"> <div class="section-title">1. มาตรฐานการเรียนรู้ และตัวชี้วัด</div>
+                        <div class="subsection">
+                            {% for std_text in data.learning_standard.standards_text %}<p style="text-indent: 0;">{{ std_text }}</p>{% endfor %}
+                            {# [REVISED] Simpler indicator list #}
+                            <ul>{% for ind_text in data.learning_standard.indicators_text %}<li>{{ ind_text }}</li>{% endfor %}</ul>
+                        </div>
+                    </div>
+                </td>
+                <td rowspan="3" class="activity-cell">
+                     <div class="section"> <div class="section-title">7. กิจกรรมการเรียนรู้</div> <div class="subsection"><p class="pre-wrap">{{ data.activities }}</p></div> </div>
+                </td>
+            </tr>
+            <tr style="page-break-inside: avoid !important;"> <td> <div class="section"> <div class="section-title">2. จุดประสงค์การเรียนรู้</div> <div class="subsection">{% for line in data.learning_objectives.split('\n') %}<p style="text-indent: 0;">{{ line | replace(" ", "&nbsp;") }}</p>{% endfor %}</div> </div> </td> </tr>
+            <tr style="page-break-inside: avoid !important;"> <td> <div class="section"> <div class="section-title">3. สาระสำคัญ</div> <div class="subsection"><p class="pre-wrap">{{ data.core_concepts }}</p></div> </div> </td> </tr>
+            <tr style="page-break-inside: avoid !important;">
+                <td> <div class="section"> <div class="section-title">4. สาระการเรียนรู้</div> <div class="subsection">{% for line in data.learning_content.split('\n') %}<p style="text-indent: 0;">{{ line | replace(" ", "&nbsp;") }}</p>{% endfor %}</div> </div> </td>
+                <td> <div class="section"> <div class="section-title">8. การวัดและประเมินผลการเรียนรู้</div> <div class="subsection"><ul>{% for item in data.assessment_methods %}<li>{{ item }}</li>{% endfor %}</ul></div> </div> </td>
+            </tr>
+            <tr style="page-break-inside: avoid !important;">
+                 <td>
+                    {# [REVISED v10] Correctly find and display dynamic Competencies #}
+                    {% set comp_found = namespace(key=None) %} {# Create a namespace to store the found key #}
+                    {% for key in data.dynamic_sections.keys() %}
+                        {% if 'สมรรถนะ' in key and not comp_found.key %} {# Check substring and find only the first match #}
+                            {% set comp_found.key = key %}
+                        {% endif %}
+                    {% endfor %}
+
+                    {% if comp_found.key %}
+                    <div class="section">
+                        <div class="section-title">5. {{ comp_found.key }}</div> {# Use the found key (template name) #}
+                        <div class="subsection">
+                            <ul>
+                            {% for item in data.dynamic_sections[comp_found.key] %}
+                                <li>{{ item.main }}
+                                {% if item.subs %}
+                                    <ul class="sub-topic-list"> {% for sub in item.subs %}<li>- {{ sub }}</li>{% endfor %} </ul>
+                                {% endif %}
+                                </li>
+                            {% endfor %}
+                            </ul>
+                        </div>
+                    </div>
+                    {% else %}
+                     <div class="section"> <div class="section-title">5. สมรรถนะสำคัญของผู้เรียน</div> <div class="subsection"><ul><li>(รอข้อมูล)</li></ul></div> </div>
+                    {% endif %}
+                 </td>
+                 <td> <div class="section"> <div class="section-title">9. สื่อและแหล่งเรียนรู้</div> <div class="subsection">{% for line in data.media_sources.split('\n') %}<p style="text-indent: 0;">{{ line | replace(" ", "&nbsp;") }}</p>{% endfor %}</div> </div> </td>
+            </tr>
+            <tr style="page-break-inside: avoid !important;">
+                 <td>
+                     {# [REVISED v10] Correctly find and display dynamic Characteristics #}
+                    {% set char_found = namespace(key=None) %} {# Create a namespace #}
+                    {% for key in data.dynamic_sections.keys() %}
+                        {% if 'คุณลักษณะ' in key and not char_found.key %} {# Check substring #}
+                            {% set char_found.key = key %}
+                        {% endif %}
+                    {% endfor %}
+
+                    {% if char_found.key %}
+                     <div class="section">
+                         <div class="section-title">6. {{ char_found.key }}</div> {# Use the found key #}
+                         <div class="subsection">
+                             <ul>
+                             {% for item in data.dynamic_sections[char_found.key] %}
+                                 <li>{{ item.main }}
+                                 {% if item.subs %}
+                                     <ul class="sub-topic-list"> {% for sub in item.subs %}<li>- {{ sub }}</li>{% endfor %} </ul>
+                                 {% endif %}
+                                 </li>
+                             {% endfor %}
+                             </ul>
+                         </div>
+                     </div>
+                     {% else %}
+                      <div class="section"> <div class="section-title">6. คุณลักษณะอันพึงประสงค์</div> <div class="subsection"><ul><li>(รอข้อมูล)</li></ul></div> </div>
+                     {% endif %}
+                 </td>
+                 <td> <div class="section"> <div class="section-title">10. บันทึกผลหลังการจัดการเรียนรู้</div> <div class="subsection"> <p style="text-indent: 0;">ผลการจัดการเรียนรู้:</p> <p style="text-indent: 0;" class="pre-wrap">{{ data.post_teaching_log.log_content or '..............................' }}</p> {% if data.post_teaching_log.problems_obstacles %}<p style="text-indent: 0; margin-top: 5px;">ปัญหาและอุปสรรค:</p><p style="text-indent: 0;" class="pre-wrap">{{ data.post_teaching_log.problems_obstacles }}</p>{% endif %} {% if data.post_teaching_log.solutions %}<p style="text-indent: 0; margin-top: 5px;">ข้อเสนอแนะและแนวทางแก้ไข:</p><p style="text-indent: 0;" class="pre-wrap">{{ data.post_teaching_log.solutions }}</p>{% endif %} </div> </div> </td>
+            </tr>
+        </table>
+        <div class="signature"> <div class="signature-block"> <p>ลงชื่อ.............................. ครูผู้สอน</p> <p>({{ data.plan_info.teacher_names }})</p> <p>ตำแหน่ง ครู</p> </div> </div>
+        </div>
+</body>
+</html>

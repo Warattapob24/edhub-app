@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+    /* CSS สำหรับ Modal และ Cell ที่แก้ไขได้ */
+    .modal-backdrop { display: none; }
+    .modal-backdrop.visible { display: flex; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); z-index: 1040; align-items: center; justify-content: center; }
+    .modal-content { background-color: white; padding: 20px; border-radius: 5px; width: 90%; max-width: 400px; }
+    .score-cell { position: relative; }
+    .remedial-cell { background-color: #fffbe6; cursor: pointer; }
+    .remedial-cell:hover { background-color: #fff3cd; }
+    .score-display { font-weight: bold; }
+</style>
+
+<div class="d-flex justify-content-between align-items-center">
+    <div>
+        <h1 class="h3">{{ title }}</h1>
+        <p class="text-muted">รายวิชา: {{ course.subject.name }}</p>
+    </div>
+    <a href="{{ url_for('course.manage_course', course_id=course.id) }}" class="btn btn-outline-secondary"> &laquo; กลับ</a>
+</div>
+<hr>
+
+<div class="table-responsive">
+<table class="table table-hover align-middle">
+    <thead class="table-light">
+        <tr>
+            <th>ห้อง</th>
+            <th>เลขที่</th>
+            <th>ชื่อ - นามสกุล</th>
+            <th>ผลการเรียนเบื้องต้น</th>
+            <th>รายการที่ต้องแก้ไข/ซ่อมเสริม</th>
+            <th>ดำเนินการ</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in students_with_issues %}
+        {% set student = item.student %}
+        <tr>
+            <td>{{ student.class_group.grade_level.name }}/{{ student.class_group.room_number }}</td>
+            <td>{{ student.class_number }}</td>
+            <td>{{ student.prefix }}{{ student.first_name }} {{ student.last_name }}</td>
+            <td><span class="badge bg-danger">{{ item.grade }}</span></td>
+            <td>
+                <ul class="list-unstyled mb-0">
+                {% for issue in item.issues %}
+                    <li>
+                        <small>{{ issue.component.name }} ({{ issue.score.status }})</small>
+                    </li>
+                {% endfor %}
+                </ul>
+            </td>
+            <td>
+<button class="btn btn-sm btn-warning remedial-trigger"
+        data-student-id="{{ student.id }}"
+        data-student-name="{{ student.prefix }}{{ student.first_name }} {{ student.last_name }}"
+        data-issues-json='{{ item.issues|tojson }}'>
+    กรอกคะแนนซ่อม
+</button>
+            </td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="6" class="text-center text-muted">ไม่พบนักเรียนที่ต้องแก้ไขผลการเรียน</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+
+<div id="remedial-modal" class="modal-backdrop">
+    <div class="modal-content">
+        <h5 id="modal-title"></h5>
+        <p id="modal-subtitle" class="text-muted"></p>
+        <hr>
+        <div id="modal-body-content"></div>
+        <hr>
+        <div class="text-end">
+            <button type="button" id="modal-cancel" class="btn btn-secondary">ปิด</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const modal = document.getElementById('remedial-modal');
+    const modalTitle = document.getElementById('modal-title');
+    const modalBody = document.getElementById('modal-body-content');
+    const modalCancelBtn = document.getElementById('modal-cancel');
+
+    // ✨ คาถาหลักในการปลุกชีพปุ่ม ✨
+    document.querySelectorAll('.remedial-trigger').forEach(button => {
+        button.addEventListener('click', function() {
+            try {
+                const studentName = this.dataset.studentName;
+                const issues = JSON.parse(this.dataset.issuesJson);
+                
+                modalTitle.textContent = `บันทึกคะแนนซ่อม: ${studentName}`;
+                modalBody.innerHTML = ''; // ล้างของเก่าทิ้ง
+
+                if (issues && issues.length > 0) {
+                    issues.forEach(issue => {
+                        const max_k = issue.component.max_score_k || 0;
+                        const max_p = issue.component.max_score_p || 0;
+                        const max_a = issue.component.max_score_a || 0;
+                        const max_score = max_k + max_p + max_a;
+                        const remedial_score = issue.score.remedial_score || '';
+                        
+                        modalBody.innerHTML += `
+                            <div class="mb-3">
+                                <label class="form-label">${issue.component.name} (สถานะเดิม: ${issue.score.status})</label>
+                                <div class="input-group">
+                                    <input type="number" class="form-control" value="${remedial_score}" placeholder="คะแนนใหม่ (เต็ม ${max_score})" id="remedial-input-${issue.score.id}">
+                                    <button class="btn btn-success" onclick="saveRemedial(${issue.score.id})">บันทึก</button>
+                                </div>
+                            </div>
+                        `;
+                    });
+                } else {
+                    modalBody.innerHTML = '<p class="text-muted">ไม่พบรายการที่ต้องแก้ไขสำหรับนักเรียนคนนี้</p>';
+                }
+                modal.classList.add('visible');
+
+            } catch (e) {
+                console.error("คาถาแปลภาษาล้มเหลว:", e);
+                alert("เกิดข้อผิดพลาดในการอ่านข้อมูลจากปุ่ม");
+            }
+        });
+    });
+
+    // คาถาสำหรับปิดหน้าต่าง
+    modalCancelBtn.addEventListener('click', () => modal.classList.remove('visible'));
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            modal.classList.remove('visible');
+        }
+    });
+    
+    // คาถาสำหรับปุ่มบันทึกใน Popup
+    window.saveRemedial = async function(scoreId) {
+        const input = document.getElementById(`remedial-input-${scoreId}`);
+        const points = input.value;
+        
+        if (scoreId === 0) {
+            alert('ไม่สามารถบันทึกคะแนนซ่อมได้ เนื่องจากนักเรียนยังไม่เคยมีคะแนนในรายการนี้มาก่อน กรุณาไปที่หน้า "กรอกคะแนน" เพื่อให้คะแนนครั้งแรก');
+            return;
+        }
+
+        const response = await fetch('{{ url_for("course.save_remedial") }}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ score_id: scoreId, points: points })
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+            alert('บันทึกคะแนนซ่อมเรียบร้อยแล้ว');
+            const saveButton = input.nextElementSibling;
+            input.disabled = true;
+            saveButton.disabled = true;
+            saveButton.textContent = 'บันทึกแล้ว';
+            // อาจจะดีถ้า reload หน้าเว็บเพื่อให้เห็นผลลัพธ์ที่อัปเดต
+            // setTimeout(() => { location.reload(); }, 1000);
+        } else {
+            alert('เกิดข้อผิดพลาด: ' + (data.error || 'Unknown error'));
+        }
+    }
+});
+</script>
+{% endblock %}

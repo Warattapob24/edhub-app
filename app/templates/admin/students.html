@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+
+{% block sidebar %}
+    {% include 'admin/_sidebar.html' %}
+{% endblock %}
+
+{% block main_content %}
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2 class="bi bi-person-badge"> {{ title }}</h2>
+        <div>
+            <a href="{{ url_for('admin.add_student') }}" class="btn btn-primary"><i class="bi bi-plus-lg"></i> เพิ่มนักเรียนใหม่</a>
+            <a href="{{ url_for('admin.import_students') }}" class="btn btn-secondary"><i class="bi bi-upload"></i> นำเข้าข้อมูล</a>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header">
+            <i class="bi bi-funnel-fill"></i> ตัวกรองและค้นหา (ค้นหาอัตโนมัติ)
+        </div>
+        <div class="card-body">
+            <form id="filter-form">
+                <div class="row g-3">
+                    <div class="col-md-5">
+                        <label for="q" class="form-label">ค้นหา (รหัส, ชื่อ, หรือนามสกุล)</label>
+                        <input type="text" class="form-control" id="q" name="q" value="{{ request.args.get('q', '') }}" placeholder="พิมพ์เพื่อค้นหา...">
+                    </div>
+                    <div class="col-md-4">
+                        <label for="classroom_id" class="form-label">ห้องเรียน</label>
+                        <select id="classroom_id" name="classroom_id" class="form-select">
+                            <option value="0">-- ทุกห้องเรียน --</option>
+                            {% for room in classrooms %}
+                                <option value="{{ room.id }}" {% if request.args.get('classroom_id')|int == room.id %}selected{% endif %}>{{ room.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="status" class="form-label">สถานะ</label>
+                        <select id="status" name="status" class="form-select">
+                            <option value="">-- ทุกสถานะ --</option>
+                             {% for s in statuses %}
+                                <option value="{{ s }}" {% if request.args.get('status') == s %}selected{% endif %}>{{ s }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body" id="students-data-container">
+            {% include 'admin/_students_table.html' %}
+        </div>
+    </div>
+
+    <div class="modal fade" id="studentStatusModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">จัดการสถานะนักเรียน</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="text-center" id="modal-loader" style="display: none;"><div class="spinner-border"></div></div>
+                    <div id="modal-form-content">
+                        <p><strong>นักเรียน:</strong> <span id="modal-student-name"></span></p>
+                        <input type="hidden" id="modal-student-id">
+                        <div class="mb-3">
+                            <label for="student-status-select" class="form-label">สถานะใหม่</label>
+                            <select id="student-status-select" class="form-select">
+                                <option value="กำลังศึกษา">กำลังศึกษา</option>
+                                <option value="พักการเรียน">พักการเรียน</option>
+                                <option value="ลาออก">ลาออก</option>
+                                <option value="ย้ายออก">ย้ายออก</option>
+                                <option value="แขวนลอย">แขวนลอย</option>
+                                <option value="พ้นสภาพ">พ้นสภาพ</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="status-notes" class="form-label">หมายเหตุ (ถ้ามี)</label>
+                            <textarea id="status-notes" class="form-control" rows="3" placeholder="เช่น ย้ายไปโรงเรียน..."></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+                    <button type="button" class="btn btn-primary" id="save-status-btn">บันทึกการเปลี่ยนแปลง</button>
+                </div>
+            </div>
+        </div>
+    </div>    
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    
+    // --- PART 1: AJAX Live Filter Logic ---
+    const filterForm = document.getElementById('filter-form');
+    const container = document.getElementById('students-data-container');
+    let debounceTimeout;
+
+    async function updateStudentsList() {
+        container.style.opacity = '0.5';
+        const formData = new FormData(filterForm);
+        const params = new URLSearchParams(formData);
+        // Reset page to 1 whenever a filter is changed
+        params.set('page', '1'); 
+        const url = `{{ url_for('admin.list_students') }}?${params.toString()}`;
+
+        try {
+            const response = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+            const html = await response.text();
+            container.innerHTML = html;
+            history.pushState({}, '', url);
+        } catch (error) {
+            console.error('Failed to update student list:', error);
+            container.innerHTML = '<div class="alert alert-danger">เกิดข้อผิดพลาดในการโหลดข้อมูล</div>';
+        } finally {
+            container.style.opacity = '1';
+        }
+    }
+
+    filterForm.addEventListener('input', function(event) {
+        clearTimeout(debounceTimeout);
+        debounceTimeout = setTimeout(updateStudentsList, 500); // [แก้ไข] เพิ่ม Debounce เป็น 0.5 วินาที
+    });
+
+    container.addEventListener('click', function(event) {
+        const target = event.target.closest('a.page-link');
+        if (!target) return;
+        event.preventDefault();
+        const url = target.href;
+        
+        async function fetchPage() {
+            container.style.opacity = '0.5';
+            try {
+                const response = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+                const html = await response.text();
+                container.innerHTML = html;
+                history.pushState({}, '', url);
+            } catch (error) {
+                console.error('Failed to fetch page:', error);
+            } finally {
+                container.style.opacity = '1';
+            }
+        }
+        fetchPage();
+    });
+
+    // --- PART 2: Student Status Modal Logic ---
+    const statusModalEl = document.getElementById('studentStatusModal');
+    if (statusModalEl) {
+        const statusModal = new bootstrap.Modal(statusModalEl);
+        const loader = document.getElementById('modal-loader');
+        const formContent = document.getElementById('modal-form-content');
+
+        // Logic to auto-trigger modal from notification link
+        const urlParams = new URLSearchParams(window.location.search);
+        const action = urlParams.get('action');
+        const studentIdFromUrl = urlParams.get('student_id');
+
+        if (action === 'edit_status' && studentIdFromUrl) {
+            const manageBtn = document.querySelector(`.manage-status-btn[data-student-id="${studentIdFromUrl}"]`);
+            if (manageBtn) {
+                manageBtn.click();
+            }
+        }
+
+        statusModalEl.addEventListener('show.bs.modal', async event => {
+            const button = event.relatedTarget;
+            const studentId = button.dataset.studentId;
+
+            loader.style.display = 'block';
+            formContent.style.display = 'none';
+
+            document.getElementById('modal-student-id').value = studentId;
+            document.getElementById('modal-student-name').textContent = '';
+            document.getElementById('status-notes').value = '';
+
+            try {
+                const response = await fetch(`/admin/api/student/${studentId}/details`);
+                const data = await response.json();
+                if (data.status === 'success') {
+                    document.getElementById('modal-student-name').textContent = data.student.full_name;
+                    document.getElementById('student-status-select').value = data.student.current_status;
+                } else {
+                    document.getElementById('modal-student-name').textContent = data.message;
+                }
+            } catch (error) {
+                document.getElementById('modal-student-name').textContent = 'Error loading data.';
+            } finally {
+                loader.style.display = 'none';
+                formContent.style.display = 'block';
+            }
+        });
+
+        document.getElementById('save-status-btn').addEventListener('click', async function() {
+            this.disabled = true;
+            const studentId = document.getElementById('modal-student-id').value;
+            const payload = {
+                status: document.getElementById('student-status-select').value,
+                notes: document.getElementById('status-notes').value
+            };
+
+            try {
+                const response = await fetch(`/admin/api/student/${studentId}/update-status`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}'},
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    statusModal.hide();
+                    await Swal.fire('สำเร็จ!', result.message, 'success');
+                    // Instead of full reload, just trigger a filter update
+                    updateStudentsList(); 
+                } else {
+                    await Swal.fire('ผิดพลาด!', result.message, 'error');
+                }
+            } catch (error) {
+                await Swal.fire('ผิดพลาด!', 'ไม่สามารถเชื่อมต่อกับ Server ได้', 'error');
+            } finally {
+                this.disabled = false;
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

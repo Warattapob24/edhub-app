@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-3">
+        {% include 'admin/_admin_menu.html' %}
+    </div>
+
+    <div class="col-md-9">
+        <div class="row">
+            <div class="col-md-8">
+                <h3>กฎการบล็อกเวลาทั้งหมด</h3>
+                <div class="list-group">
+                    {% for block in blocks %}
+                    <div class="list-group-item list-group-item-light mb-2">
+                        <div class="d-flex w-100 justify-content-between">
+                            <h5 class="mb-1">{{ block.name }}</h5>
+                            <form action="{{ url_for('admin.delete_time_block', id=block.id) }}" method="POST" onsubmit="return confirm('ต้องการลบกฎนี้ใช่หรือไม่?');">
+                                <button type="submit" class="btn btn-sm btn-outline-danger">&times;</button>
+                            </form>
+                        </div>
+                        <p class="mb-1">
+                            <small>
+                                <i class="far fa-clock"></i>
+                                <strong>เวลา:</strong> {{ block.start_time.strftime('%H:%M') }} - {{ block.end_time.strftime('%H:%M') }}
+                                (ปีการศึกษา: {{ block.academic_year }})
+                            </small>
+                        </p>
+                        
+                        <p class="mb-1">
+                            <strong>วัน:</strong>
+                            {% for day_num in block.days_of_week %}
+                                <span class="badge bg-primary">
+                                    {{ ["จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์", "อาทิตย์"][day_num|int] }}
+                                </span>
+                            {% endfor %}
+                        </p>
+
+                        {% if block.applies_to_grade_levels %}
+                        <p class="mb-1">
+                            <strong>ใช้กับสายชั้น:</strong>
+                            {% for grade in block.applies_to_grade_levels %}
+                                <span class="badge bg-info text-dark">{{ grade.name }}</span>
+                            {% endfor %}
+                        </p>
+                        {% endif %}
+
+                        {% if block.applies_to_roles %}
+                        <p class="mb-1">
+                            <strong>ใช้กับบทบาท:</strong>
+                            {% for role in block.applies_to_roles %}
+                                <span class="badge bg-secondary">{{ role.label }}</span>
+                            {% endfor %}
+                        </p>
+                        {% endif %}
+                    </div>
+                    {% else %}
+                    <p class="text-muted">ยังไม่มีการสร้างกฎการบล็อกเวลา</p>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header"><h4>สร้างกฎใหม่</h4></div>
+                    <div class="card-body">
+                        <form method="POST" action="{{ url_for('admin.manage_time_blocks') }}">
+                            {{ form.hidden_tag() }}
+                             <div class="mb-3">
+                                {{ form.name.label(class="form-label") }}
+                                {{ form.name(class="form-control") }}
+                            </div>
+                            <div class="mb-3">
+                                {{ form.days_of_week.label(class="form-label") }}
+                                {{ form.days_of_week(class="form-control", size=7) }}
+                            </div>
+                            <div class="mb-3">
+                                {{ form.start_time.label(class="form-label") }}
+                                {{ form.start_time(class="form-control") }}
+                            </div>
+                             <div class="mb-3">
+                                {{ form.end_time.label(class="form-label") }}
+                                {{ form.end_time(class="form-control") }}
+                            </div>
+                            <div class="mb-3">
+                                {{ form.academic_year.label(class="form-label") }}
+                                {{ form.academic_year(class="form-control") }}
+                            </div>
+                            <div class="mb-3">
+                                {{ form.applies_to_grade_levels.label(class="form-label") }}
+                                {{ form.applies_to_grade_levels(class="form-control", size=4) }}
+                            </div>
+                            <div class="mb-3">
+                                {{ form.applies_to_roles.label(class="form-label") }}
+                                {{ form.applies_to_roles(class="form-control", size=4) }}
+                            </div>
+
+                            {{ form.submit(class="btn btn-primary w-100") }}
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

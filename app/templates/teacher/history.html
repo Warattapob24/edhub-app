@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+
+{% block sidebar %}
+    {% include 'teacher/_sidebar.html' %}
+{% endblock %}
+
+{% block main_content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h2"><i class="bi bi-clock-history me-2"></i> {{ title }}</h1>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <h5 class="card-title mb-3"><i class="bi bi-funnel-fill me-2"></i> ค้นหาตามปีการศึกษาและภาคเรียน</h5>
+        <form method="GET" action="{{ url_for('teacher.teaching_history') }}">
+            <div class="row g-3 align-items-end">
+                <div class="col-md-5">
+                    <label for="year_id" class="form-label">ปีการศึกษา:</label>
+                    <select name="year_id" id="year_id" class="form-select" required>
+                        <option value="">-- เลือกปีการศึกษา --</option>
+                        {% for year in all_years %}
+                            <option value="{{ year.id }}" {% if year.id == selected_year_id %}selected{% endif %}>{{ year.year }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-5">
+                    <label for="semester_term" class="form-label">ภาคเรียน:</label>
+                    <select name="semester_term" id="semester_term" class="form-select" required>
+                        <option value="">-- เลือกภาคเรียน --</option>
+                        <option value="1" {% if selected_term == 1 %}selected{% endif %}>1</option>
+                        <option value="2" {% if selected_term == 2 %}selected{% endif %}>2</option>
+                        {# Add option for summer/other terms if applicable #}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-primary w-100"><i class="bi bi-search"></i> ค้นหา</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if selected_semester %}
+    <h3 class="mb-3">
+        <i class="bi bi-calendar-check me-2"></i>
+        ข้อมูลการสอนสำหรับ ภาคเรียนที่ {{ selected_semester.term }} ปีการศึกษา {{ selected_semester.academic_year.year }}
+    </h3>
+    {% if courses %}
+    <div class="card shadow-sm">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width: 5%;">#</th>
+                        <th style="width: 15%;">รหัสวิชา</th>
+                        <th style="width: 35%;">ชื่อวิชา</th>
+                        <th style="width: 15%;">ห้องเรียน</th>
+                        <th style="width: 15%;" class="text-center">สถานะการส่งเกรด</th>
+                        <th style="width: 15%;" class="text-center">ดำเนินการ</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for course in courses %}
+                    <tr>
+                        <td>{{ loop.index }}</td>
+                        <td>{{ course.subject.subject_code }}</td>
+                        <td>{{ course.subject.name }}</td>
+                        <td>{{ course.classroom.name }}</td>
+                        <td class="text-center">
+                            {% set status = course.grade_submission_status %}
+                            {% set badge_class = 'bg-secondary' %}
+                            {% if status == 'อนุมัติแล้ว' %} {% set badge_class = 'bg-success' %}
+                            {% elif status.startswith('รอตรวจสอบ') %} {% set badge_class = 'bg-info text-dark' %}
+                            {% elif status == 'ต้องการการแก้ไข' %} {% set badge_class = 'bg-danger' %}
+                            {% elif status == 'ยังไม่ส่ง' %} {% set badge_class = 'bg-light text-dark' %}
+                            {% endif %}
+                            <span class="badge {{ badge_class }}">{{ status }}</span>
+                        </td>
+                        <td class="text-center">
+                            <a href="{{ url_for('teacher.view_historical_grades', course_id=course.id, semester_id=selected_semester.id) }}" class="btn btn-sm btn-outline-primary">
+                                <i class="bi bi-eye-fill"></i> ดูผลการเรียน
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% else %}
+    <div class="alert alert-info text-center" role="alert">
+        <i class="bi bi-info-circle-fill me-2"></i> ไม่พบข้อมูลการสอนสำหรับปีการศึกษา/ภาคเรียนที่เลือก
+    </div>
+    {% endif %}
+{% elif request.args.get('year_id') %} {# Show message only if a search was attempted #}
+    <div class="alert alert-warning text-center" role="alert">
+       <i class="bi bi-exclamation-triangle-fill me-2"></i> กรุณาเลือกทั้งปีการศึกษาและภาคเรียนเพื่อค้นหา
+    </div>
+{% endif %}
+
+{% endblock %}

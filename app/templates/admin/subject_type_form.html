@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% from 'admin/_form_helpers.html' import render_field %}
+{% block title %}EdHub {{ title }}{% endblock %}
+{% block sidebar %}
+    {% include 'admin/_sidebar.html' %}
+{% endblock %}
+
+{% block main_content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="bi bi-plus-lg"> {{ title }}</h2>
+    <a href="{{ url_for('admin.list_subject_types') }}" class="btn btn-secondary">
+        <i class="bi bi-arrow-left"></i> กลับไปหน้ารายการ
+    </a>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <form method="POST" novalidate>
+            {{ form.hidden_tag() }}
+
+            {# ส่วนนี้จะทำงานได้แล้ว #}
+            {{ render_field(form.name) }}
+
+            {{ form.submit(class="btn btn-primary") }}
+        </form>
+    </div>
+</div>
+{% endblock %}

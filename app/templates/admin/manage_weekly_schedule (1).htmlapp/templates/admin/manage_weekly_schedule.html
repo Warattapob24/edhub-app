@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% block sidebar %}{% include 'admin/_sidebar.html' %}{% endblock %}
+
+{% block styles %}
+<style>
+    .schedule-grid { min-width: 800px; }
+    .schedule-grid th, .schedule-grid td { text-align: center; vertical-align: top; padding: 4px; }
+    .slot-card { border: 1px dashed #ccc; min-height: 120px; font-size: 0.8rem; cursor: pointer; transition: all 0.2s; border-radius: .375rem; }
+    .slot-card:hover { background-color: #e9f5ff; border-color: #0d6efd; }
+    .slot-content { background-color: #f8f9fa; border: 1px solid #dee2e6; padding: 8px; border-radius: .375rem; text-align: left; position: relative; }
+    .slot-content .delete-slot { position: absolute; top: 2px; right: 5px; cursor: pointer; display: none; color: #dc3545; }
+    .slot-content:hover .delete-slot { display: inline; }
+    .slot-content small { display: block; }
+</style>
+{% endblock %}
+
+{% block main_content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2>{{ title }}</h2>
+    <a href="{{ url_for('admin.list_semesters_for_schedules') }}" class="btn btn-secondary"><i class="bi bi-arrow-left"></i> กลับ</a>
+</div>
+
+<div class="alert alert-info">
+    คลิกที่ช่อง <span class="badge bg-light text-dark border">+ เพิ่ม</span> ในตารางเพื่อกำหนดคาบเรียน<br>
+    <small>หมายเหตุ: หากไม่เลือกระดับชั้นในตอนเพิ่ม จะหมายถึงคาบเรียน/กิจกรรมนั้นๆ บังคับใช้กับ "ทุกระดับชั้น"</small>
+</div>
+
+<div class="table-responsive">
+    <table class="table table-bordered schedule-grid">
+        <thead class="table-light">
+            <tr>
+                <th style="width: 10%;">คาบที่</th>
+                <th style="width: 18%;">จันทร์</th><th style="width: 18%;">อังคาร</th>
+                <th style="width: 18%;">พุธ</th><th style="width: 18%;">พฤหัสบดี</th><th style="width: 18%;">ศุกร์</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in range(1, 11) %} {# แสดงผล 10 คาบ #}
+            <tr>
+                <th>{{ p }}</th>
+                {% for d in range(1, 6) %} {# 1=จันทร์, 5=ศุกร์ #}
+                <td class="schedule-slot">
+                    {% set slot = schedule_grid[d].get(p) %}
+                    {% if slot %}
+                        <div class="slot-content">
+                            <i class="bi bi-x-circle-fill delete-slot" title="ลบคาบเรียนนี้" data-slot-id="{{ slot.id }}"></i>
+                            <strong class="d-block">{{ slot.start_time.strftime('%H:%M') }} - {{ slot.end_time.strftime('%H:%M') }}</strong>
+                            {% if slot.is_teaching_period %}
+                                <span class="badge bg-success">คาบสอน</span>
+                            {% else %}
+                                <span class="badge bg-info">{{ slot.activity_name }}</span>
+                            {% endif %}
+                            <div class="mt-1">
+                                {% for grade in slot.grade_levels|sort(attribute='id') %}
+                                    <span class="badge bg-secondary">{{ grade.short_name }}</span>
+                                {% else %}
+                                    <span class="badge bg-dark">ทุกระดับชั้น</span>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    {% else %}
+                        <div class="slot-card d-flex align-items-center justify-content-center text-muted" 
+                             data-bs-toggle="modal" data-bs-target="#slotModal"
+                             data-day="{{ d }}" data-period="{{ p }}">
+                            + เพิ่ม
+                        </div>
+                    {% endif %}
+                </td>
+                {% endfor %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="modal fade" id="slotModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="slotModalLabel">เพิ่มคาบเรียน</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="slotForm">
+          <input type="hidden" id="modal_day_of_week">
+          <input type="hidden" id="modal_period_number">
+          <div class="mb-3">
+              <label class="form-label">เวลา (เริ่มต้น - สิ้นสุด)</label>
+              <div class="input-group">
+                  <input type="time" class="form-control" id="modal_start_time" required>
+                  <input type="time" class="form-control" id="modal_end_time" required>
+              </div>
+          </div>
+          <div class="form-check form-switch mb-3">
+              <input class="form-check-input" type="checkbox" role="switch" id="modal_is_teaching" checked>
+              <label class="form-check-label" for="modal_is_teaching">เป็นคาบเรียนการสอน</label>
+          </div>
+          <div class="mb-3" id="modal_activity_group" style="display: none;">
+              <label for="modal_activity_name" class="form-label">ชื่อกิจกรรม</label>
+              <input type="text" class="form-control" id="modal_activity_name">
+          </div>
+          <hr>
+          <div class="mb-3">
+              <label class="form-label">ใช้สำหรับระดับชั้น (หากไม่เลือก จะหมายถึงทุกระดับชั้น)</label>
+              <div>
+              {% for grade in grade_levels %}
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="checkbox" name="grade_levels" value="{{ grade.id }}" id="grade-{{ grade.id }}">
+                    <label class="form-check-label" for="grade-{{ grade.id }}">{{ grade.short_name }}</label>
+                </div>
+              {% endfor %}
+              </div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+        <button type="button" class="btn btn-primary" id="saveSlotBtn">บันทึก</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const slotModalEl = document.getElementById('slotModal');
+    const slotModal = new bootstrap.Modal(slotModalEl);
+    const form = document.getElementById('slotForm');
+    
+    slotModalEl.addEventListener('show.bs.modal', function (event) {
+        form.reset(); // Reset form on open
+        document.getElementById('modal_activity_group').style.display = 'none';
+        document.getElementById('modal_is_teaching').checked = true;
+
+        const button = event.relatedTarget;
+        const day = button.dataset.day;
+        const period = button.dataset.period;
+        
+        form.querySelector('#modal_day_of_week').value = day;
+        form.querySelector('#modal_period_number').value = period;
+        const dayNames = ['จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์'];
+        document.getElementById('slotModalLabel').textContent = `เพิ่มคาบที่ ${period} ของวัน${dayNames[day-1]}`;
+    });
+    
+    document.getElementById('modal_is_teaching').addEventListener('change', function() {
+        const activityGroup = document.getElementById('modal_activity_group');
+        activityGroup.style.display = this.checked ? 'none' : 'block';
+    });
+
+    document.getElementById('saveSlotBtn').addEventListener('click', function() {
+        const payload = {
+            semester_id: {{ semester.id }},
+            day_of_week: parseInt(form.querySelector('#modal_day_of_week').value),
+            period_number: parseInt(form.querySelector('#modal_period_number').value),
+            start_time: form.querySelector('#modal_start_time').value,
+            end_time: form.querySelector('#modal_end_time').value,
+            is_teaching_period: form.querySelector('#modal_is_teaching').checked,
+            activity_name: form.querySelector('#modal_activity_name').value,
+            grade_level_ids: Array.from(form.querySelectorAll('input[name=grade_levels]:checked')).map(cb => parseInt(cb.value))
+        };
+
+        if (!payload.start_time || !payload.end_time) {
+            alert('กรุณากรอกเวลาเริ่มต้นและสิ้นสุด');
+            return;
+        }
+        
+        fetch("{{ url_for('admin.add_schedule_slot') }}", {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}' },
+            body: JSON.stringify(payload)
+        }).then(res => res.json()).then(data => {
+            if (data.status === 'success') {
+                location.reload();
+            } else {
+                alert('เกิดข้อผิดพลาด: ' + data.message);
+            }
+        }).catch(err => alert('เกิดข้อผิดพลาดในการเชื่อมต่อ'));
+    });
+
+    document.querySelectorAll('.delete-slot').forEach(btn => {
+        btn.addEventListener('click', function() {
+            if (confirm('ยืนยันการลบคาบเรียนนี้?')) {
+                const slotId = this.dataset.slotId;
+                fetch(`/admin/api/schedules/slot/${slotId}`, {
+                    method: 'DELETE',
+                    headers: { 'X-CSRFToken': '{{ csrf_token() }}' }
+                }).then(res => res.json()).then(data => {
+                    if (data.status === 'success') {
+                        location.reload();
+                    } else {
+                        alert('เกิดข้อผิดพลาด: ' + data.message);
+                    }
+                }).catch(err => alert('เกิดข้อผิดพลาดในการเชื่อมต่อ'));
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

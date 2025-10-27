@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+{% block sidebar %}
+    {% include 'academic/_sidebar.html' %}
+{% endblock %}
+{% block main_content %}
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        {# <-- Changed Header #}
+        <h5 class="mb-0"><i class="bi bi-patch-check-fill me-2"></i>ตรวจสอบและเสนอชื่อผู้สำเร็จการศึกษา ปีการศึกษา {{ academic_year.year }}</h5>
+        {# ... #}
+    </div>
+    <div class="card-body">
+        {# ... (form tag and hidden inputs - no change) ... #}
+        <form action="{{ url_for('academic.submit_graduation_approval') }}" method="POST" id="approvalForm">
+            {{ form.hidden_tag() }}
+            <input type="hidden" name="academic_year_id" value="{{ academic_year.id }}">
+
+            {% if students_data %}
+            {# ... (table structure - no change) ... #}
+            <div class="table-responsive">
+                <table class="table table-striped table-hover align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="text-center" style="width: 5%;">
+                                <input class="form-check-input" type="checkbox" id="selectAllReady" title="เลือก/ไม่เลือก ทั้งหมดที่พร้อม"> {# Added title #}
+                            </th>
+                            <th style="width: 15%;">รหัสนักเรียน</th>
+                            <th>ชื่อ-สกุล</th>
+                            <th style="width: 15%;">ห้องเรียน</th>
+                            <th style="width: 15%;">สถานะปัจจุบัน</th>
+                            <th class="text-center" style="width: 15%;">ความพร้อม<br>(เกรด & หน่วยกิต)</th> {# Changed text #}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for student in students_data %}
+                        <tr class="{% if student.is_ready == False %}table-danger{% elif student.current_status == 'จบการศึกษา' %}table-success{% endif %}">
+                            <td class="text-center">
+                                {% if student.is_ready == True and student.current_status == 'กำลังศึกษา' %}
+                                <input class="form-check-input student-checkbox" type="checkbox" name="approved_students" value="{{ student.student_id }}">
+                                {% else %}
+                                    <span class="text-muted">-</span> {# Use dash instead of checkbox #}
+                                {% endif %}
+                            </td>
+                            <td>{{ student.student_code }}</td>
+                            <td>{{ student.full_name }}</td>
+                            <td>{{ student.classroom_name }}</td>
+                            <td>
+                                <span class="badge {% if student.current_status == 'กำลังศึกษา' %}bg-primary{% elif student.current_status == 'จบการศึกษา' %}bg-success{% else %}bg-secondary{% endif %}">
+                                    {{ student.current_status }}
+                                </span>
+                            </td>
+                            <td class="text-center">
+                                {# Show reason in title #}
+                                {% if student.is_ready == True %}
+                                    <i class="bi bi-check-circle-fill text-success fs-5" title="{{ student.reason or 'ผ่านเกณฑ์' }}"></i>
+                                {% elif student.is_ready == False %}
+                                    <i class="bi bi-x-circle-fill text-danger fs-5" title="{{ student.reason or 'ไม่ผ่านเกณฑ์' }}"></i>
+                                {% else %}
+                                    <i class="bi bi-question-circle-fill text-muted fs-5" title="{{ student.reason or 'ไม่สามารถตรวจสอบได้' }}"></i>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <hr>
+             {# <-- Changed Button Text #}
+            <button type="submit" class="btn btn-primary btn-lg">
+                <i class="bi bi-send-check-fill me-2"></i>เสนอรายชื่อให้ผู้อำนวยการอนุมัติ (เฉพาะที่เลือก)
+            </button>
+             <span class="ms-3 text-muted small" id="selected-count">เลือก 0 คน</span>
+
+            {% else %}
+            <p class="text-muted text-center">ไม่พบข้อมูลนักเรียนระดับชั้น ม.3 หรือ ม.6 ในปีการศึกษานี้</p>
+            {% endif %}
+
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+{# ... (JavaScript for select all and count - same as before) ... #}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const selectAllCheckbox = document.getElementById('selectAllReady');
+    const studentCheckboxes = document.querySelectorAll('.student-checkbox');
+    const selectedCountSpan = document.getElementById('selected-count');
+
+    function updateSelectedCount() {
+        const count = document.querySelectorAll('.student-checkbox:checked').length;
+        if (selectedCountSpan) {
+            selectedCountSpan.textContent = `เลือก ${count} คน`;
+        }
+    }
+
+    if (selectAllCheckbox) {
+        selectAllCheckbox.addEventListener('change', function() {
+            studentCheckboxes.forEach(checkbox => {
+                checkbox.checked = this.checked;
+            });
+            updateSelectedCount();
+        });
+    }
+
+    studentCheckboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', function() {
+            if (!this.checked && selectAllCheckbox) {
+                selectAllCheckbox.checked = false;
+            }
+            updateSelectedCount();
+        });
+    });
+
+    // Initial count
+    updateSelectedCount();
+});
+</script>
+{% endblock %}

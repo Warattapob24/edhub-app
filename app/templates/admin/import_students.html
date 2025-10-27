@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+{% block sidebar %}
+    {% include 'admin/_sidebar.html' %}
+{% endblock %}
+{% block main_content %}
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2 class="bi bi-people-fill"> {{ title }}</h2>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            
+            <div class="alert alert-primary" role="alert">
+                <h5 class="alert-heading"><i class="bi bi-info-circle-fill"></i> ขั้นตอนที่ 1: เตรียมไฟล์ข้อมูล</h5>
+                <p>โปรดดาวน์โหลดไฟล์เทมเพลตเพื่อตรวจสอบว่าคอลัมน์ทั้งหมดถูกต้องก่อนทำการอัปโหลด</p>
+                <hr>
+                <a href="{{ url_for('admin.download_student_template') }}" class="btn btn-outline-primary"><i class="bi bi-download"></i> ดาวน์โหลดไฟล์ Template</a>
+                <small class="d-block mt-2">คอลัมน์ที่ต้องการ: `student_id`, `name_prefix`, `first_name`, `last_name`, `classroom_name`</small>
+            </div>
+
+            <hr>
+
+            <form method="post" enctype="multipart/form-data">
+                {{ form.csrf_token }}
+                <div class="mb-3">
+                    <label for="file" class="form-label"><h5>ขั้นตอนที่ 2: อัปโหลดไฟล์</h5></label>
+                    <p class="text-muted">ระบบรองรับไฟล์ .csv และ .xlsx (ลากไฟล์มาวางหรือคลิกเพื่อเลือก)</p>
+                    <input type="file" class="form-control" name="file" id="file" required>
+                </div>
+                <div class="d-grid gap-2">
+                    <button type="submit" class="btn btn-primary btn-lg"><i class="bi bi-cloud-upload"></i> อัปโหลดและตรวจสอบข้อมูล</button>
+                </div>
+            </form>
+
+        </div>
+    </div>
+{% endblock %}

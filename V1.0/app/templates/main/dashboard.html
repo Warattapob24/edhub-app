@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3">
+            <i class="fas fa-magic me-2"></i>กำหนดตารางสอน
+        </h1>
+        <span class="badge bg-secondary fs-6">
+            {{ "วัน" + ["จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์", "อาทิตย์"][now.weekday()] }}
+            ที่ {{ now.strftime('%d/%m/%Y') }}
+        </span>
+    </div>
+
+    {# --- เริ่มร่ายมนตร์แสดงผลตารางสอน --- #}
+    {% if schedule %}
+        <div class="list-group">
+            {% for slot in schedule %}
+            <a href="#" class="list-group-item list-group-item-action flex-column align-items-start mb-2 shadow-sm">
+                <div class="d-flex w-100 justify-content-between">
+                    {# แสดงเวลาของคาบเรียน #}
+                    <h5 class="mb-1">
+                        <i class="far fa-clock me-2"></i>
+                        {{ slot.start_time.strftime('%H:%M') }} - {{ slot.end_time.strftime('%H:%M') }}
+                    </h5>
+                    {# แสดงห้องเรียน #}
+                    <small class="text-muted">
+                        <i class="fas fa-chalkboard-teacher me-1"></i>
+                        ห้อง: 
+                        {% for class_group in slot.course.class_groups %}
+                            {{ class_group.room_number }}{% if not loop.last %}, {% endif %}
+                        {% endfor %}
+                    </small>
+                </div>
+                {# แสดงชื่อวิชา #}
+                <p class="mb-1 fs-5">
+                    {{ slot.course.subject.name }}
+                </p>
+                <small>คลิกเพื่อเช็คชื่อ หรือกรอกคะแนน</small>
+            </a>
+            {% endfor %}
+        </div>
+    {% else %}
+        {# กรณีวันนี้ไม่มีคาบสอน #}
+        <div class="text-center p-5 border rounded bg-light">
+            <i class="fas fa-glass-cheers fa-3x mb-3 text-success"></i>
+            <h4>วันนี้ไม่มีคาบสอน!</h4>
+            <p class="text-muted">พักผ่อนและเตรียมตัวสำหรับวันต่อไปนะ</p>
+        </div>
+    {% endif %}
+    {# --- สิ้นสุดการร่ายมนตร์ --- #}
+
+</div>
+{% endblock %}

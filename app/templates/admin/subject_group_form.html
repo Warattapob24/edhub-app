@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+{% block sidebar %}
+    {% include 'admin/_sidebar.html' %}
+{% endblock %}
+
+{% block main_content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2><i class="bi bi-collection-fill"></i> {{ title }}</h2>
+    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#groupFormModal" data-bs-action="add">
+        <i class="bi bi-plus-lg"></i> เพิ่มกลุ่มสาระฯ ใหม่
+    </button>
+</div>
+<div class="card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>ID</th>
+                        <th>ชื่อกลุ่มสาระฯ</th>
+                        <th>หัวหน้ากลุ่มสาระฯ</th>
+                        <th>จำนวนสมาชิก</th>
+                        <th class="text-end">การกระทำ</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for group in groups %}
+                    <tr>
+                        <td>{{ group.id }}</td>
+                        <td>{{ group.name }}</td>
+                        <td>
+                            {% if group.head %}
+                                {{ group.head.name_prefix or '' }}{{ group.head.first_name }} {{ group.head.last_name }}
+                            {% else %}
+                                <span class="text-muted">- ยังไม่มีหัวหน้า -</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ group.members|length }} คน</td>
+                        <td class="text-end">
+                            <a href="{{ url_for('admin.manage_subject_group', group_id=group.id) }}" class="btn btn-sm btn-info me-1"><i class="bi bi-people-fill"></i> จัดการสมาชิก</a>
+                            <button type="button" class="btn btn-sm btn-warning me-1" data-bs-toggle="modal" data-bs-target="#groupFormModal" 
+                                    data-bs-action="edit" 
+                                    data-bs-group-id="{{ group.id }}" 
+                                    data-bs-name="{{ group.name }}">
+                                <i class="bi bi-pencil-fill"></i> แก้ไขชื่อ
+                            </button>
+                            <form action="{{ url_for('admin.delete_subject_group', group_id=group.id) }}" method="POST" class="d-inline" onsubmit="return confirm('ยืนยันการลบ?');">
+                                <button type="submit" class="btn btn-sm btn-danger"><i class="bi bi-trash-fill"></i> ลบ</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="text-center text-muted py-4">ยังไม่มีข้อมูลกลุ่มสาระการเรียนรู้</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="groupFormModal" tabindex="-1" aria-labelledby="groupFormModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="groupFormModalLabel"></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form id="groupForm" method="POST">
+        {{ form.hidden_tag() }}
+        <div class="modal-body">
+            <div class="mb-3">
+                {{ form.name.label(class="form-label") }}
+                {{ form.name(class="form-control") }}
+            </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+          <button type="submit" class="btn btn-primary">บันทึก</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const groupFormModal = document.getElementById('groupFormModal');
+    const form = groupFormModal.querySelector('#groupForm');
+    const modalTitle = groupFormModal.querySelector('.modal-title');
+    const nameInput = groupFormModal.querySelector('#name');
+
+    groupFormModal.addEventListener('show.bs.modal', function (event) {
+        const button = event.relatedTarget;
+        const action = button.getAttribute('data-bs-action');
+
+        if (action === 'add') {
+            modalTitle.textContent = 'เพิ่มกลุ่มสาระฯ ใหม่';
+            form.action = "{{ url_for('admin.add_subject_group') }}";
+            nameInput.value = '';
+        } else if (action === 'edit') {
+            const groupId = button.getAttribute('data-bs-group-id');
+            const groupName = button.getAttribute('data-bs-name');
+            
+            modalTitle.textContent = 'แก้ไขชื่อกลุ่มสาระฯ';
+            form.action = `/admin/subject-groups/edit/${groupId}`;
+            nameInput.value = groupName;
+        }
+    });
+});
+</script>
+{% endblock %}

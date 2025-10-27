@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-3">
+        {% include 'admin/_admin_menu.html' %}
+    </div>
+    <div class="col-md-9">
+        <h1>แก้ไขข้อมูลนักเรียน</h1>
+        <p class="text-muted">{{ student.prefix }}{{ student.first_name }} {{ student.last_name }}</p>
+        <hr>
+        <form method="POST">
+            {{ form.hidden_tag() }}
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    {{ form.student_id.label(class="form-label") }}
+                    {{ form.student_id(class="form-control") }}
+                </div>
+                <div class="col-md-4 mb-3">
+                    {{ form.class_number.label(class="form-label") }}
+                    {{ form.class_number(class="form-control") }}
+                </div>
+                 <div class="col-md-4 mb-3">
+                    {{ form.status.label(class="form-label") }}
+                    {{ form.status(class="form-select") }}
+                </div>
+            </div>
+            <div class="row">
+                 <div class="col-md-2 mb-3">
+                    {{ form.prefix.label(class="form-label") }}
+                    {{ form.prefix(class="form-control") }}
+                </div>
+                <div class="col-md-5 mb-3">
+                    {{ form.first_name.label(class="form-label") }}
+                    {{ form.first_name(class="form-control") }}
+                </div>
+                <div class="col-md-5 mb-3">
+                    {{ form.last_name.label(class="form-label") }}
+                    {{ form.last_name(class="form-control") }}
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-12 mb-3">
+                    {{ form.class_group.label(class="form-label") }}
+                    {{ form.class_group(class="form-select") }}
+                </div>
+            </div>
+            <div class="mt-2">
+                {{ form.submit(class="btn btn-primary") }}
+                <a href="{{ url_for('admin.manage_students') }}" class="btn btn-secondary">ยกเลิก</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

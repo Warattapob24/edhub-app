@@ -1,0 +1,37 @@
+{# NOTE: d-md-block and collapse are used here for standard Bootstrap responsive sidebar behavior #}
+<nav id="sidebarMenu" class="d-md-block bg-light sidebar collapse">
+    <div class="position-sticky pt-3">
+        <div class="d-flex justify-content-end align-items-center px-3 mb-2">
+            {# --- [NEW] Add Toggle Button for Desktop (ID is critical for JS) --- #}
+            <i class="bi bi-list fs-4 text-primary d-none d-md-block" id="sidebar-toggle" title="ยุบ/ขยายเมนู" style="cursor: pointer;"></i>
+        </div>
+        <hr class="mt-0">
+
+        <h6 class="sidebar-heading px-3 mt-2 mb-1 text-muted"><span>เมนูนักเรียน</span></h6>
+        <ul class="nav flex-column mb-auto">
+            <li class="nav-item">
+                <a class="nav-link active" href="{{ url_for('student.dashboard') }}">
+                    <i class="bi bi-house-door-fill me-2"></i>
+                    <span>ภาพรวมผลการเรียนปัจจุบัน</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="{{ url_for('student.grade_history') }}">
+                    <i class="bi bi-journal-album me-2"></i>
+                    <span>ประวัติผลการเรียนทั้งหมด</span>
+                </a>
+            </li>
+            {# Add more student-specific links here in the future if needed #}
+        </ul>
+
+        <hr>
+        <ul class="nav flex-column">
+             <li class="nav-item">
+                <a class="nav-link" href="{{ url_for('auth.logout') }}">
+                    <i class="bi bi-box-arrow-right me-2"></i>
+                    <span>ออกจากระบบ</span>
+                </a>
+            </li>
+        </ul>
+    </div>
+</nav>

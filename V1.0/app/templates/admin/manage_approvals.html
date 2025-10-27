@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-3">
+        {% include 'admin/_admin_menu.html' %}
+    </div>
+    <div class="col-md-9">
+        <h1>รายการรออนุมัติผลการเรียน</h1>
+        <p>รายวิชาทั้งหมดที่ครูผู้สอนส่งผลการเรียนมาเพื่อขอการอนุมัติ</p>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% for category, message in messages %}
+            <div class="alert alert-{{ 'danger' if category == 'error' else 'success' }}" role="alert">{{ message }}</div>
+            {% endfor %}
+        {% endwith %}
+
+        <table class="table table-hover align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th>ปี/เทอม</th>
+                    <th>รายวิชา</th>
+                    <th>ครูผู้สอน</th>
+                    <th class="text-center">ดำเนินการ</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for course in courses %}
+                <tr>
+                    <td>{{ course.academic_year }}/{{ course.semester }}</td>
+                    <td>
+                        <strong>{{ course.subject.subject_code }}</strong>
+                        <br>
+                        <small class="text-muted">{{ course.subject.name }}</small>
+                    </td>
+                    <td>{{ course.teacher.full_name }}</td>
+                    <td class="text-center">
+                        <form action="{{ url_for('admin.approve_course', course_id=course.id) }}" method="POST" class="d-inline">
+                            <button type="submit" class="btn btn-success btn-sm">อนุมัติ</button>
+                        </form>
+                        <form action="{{ url_for('admin.reject_course', course_id=course.id) }}" method="POST" class="d-inline" onsubmit="return confirm('คุณต้องการส่งรายวิชานี้กลับไปแก้ไขใช่หรือไม่?');">
+                            <button type="submit" class="btn btn-danger btn-sm">ส่งกลับแก้ไข</button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="4" class="text-center text-muted">ไม่มีรายการรออนุมัติ</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

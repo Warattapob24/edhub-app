@@ -1,0 +1,1060 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+
+{% block sidebar %}
+    {% include 'teacher/_sidebar.html' %} 
+{% endblock %}
+
+{% block styles %}
+{{ super() }}
+<style>
+    /* สไตล์สำหรับไฟสถานะการบันทึก */
+    .status-indicator {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        display: inline-block;
+        vertical-align: middle;
+        transition: background-color 0.3s ease;
+    }
+    .status-indicator.saving { background-color: #ffc107; } /* สีเหลือง: กำลังบันทึก */
+    .status-indicator.success { background-color: #198754; } /* สีเขียว: สำเร็จ */
+    .status-indicator.error { background-color: #dc3545; } /* สีแดง: ผิดพลาด */
+    .status-indicator.idle { background-color: #e9ecef; } /* สีเทา: ยังไม่ทำอะไร */
+    
+    /* สไตล์สำหรับ Group Manager */
+    #ungrouped-students-list {
+        position: -webkit-sticky;
+        position: sticky;
+        top: 1rem;
+    }
+    .form-check-inline { margin-right: 0.5rem; }
+    
+    /* [NEW] Styles from course_workspace for unified gradebook */
+    .bg-danger-soft {
+        background-color: rgba(220, 53, 69, 0.2) !important;
+    }
+    .bg-warning-soft {
+        background-color: rgba(255, 193, 7, 0.2) !important;
+    }
+</style>
+{% endblock %}
+
+{% block main_content %}
+<div class="container-fluid py-4">
+    <div class="mb-4">
+        <h4><strong>{{ entry.course.subject.subject_code }} - {{ entry.course.subject.name }}</strong></h4>
+        <p class="text-muted">
+            <strong>ห้องเรียน:</strong> {{ entry.course.classroom.name }} | 
+            <strong>คาบที่:</strong> {{ entry.slot.period_number }} ({{ entry.slot.start_time.strftime('%H:%M') }} - {{ entry.slot.end_time.strftime('%H:%M') }}) | 
+            <strong>วันที่:</strong> {{ date_formatted_thai }}
+        </p>
+    </div>
+
+    <ul class="nav nav-tabs nav-fill mb-3" id="classroomTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="attendance-tab" data-bs-toggle="tab" data-bs-target="#attendance-content" type="button" role="tab">
+                <i class="bi bi-person-check-fill me-2"></i>1. บันทึกการเข้าเรียน
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="scoring-tab" data-bs-toggle="tab" data-bs-target="#gradebook-content" type="button" role="tab">
+                <i class="bi bi-pencil-square me-2"></i>2. กรอกคะแนน (Gradebook)
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="classroomTabsContent">
+        <div class="tab-pane fade show active" id="attendance-content" role="tabpanel">
+            {# --- ATTENDANCE TAB CONTENT --- #}
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">รายชื่อนักเรียน ({{ students|length }} คน)</h5>
+                    <div>
+                        {% if next_entry_id %}
+                        <button class="btn btn-sm btn-outline-primary" id="btn-copy-to-next"
+                                data-source-id="{{ entry.id }}"
+                                data-target-id="{{ next_entry_id }}"
+                                data-date="{{ attendance_date.isoformat() }}">
+                            <i class="bi bi-back"></i> คัดลอกไปคาบถัดไป
+                        </button>
+                        {% endif %}
+                        <button class="btn btn-sm btn-info" id="btn-mark-all-present"><i class="bi bi-check2-all"></i> เช็คชื่อ "มาเรียน" ทั้งหมด</button>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="text-center" style="width: 5%;">สถานะ</th>
+                                <th class="text-center" style="width: 5%;">เลขที่</th>
+                                <th>ชื่อ-สกุล</th>
+                                <th style="width: 55%;">สถานะการเข้าเรียน</th>
+                            </tr>
+                        </thead>
+                        <tbody id="attendance-table-body" data-attendance-date="{{ attendance_date.isoformat() }}">
+                            {% for student in students %}
+                            {% set current_status = existing_attendance.get(student.id, 'PRESENT') %}
+                            {% set non_active_statuses = ['ลาออก', 'ย้ายออก', 'พ้นสภาพ', 'แขวนลอย', 'พักการเรียน'] %}
+                            <tr id="student-row-{{ student.id }}" class="{% if student.status in non_active_statuses %}table-danger text-muted text-decoration-line-through{% endif %}">
+                                <td class="text-center"><span class="status-indicator idle" id="indicator-{{ student.id }}" title="ยังไม่มีการเปลี่ยนแปลง"></span></td>
+                                <td class="text-center">{{ loop.index }}</td>
+                                <td>{{ student.name_prefix }}{{ student.first_name }} {{ student.last_name }}</td>
+                                <td>
+                                    <div class="btn-group w-100" role="group" data-student-id="{{ student.id }}">
+                                        <input type="radio" class="btn-check attendance-input" name="status-{{ student.id }}" id="present-{{ student.id }}" value="PRESENT" autocomplete="off" {% if current_status == 'PRESENT' %}checked{% endif %}>
+                                        <label class="btn btn-outline-success" for="present-{{ student.id }}">มาเรียน</label>
+
+                                        <input type="radio" class="btn-check attendance-input" name="status-{{ student.id }}" id="late-{{ student.id }}" value="LATE" autocomplete="off" {% if current_status == 'LATE' %}checked{% endif %}>
+                                        <label class="btn btn-outline-warning" for="late-{{ student.id }}">มาสาย</label>
+
+                                        <input type="radio" class="btn-check attendance-input" name="status-{{ student.id }}" id="absent-{{ student.id }}" value="ABSENT" autocomplete="off" {% if current_status == 'ABSENT' %}checked{% endif %}>
+                                        <label class="btn btn-outline-danger" for="absent-{{ student.id }}">ขาดเรียน</label>
+
+                                        <input type="radio" class="btn-check attendance-input" name="status-{{ student.id }}" id="leave-{{ student.id }}" value="LEAVE" autocomplete="off" {% if current_status == 'LEAVE' %}checked{% endif %}>
+                                        <label class="btn btn-outline-info" for="leave-{{ student.id }}">ลา</label>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="card-footer text-end">
+                    <small class="text-muted">
+                        <span class="status-indicator success"></span> บันทึกสำเร็จ &nbsp;
+                        <span class="status-indicator saving"></span> กำลังบันทึก &nbsp;
+                        <span class="status-indicator error"></span> ผิดพลาด &nbsp;
+                        <span class="status-indicator idle"></span> สถานะเริ่มต้น
+                    </small>
+                </div>
+            </div>
+        </div>
+        
+        <div class="tab-pane fade" id="gradebook-content" role="tabpanel" data-plan-id="{{ plan.id if plan else '' }}" data-suggested-unit-id="{{ suggested_unit_id }}">
+            {% if plan %}
+                {# --- [RE-INSTALLED] Unit Filter and Manage Groups Button --- #}
+                <div class="d-flex align-items-center mb-3">
+                    <div id="unit-filter-container-gradebook" class="btn-toolbar" role="toolbar">
+                        <span class="me-3"><strong>แสดงผล:</strong></span>
+                        <div class="btn-group btn-group-sm" role="group">
+                            <button type="button" class="btn btn-primary unit-filter-btn" data-unit-id="all">ทั้งหมด</button>
+                            {% for unit in learning_units %}
+                                <button type="button" class="btn btn-outline-secondary unit-filter-btn" data-unit-id="{{ unit.id }}">{{ unit.title }}</button>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div class="ms-auto">
+                         <button class="btn btn-outline-primary" id="manage-groups-btn-workspace">
+                            <i class="bi bi-people-fill"></i> จัดการกลุ่ม
+                        </button>
+                    </div>
+                </div>
+                <div class="card shadow-sm">
+                    <div class="card-body p-0">
+                        <div id="gradebook-container" class="text-center p-5 text-muted">
+                            กำลังโหลดข้อมูล Gradebook...
+                        </div>
+                    </div>
+                </div>
+            {% else %}
+                <div class="alert alert-warning">ไม่พบแผนการสอนสำหรับรายวิชานี้</div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{# --- Modals and Templates (Unchanged but necessary) --- #}
+<div class="modal fade" id="groupManagementModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">จัดการกลุ่มนักเรียน</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info d-none" id="group-manager-loader">
+                    <div class="spinner-border spinner-border-sm me-2"></div> กำลังโหลดข้อมูล...
+                </div>
+                <div class="row" id="group-manager-content" style="display: none;">
+                    <div class="col-md-4">
+                        <h6>นักเรียนที่ยังไม่มีกลุ่ม</h6>
+                        <div id="ungrouped-students-list" class="list-group vh-75 overflow-auto border p-2" data-group-id="null"></div>
+                    </div>
+                    <div class="col-md-8">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h6>กลุ่มในห้องเรียนนี้</h6>
+                            <div>
+                                <button class="btn btn-sm btn-outline-secondary" id="auto-generate-groups-btn">สร้างกลุ่มอัตโนมัติ</button>
+                                <button class="btn btn-sm btn-primary" id="add-new-group-btn"><i class="bi bi-plus-circle"></i> สร้างกลุ่มใหม่</button>
+                            </div>
+                        </div>
+                        <div id="groups-container" class="vh-75 overflow-auto"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+                <button type="button" class="btn btn-primary" id="save-groups-btn">บันทึกการจัดกลุ่ม</button>
+            </div>
+        </div>
+    </div>
+</div>
+<template id="gradebook-template">
+    <div class="table-responsive">
+        <table class="table table-bordered table-hover" id="gradebook-table">
+            <thead class="table-light"></thead>
+            <tbody id="gradebook-body"></tbody>
+        </table>
+    </div>
+</template>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    // --- GLOBAL VARS & CONFIG ---
+    const csrfToken = '{{ csrf_token() }}';
+    const entryId = {{ entry.id }};
+    const courseId = "{{ entry.course.id }}";
+    const classroomId = "{{ entry.course.classroom_id }}";
+
+    // --- SETUP TAB MEMORY ---
+    const tabs = document.querySelectorAll('#classroomTabs button[data-bs-toggle="tab"]');
+    const lastTabId = localStorage.getItem('activeClassroomTab');
+    tabs.forEach(tab => {
+        tab.addEventListener('shown.bs.tab', event => {
+            localStorage.setItem('activeClassroomTab', event.target.id);
+        });
+    });
+    if (lastTabId) {
+        const lastTab = document.getElementById(lastTabId);
+        if (lastTab) new bootstrap.Tab(lastTab).show();
+    }
+
+    // =======================================================
+    // MODULE 1: ATTENDANCE
+    // =======================================================
+    const attendanceModule = () => {
+        const tableBody = document.getElementById('attendance-table-body');
+        if (!tableBody) return;
+
+        const setIndicatorState = (indicator, state, title) => {
+            if(indicator) { indicator.className = 'status-indicator ' + state; indicator.title = title; }
+        };
+
+        tableBody.addEventListener('change', function(event) {
+            if (event.target.classList.contains('attendance-input')) {
+                const radio = event.target;
+                const studentId = radio.closest('.btn-group').dataset.studentId;
+                const status = radio.value;
+                const indicator = document.getElementById(`indicator-${studentId}`);
+                const attendanceDate = tableBody.dataset.attendanceDate;
+
+                setIndicatorState(indicator, 'saving', 'กำลังบันทึก...');
+                const payload = {
+                    entry_id: entryId,
+                    student_id: studentId,
+                    status: status,
+                    date: attendanceDate
+                };
+
+                fetch("{{ url_for('teacher.save_attendance') }}", {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+                    body: JSON.stringify(payload)
+                })
+                .then(response => response.json())
+                .then(data => setIndicatorState(indicator, data.status === 'success' ? 'success' : 'error', data.message || 'Error'))
+                .catch(() => setIndicatorState(indicator, 'error', 'การเชื่อมต่อล้มเหลว'));
+            }
+        });
+
+        const markAllPresentBtn = document.getElementById('btn-mark-all-present');
+        if(markAllPresentBtn) {
+            markAllPresentBtn.addEventListener('click', function() {
+                tableBody.querySelectorAll('.status-indicator').forEach(indicator => setIndicatorState(indicator, 'saving', 'กำลังบันทึก...'));
+                fetch("{{ url_for('teacher.save_attendance_bulk') }}", {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+                    body: JSON.stringify({ entry_id: entryId, status: 'PRESENT' })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    const finalState = data.status === 'success' ? 'success' : 'error';
+                    const message = data.message || (finalState === 'success' ? 'บันทึกเรียบร้อย' : 'เกิดข้อผิดพลาด');
+                    tableBody.querySelectorAll('tr').forEach(row => {
+                        if (finalState === 'success') {
+                            const presentRadio = row.querySelector('input[value="PRESENT"]');
+                            if (presentRadio) presentRadio.checked = true;
+                        }
+                        setIndicatorState(row.querySelector('.status-indicator'), finalState, message);
+                    });
+                })
+                .catch(() => tableBody.querySelectorAll('.status-indicator').forEach(indicator => setIndicatorState(indicator, 'error', 'การเชื่อมต่อล้มเหลว')));
+            });
+        }
+
+        const copyBtn = document.getElementById('btn-copy-to-next');
+        if (copyBtn) {
+            copyBtn.addEventListener('click', function() {
+                const targetId = this.dataset.targetId;
+                const date = this.dataset.date;
+
+                Swal.fire({
+                    title: 'ยืนยันการคัดลอก',
+                    text: "ข้อมูลการเข้าเรียนในคาบนี้จะถูกคัดลอกไปคาบถัดไป ต้องการดำเนินการต่อหรือไม่?",
+                    icon: 'question',
+                    showCancelButton: true,
+                    confirmButtonText: 'ยืนยัน',
+                    cancelButtonText: 'ยกเลิก'
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        const sourceData = [];
+                        document.querySelectorAll('#attendance-table-body tr').forEach(row => {
+                            const studentId = row.id.replace('student-row-', '');
+                            const checkedRadio = row.querySelector('input[type="radio"]:checked');
+                            if(studentId && checkedRadio) {
+                                sourceData.push({
+                                    student_id: parseInt(studentId),
+                                    status: checkedRadio.value
+                                });
+                            }
+                        });
+
+                        fetch("{{ url_for('teacher.copy_attendance') }}", {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+                            body: JSON.stringify({
+                                target_entry_id: targetId,
+                                date: date,
+                                source_data: sourceData
+                            })
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            Swal.fire(
+                                data.status === 'success' ? 'สำเร็จ!' : 'ผิดพลาด!',
+                                data.message,
+                                data.status
+                            );
+                        })
+                        .catch(() => Swal.fire('ผิดพลาด!', 'การเชื่อมต่อล้มเหลว', 'error'));
+                    }
+                });
+            });
+        }
+    };
+
+    // =======================================================
+    // MODULE 2: GRADEBOOK - [THE UNIFIED & FINAL VERSION]
+    // =======================================================
+    const gradebookModule = () => {
+        const gradebookTab = document.getElementById('scoring-tab');
+        const mainContainer = document.getElementById('gradebook-content');
+        if (!gradebookTab || !mainContainer) return;
+
+        // --- State and Instances ---
+        const groupModal = new bootstrap.Modal(document.getElementById('groupManagementModal'));
+        let allEnrollments = [];
+        let sortableInstances = [];
+        
+        const fetchAndRender = async () => {
+            const gradebookContainer = document.getElementById('gradebook-container');
+            const manageGroupsBtn = document.getElementById('manage-groups-btn-workspace');
+            if (!gradebookContainer || !manageGroupsBtn) return;
+
+            manageGroupsBtn.disabled = false;
+            gradebookContainer.innerHTML = `<div class="card-body text-center p-5"><div class="spinner-border"></div><p class="mt-2">กำลังโหลด...</p></div>`;
+            
+            try {
+                // In this context, courseId and classroomId are fixed global variables
+                const url = `{{ url_for('teacher.get_gradebook_data', course_id=0) }}`.replace('/0/', `/${courseId}/`) + `?classroom_id=${classroomId}`;
+                const response = await fetch(url);
+                if (!response.ok) throw new Error('ไม่สามารถโหลดข้อมูล Gradebook ได้');
+                const data = await response.json();
+                
+                // Since this page is simpler, we just render the table directly.
+                renderGradebookTable(data, gradebookContainer); 
+                filterGradebookColumns('all');
+
+            } catch (error) {
+                gradebookContainer.innerHTML = `<div class="card-body text-center text-danger p-5">เกิดข้อผิดพลาด: ${error.message}</div>`;
+            }
+        };
+
+        function filterGradebookColumns(unitId) {
+            const table = document.getElementById('gradebook-table');
+            if (!table) return;
+
+            table.querySelectorAll('.unit-column').forEach(col => { col.style.display = 'none'; });
+            
+            if (unitId === 'all') {
+                table.querySelectorAll('.unit-column').forEach(col => { col.style.display = 'table-cell'; });
+            } else {
+                table.querySelectorAll(`.unit-id-${unitId}`).forEach(col => { col.style.display = 'table-cell'; });
+            }
+        }
+
+        // --- ALL OTHER GRADEBOOK FUNCTIONS (renderGradebookTable, updateStudentRowTotals, etc.) ---
+        function renderAlerts(alerts) {
+            if (!alerts || Object.keys(alerts).length === 0) return '';
+            let badgesHtml = '';
+            for (const key in alerts) {
+                const message = alerts[key];
+                let badgeClass = 'bg-danger'; // Default to red for '0' and 'ร'
+                if (key === 'กรอกคะแนน') {
+                    badgeClass = 'bg-info text-dark'; // Use blue for "Enter Scores"
+                }
+                badgesHtml += ` <span class="badge ${badgeClass} ms-1" title="${message}">${key}</span>`;
+            }
+            return badgesHtml;
+        }
+
+        function renderGradebookTable(data, container) {
+            if (!data.students || data.students.length === 0) {
+                container.innerHTML = `<div class="text-center text-muted py-5"><h4><i class="bi bi-people"></i> ไม่มีข้อมูลนักเรียนในห้องเรียนนี้</h4></div>`;
+                return;
+            }
+            const template = document.getElementById('gradebook-template').content.cloneNode(true);
+            const table = template.querySelector('#gradebook-table');
+            table.dataset.courseId = data.course_id;
+            table.dataset.grandMaxScore = data.grand_max_score || 100;
+            table.dataset.summativeIds = JSON.stringify(data.summative_item_ids || []);
+            const thead = table.querySelector('thead');
+            const tbody = table.querySelector('#gradebook-body');
+            const headerRow = document.createElement('tr');
+            headerRow.innerHTML = '<th rowspan="2" class="align-middle text-center">นักเรียน</th>';
+            let subHeaderRowHtml = '';
+            const createToggleSwitches = (itemId, groupToggle = true, allToggle = true) => `
+            <div class="d-flex justify-content-center small mt-1">
+                ${groupToggle ? `
+                <div class="form-check form-switch form-check-inline me-2">
+                    <input class="form-check-input propagation-toggle group-toggle" type="checkbox" role="switch" title="เปิด/ปิดการให้คะแนนแบบกลุ่ม" data-item-id="${itemId}" data-mode="group">
+                    <label class="form-check-label">กลุ่ม</label>
+                </div>` : ''}
+                ${allToggle ? `
+                <div class="form-check form-switch form-check-inline">
+                    <input class="form-check-input propagation-toggle all-toggle" type="checkbox" role="switch" title="เปิด/ปิดการให้คะแนนทั้งหมด" data-item-id="${itemId}" data-mode="all">
+                    <label class="form-check-label">ทั้งหมด</label>
+                </div>` : ''}
+            </div>`;
+            data.units_data.forEach(unit => {
+                if (!unit.items || unit.items.length === 0) return;
+                headerRow.innerHTML += `<th colspan="${unit.items.length + 1}" class="text-center unit-column unit-id-${unit.unit_id}">${unit.title}</th>`;
+                unit.items.forEach(item => {
+                    subHeaderRowHtml += `<th class="text-nowrap text-center unit-column unit-id-${item.learning_unit_id}">
+                                            ${item.name}<br><small class="text-muted">(${item.max_score || 0})</small>
+                                            ${createToggleSwitches('g-' + item.id)}
+                                        </th>`;
+                });
+                subHeaderRowHtml += `<th class="text-nowrap text-center unit-column unit-id-${unit.unit_id} table-primary">สรุปหน่วย</th>`;
+            });
+            data.qualitative_assessment_data.forEach(template => {
+                if (template && Array.isArray(template.main_topics)) {
+                    template.main_topics.forEach(mainTopic => {
+                        if (!mainTopic) return;
+                        const subTopics = mainTopic.selected_sub_topics;
+                        const unitId = mainTopic.learning_unit_id;
+                        if (subTopics && subTopics.length > 0) {
+                            headerRow.innerHTML += `<th rowspan="2" class="text-nowrap align-middle text-center unit-column unit-id-${unitId} table-info">
+                                                        สรุป<br><small>${mainTopic.main_topic_name}</small>
+                                                        ${createToggleSwitches('q-' + mainTopic.main_topic_id)}
+                                                    </th>`;
+                            subTopics.forEach(sub => {
+                                headerRow.innerHTML += `<th rowspan="2" class="text-nowrap align-middle text-center unit-column unit-id-${unitId}">
+                                                            ${sub.name}
+                                                        </th>`;
+                            });
+                        } else {
+                            headerRow.innerHTML += `<th rowspan="2" class="text-nowrap align-middle text-center unit-column unit-id-${unitId} table-info">
+                                                        <small>${mainTopic.main_topic_name}</small>
+                                                        ${createToggleSwitches('q-' + mainTopic.main_topic_id)}
+                                                    </th>`;
+                        }
+                    });
+                }
+            });
+            let finalColspan = 4;
+            if (data.is_midterm_enabled) finalColspan++;
+            if (data.is_final_enabled) finalColspan++;
+            headerRow.innerHTML += `<th colspan="${finalColspan}" class="text-center">สรุปผลการเรียน</th>`;
+            subHeaderRowHtml += `<th class="text-nowrap text-center">คะแนนเก็บ</th>`;
+            if (data.is_midterm_enabled) {
+                subHeaderRowHtml += `<th class="text-nowrap text-center">กลางภาค (${data.total_midterm_max_score || 0}) ${createToggleSwitches('midterm', false)}</th>`;
+            }
+            if (data.is_final_enabled) {
+                subHeaderRowHtml += `<th class="text-nowrap text-center">ปลายภาค (${data.total_final_max_score || 0}) ${createToggleSwitches('final', false)}</th>`;
+            }
+            subHeaderRowHtml += `<th class="text-nowrap text-center">คะแนนจริง</th><th class="text-nowrap text-center">รวมคะแนน (100)</th><th class="text-nowrap text-center">เกรด</th>`;
+            thead.innerHTML = '';
+            thead.appendChild(headerRow);
+            const subHeader = document.createElement('tr');
+            subHeader.innerHTML = subHeaderRowHtml;
+            thead.appendChild(subHeader);
+            data.students.forEach(student => {
+                const studentRow = document.createElement('tr');
+                const nonActiveStatuses = ['ลาออก', 'ย้ายออก', 'พ้นสภาพ', 'แขวนลอย', 'พักการเรียน'];
+                if (nonActiveStatuses.includes(student.status)) {
+                    studentRow.classList.add('table-secondary', 'text-muted', 'text-decoration-line-through');
+                }
+                studentRow.dataset.studentId = student.id;
+                studentRow.dataset.groupId = data.student_group_map[student.id] || '';
+                studentRow.dataset.hasMs = student.has_ms_status;
+                const studentNameClasses = student.has_active_warning ? 'text-nowrap student-cell text-danger fw-bold' : 'text-nowrap student-cell';
+                const studentNameTitle = student.has_active_warning ? 'นักเรียนคนนี้มีสถานะเฝ้าระวังการขาดเรียน' : '';
+                let rowHtml = `<td class="${studentNameClasses}" title="${studentNameTitle}">${student.roll_number}. ${student.student_id} ${student.name_prefix || ''}${student.first_name} ${student.last_name}<span class="student-alerts-container">${renderAlerts(student.alerts)}</span></td>`;
+                data.units_data.forEach(unit => {
+                    if (!unit.items || unit.items.length === 0) return;
+                    const unitTotalMaxScore = unit.items.reduce((s, it) => s + (parseFloat(it.max_score) || 0), 0);
+                    unit.items.forEach(item => {
+                        const scoreKey = `${student.id}-${item.id}`;
+                        const score = (data.scores[scoreKey] && data.scores[scoreKey].score != null) ? data.scores[scoreKey].score : '';
+                        let inputHtml = `<input type="number" class="form-control form-control-sm text-center score-input" data-item-id="g-${item.id}" value="${score}" max="${item.max_score || 0}" min="0" data-unit-id="${item.learning_unit_id}" data-max-score="${item.max_score || 0}">`;
+                        rowHtml += `<td class="unit-column unit-id-${item.learning_unit_id}">${inputHtml}</td>`;
+                    });
+                    rowHtml += `<td class="unit-column unit-id-${unit.unit_id}"><input type="number" class="form-control form-control-sm text-center unit-summary-input" data-unit-id="${unit.unit_id}" data-unit-total-max-score="${unitTotalMaxScore}" max="${unitTotalMaxScore}"></td>`;
+                });
+                data.qualitative_assessment_data.forEach(template => {
+                    const rubrics = template.rubrics;
+                    if (template && Array.isArray(template.main_topics)) {
+                        template.main_topics.forEach(mainTopic => {
+                            if (!mainTopic) return;
+                            const subTopics = mainTopic.selected_sub_topics;
+                            const unitId = mainTopic.learning_unit_id;
+                            let selectOptions = '<option value=""></option>';
+                            if (rubrics) {
+                                rubrics.forEach(rubric => {
+                                    selectOptions += `<option value="${rubric.value}">${rubric.label}</option>`;
+                                });
+                            }
+                            if (subTopics && subTopics.length > 0) {
+                                const summaryScoreKey = `${student.id}-q-${mainTopic.main_topic_id}`;
+                                const summaryScore = data.scores[summaryScoreKey] ?.score ?? '';
+                                rowHtml += `<td class="unit-column unit-id-${unitId}"><select class="form-select form-select-sm text-center qualitative-main-summary" data-main-id="q-${mainTopic.main_topic_id}" data-topic-id="q-${mainTopic.main_topic_id}" data-initial-score="${summaryScore}">${selectOptions}</select></td>`;
+                                subTopics.forEach(sub => {
+                                    const scoreKey = `${student.id}-q-${sub.id}`;
+                                    const score = (data.scores[scoreKey] && data.scores[scoreKey].score != null) ? data.scores[scoreKey].score : '';
+                                    rowHtml += `<td class="unit-column unit-id-${unitId}"><select class="form-select form-select-sm text-center qualitative-select" data-main-id="q-${mainTopic.main_topic_id}" data-topic-id="q-${sub.id}" data-course-id="${data.course_id}" data-initial-score="${score}">${selectOptions}</select></td>`;
+                                });
+                            } else {
+                                const mainScoreKey = `${student.id}-q-${mainTopic.main_topic_id}`;
+                                const mainScore = data.scores[mainScoreKey] ?.score ?? '';
+                                rowHtml += `<td class="unit-column unit-id-${unitId}"><select class="form-select form-control-sm text-center qualitative-select" data-topic-id="q-${mainTopic.main_topic_id}" data-initial-score="${mainScore}">${selectOptions}</select></td>`;
+                            }
+                        });
+                    }
+                });
+                rowHtml += `<td><span class="collected-score-display fw-bold">0</span></td>`;
+                if (data.is_midterm_enabled) {
+                    rowHtml += `<td><input type="number" class="form-control form-control-sm text-center exam-input" data-exam-type="midterm" value="${student.midterm_score ?? ''}" max="${data.total_midterm_max_score || 0}"></td>`;
+                }
+                if (data.is_final_enabled) {
+                    rowHtml += `<td><input type="number" class="form-control form-control-sm text-center exam-input" data-exam-type="final" value="${student.final_score ?? ''}" max="${data.total_final_max_score || 0}"></td>`;
+                }
+                rowHtml += `<td><span class="total-score-display fw-bold">0</span></td>
+                                <td><span class="percentage-display fw-bold">0%</span></td>
+                                <td><span class="grade-display fw-bold">-</span></td>`;
+                studentRow.innerHTML = rowHtml;
+                tbody.appendChild(studentRow);
+                updateStudentRowTotals(studentRow);
+            });
+            container.innerHTML = '';
+            container.appendChild(template);
+            setupGradebookEventListeners(table, data);
+            table.querySelectorAll('select[data-initial-score]').forEach(select => {
+                const initialValue = select.dataset.initialScore;
+                if (initialValue !== '') select.value = initialValue;
+            });
+        }
+
+        function setupGradebookEventListeners(table, data) {
+            let saveDebounce;
+            let isDistributing = false;
+            const calculateMode = (arr) => {
+                if (!arr || arr.length === 0) return '';
+                const frequency = arr.reduce((acc, val) => {
+                    if (val !== '') {
+                        acc[val] = (acc[val] || 0) + 1;
+                    }
+                    return acc;
+                }, {});
+                let maxFreq = 0,
+                    mode = '';
+                for (const val in frequency) {
+                    if (frequency[val] > maxFreq) {
+                        maxFreq = frequency[val];
+                        mode = val;
+                    }
+                }
+                return mode;
+            };
+            const saveScoresBulk = (scoresData, endpointUrl) => {
+                if (scoresData.length === 0) return;
+                const table = document.getElementById('gradebook-table');
+                const courseId = table ? table.dataset.courseId : null;
+                if (!courseId) return;
+                fetch(endpointUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+                    body: JSON.stringify({ scores: scoresData, course_id: courseId })
+                }).catch(err => console.error('Bulk save error:', err));
+            };
+            const saveExamScore = (examData) => {
+                fetch("{{ url_for('teacher.save_enrollment_exam_score') }}", {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+                    body: JSON.stringify(examData)
+                }).catch(err => console.error('Exam save error:', err));
+            };
+            const handlePropagation = (input) => {
+                const studentRow = input.closest('tr');
+                if (!studentRow) return;
+                const columnId = input.dataset.itemId || input.dataset.examType;
+                if (!columnId) return;
+                const groupSelector = `.propagation-toggle.group-toggle[data-item-id="${columnId}"]`;
+                const allSelector = `.propagation-toggle.all-toggle[data-item-id="${columnId}"]`;
+                const allToggle = table.querySelector(allSelector);
+                const groupToggle = table.querySelector(groupSelector);
+                if (!allToggle && !groupToggle) return;
+                let activeToggle = null;
+                if (allToggle ?.checked) activeToggle = allToggle;
+                else if (groupToggle ?.checked) activeToggle = groupToggle;
+                if (!activeToggle) {
+                    updateStudentRowTotals(studentRow);
+                    clearTimeout(saveDebounce);
+                    saveDebounce = setTimeout(() => {
+                        const studentId = studentRow.dataset.studentId;
+                        const score = input.value === '' ? null : parseFloat(input.value);
+                        if (input.dataset.itemId) {
+                            const scoreData = { student_id: studentId, graded_item_id: input.dataset.itemId.replace('g-', ''), score: score };
+                            saveScoresBulk([scoreData], "{{ url_for('teacher.save_scores_bulk') }}");
+                        } else if (input.dataset.examType) {
+                            const examData = { student_id: studentId, course_id: data.course_id, exam_type: input.dataset.examType, score: score };
+                            saveExamScore(examData);
+                        }
+                    }, 800);
+                    return;
+                }
+                isDistributing = true;
+                const newScore = input.value;
+                let inputsToUpdate = [input];
+                const mode = activeToggle.dataset.mode;
+                let targetRows = [];
+                if (mode === 'all') {
+                    targetRows = Array.from(table.querySelectorAll('tr[data-student-id]'));
+                } else if (mode === 'group') {
+                    const sourceGroupId = studentRow.dataset.groupId;
+                    if (sourceGroupId) {
+                        targetRows = Array.from(table.querySelectorAll(`tr[data-group-id="${sourceGroupId}"]`));
+                    }
+                }
+                if (targetRows.length > 0) {
+                    targetRows.forEach(row => {
+                        if (row === studentRow) return;
+                        const allInputsInRow = row.querySelectorAll('.score-input, .exam-input');
+                        allInputsInRow.forEach(inputInRow => {
+                            const currentInputColumnId = inputInRow.dataset.itemId || inputInRow.dataset.examType;
+                            if (currentInputColumnId === columnId) {
+                                inputInRow.value = newScore;
+                                inputsToUpdate.push(inputInRow);
+                            }
+                        });
+                    });
+                }
+                const uniqueInputs = [...new Set(inputsToUpdate)];
+                uniqueInputs.forEach(i => updateStudentRowTotals(i.closest('tr')));
+                clearTimeout(saveDebounce);
+                saveDebounce = setTimeout(() => {
+                    const gradedItemsToSave = [];
+                    const examScoresToSave = [];
+                    uniqueInputs.forEach(i => {
+                        const studentId = i.closest('tr').dataset.studentId;
+                        const score = i.value === '' ? null : parseFloat(i.value);
+                        if (i.dataset.itemId) {
+                            gradedItemsToSave.push({ student_id: studentId, graded_item_id: i.dataset.itemId.replace('g-', ''), score: score });
+                        } else if (i.dataset.examType) {
+                            examScoresToSave.push({ student_id: studentId, course_id: data.course_id, exam_type: i.dataset.examType, score: score });
+                        }
+                    });
+                    if (gradedItemsToSave.length > 0) saveScoresBulk(gradedItemsToSave, "{{ url_for('teacher.save_scores_bulk') }}");
+                    examScoresToSave.forEach(examScore => saveExamScore(examScore));
+                }, 800);
+                isDistributing = false;
+            }
+            const handleQualitativeChange = (changedSelect) => {
+                if (isDistributing) return;
+                isDistributing = true;
+                const studentRow = changedSelect.closest('tr');
+                if (!studentRow) { isDistributing = false; return; }
+                const mainTopicIdForSwitch = changedSelect.dataset.mainId || changedSelect.dataset.topicId;
+                const specificTopicId = changedSelect.dataset.topicId;
+                if (!mainTopicIdForSwitch || !specificTopicId) { isDistributing = false; return; }
+                const allToggle = table.querySelector(`.propagation-toggle.all-toggle[data-item-id="${mainTopicIdForSwitch}"]`);
+                const groupToggle = table.querySelector(`.propagation-toggle.group-toggle[data-item-id="${mainTopicIdForSwitch}"]`);
+                let activeToggle = null;
+                if (allToggle && allToggle.checked) activeToggle = allToggle;
+                else if (groupToggle && groupToggle.checked) activeToggle = groupToggle;
+                let allModifiedSelects = [changedSelect];
+                const newValue = changedSelect.value;
+                if (changedSelect.classList.contains('qualitative-main-summary')) {
+                    studentRow.querySelectorAll(`.qualitative-select[data-main-id="${mainTopicIdForSwitch}"]`).forEach(subSelect => {
+                        if (subSelect.value !== newValue) { subSelect.value = newValue; allModifiedSelects.push(subSelect); }
+                    });
+                }
+                if (activeToggle) {
+                    let targetRows = [];
+                    const mode = activeToggle.dataset.mode;
+                    if (mode === 'all') targetRows = Array.from(table.querySelectorAll('tr[data-student-id]'));
+                    else if (mode === 'group') {
+                        const targetGroupId = studentRow.dataset.groupId;
+                        if (targetGroupId) targetRows = Array.from(table.querySelectorAll(`tr[data-group-id="${targetGroupId}"]`));
+                    }
+                    const uniqueSelectsToPropagate = [...new Set(allModifiedSelects)];
+                    uniqueSelectsToPropagate.forEach(selectToPropagate => {
+                        const currentTopicId = selectToPropagate.dataset.topicId;
+                        const currentValue = selectToPropagate.value;
+                        const selector = `.qualitative-select[data-topic-id="${currentTopicId}"], .qualitative-main-summary[data-topic-id="${currentTopicId}"]`;
+                        targetRows.forEach(row => {
+                            if (row !== studentRow) {
+                                const selectInRow = row.querySelector(selector);
+                                if (selectInRow && selectInRow.value !== currentValue) { selectInRow.value = currentValue; allModifiedSelects.push(selectInRow); }
+                            }
+                        });
+                    });
+                }
+                const uniqueRowsToUpdate = [...new Set(allModifiedSelects.map(sel => sel.closest('tr')))];
+                uniqueRowsToUpdate.forEach(row => {
+                    const mainSummaryInRow = row.querySelector(`.qualitative-main-summary[data-topic-id="${mainTopicIdForSwitch}"]`);
+                    if (mainSummaryInRow) {
+                        const subSelectsInRow = Array.from(row.querySelectorAll(`.qualitative-select[data-main-id="${mainTopicIdForSwitch}"]`));
+                        if (subSelectsInRow.length > 0) {
+                            const newMode = calculateMode(subSelectsInRow.map(s => s.value));
+                            if (mainSummaryInRow.value !== newMode) { mainSummaryInRow.value = newMode; allModifiedSelects.push(mainSummaryInRow); }
+                        }
+                    }
+                });
+                if (allModifiedSelects.length > 0) {
+                    clearTimeout(saveDebounce);
+                    saveDebounce = setTimeout(() => {
+                        const scoresToSave = [...new Set(allModifiedSelects)].map(sel => ({ student_id: sel.closest('tr') ?.dataset.studentId, topic_id: sel.dataset.topicId.replace('q-', ''), score: sel.value === '' ? null : sel.value })).filter(s => s.student_id && s.topic_id);
+                        if (scoresToSave.length > 0) saveScoresBulk(scoresToSave, "{{ url_for('teacher.save_qualitative_scores_bulk') }}");
+                    }, 800);
+                }
+                isDistributing = false;
+            };
+            table.addEventListener('change', e => {
+                const target = e.target;
+                if (target.matches('.unit-summary-input')) {
+                    const studentRow = target.closest('tr');
+                    if (!studentRow) return;
+                    const unitId = target.dataset.unitId;
+                    const newSummaryScore = parseFloat(target.value) || 0;
+                    const unitTotalMaxScore = parseFloat(target.dataset.unitTotalMaxScore) || 0;
+                    if (unitTotalMaxScore <= 0) return;
+                    const ratio = newSummaryScore / unitTotalMaxScore;
+                    const scoreInputsInUnit = studentRow.querySelectorAll(`.score-input[data-unit-id="${unitId}"]`);
+                    let calculatedScores = [],
+                        sumOfFlooredScores = 0;
+                    scoreInputsInUnit.forEach(input => {
+                        const itemMaxScore = parseFloat(input.dataset.maxScore) || 0;
+                        const idealScore = itemMaxScore * ratio;
+                        const flooredScore = Math.floor(idealScore);
+                        calculatedScores.push({ input: input, finalScore: flooredScore, remainder: idealScore - flooredScore });
+                        sumOfFlooredScores += flooredScore;
+                    });
+                    let remainderToDistribute = newSummaryScore - sumOfFlooredScores;
+                    calculatedScores.sort((a, b) => b.remainder - a.remainder);
+                    for (let i = 0; i < remainderToDistribute; i++)
+                        if (calculatedScores[i]) calculatedScores[i].finalScore++;
+                    const itemsToSave = [];
+                    calculatedScores.forEach(calc => {
+                        const itemMaxScore = parseFloat(calc.input.dataset.maxScore) || 0;
+                        if (calc.finalScore > itemMaxScore) calc.finalScore = itemMaxScore;
+                        calc.input.value = calc.finalScore;
+                        itemsToSave.push({ student_id: studentRow.dataset.studentId, graded_item_id: calc.input.dataset.itemId.replace('g-', ''), score: calc.finalScore });
+                    });
+                    if (itemsToSave.length > 0) {
+                        clearTimeout(saveDebounce);
+                        saveDebounce = setTimeout(() => saveScoresBulk(itemsToSave, "{{ url_for('teacher.save_scores_bulk') }}"), 800);
+                    }
+                } else if (target.matches('.qualitative-select, .qualitative-main-summary')) {
+                    handleQualitativeChange(target);
+                } else if (target.classList.contains('propagation-toggle')) {
+                    const itemId = target.dataset.itemId;
+                    const mode = target.dataset.mode;
+                    const otherToggle = (mode === 'group') ? table.querySelector(`.propagation-toggle.all-toggle[data-item-id="${itemId}"]`) : table.querySelector(`.propagation-toggle.group-toggle[data-item-id="${itemId}"]`);
+                    if (target.checked && otherToggle) otherToggle.checked = false;
+                }
+            });
+            table.addEventListener('input', e => {
+                const target = e.target;
+                if (target.matches('.score-input, .exam-input')) {
+                    updateStudentRowTotals(target.closest('tr'));
+                    handlePropagation(target);
+                }
+            });
+            table.querySelectorAll('tbody tr').forEach(row => updateStudentRowTotals(row));
+        }
+
+        function updateStudentRowTotals(rowElement) {
+            if (!rowElement) return;
+            const table = rowElement.closest('table#gradebook-table');
+            if (!table) return;
+            rowElement.querySelectorAll('.unit-summary-input').forEach(summaryInput => {
+                const unitId = summaryInput.dataset.unitId;
+                let currentUnitSum = 0;
+                rowElement.querySelectorAll(`.score-input[data-unit-id="${unitId}"]`).forEach(itemInput => {
+                    currentUnitSum += parseFloat(itemInput.value) || 0;
+                });
+                summaryInput.value = Number(currentUnitSum.toFixed(2));
+            });
+            let finalGrade = '',
+                gradeClass = 'grade-display fw-bold',
+                hasIncompleteWork = false;
+            const hasMsStatus = rowElement.dataset.hasMs === 'true';
+            if (hasMsStatus) {
+                finalGrade = 'มส';
+                gradeClass += ' text-danger';
+            } else {
+                const summativeIds = JSON.parse(table.dataset.summativeIds || '[]');
+                if (summativeIds.length > 0) {
+                    rowElement.querySelectorAll('.score-input').forEach(input => {
+                        const itemId = parseInt(input.dataset.itemId.replace('g-', ''));
+                        if (summativeIds.includes(itemId) && input.value.trim() === '') hasIncompleteWork = true;
+                    });
+                }
+                const midtermInput = rowElement.querySelector('.exam-input[data-exam-type="midterm"]');
+                const finalInput = rowElement.querySelector('.exam-input[data-exam-type="final"]');
+                if (midtermInput && midtermInput.value.trim() === '') hasIncompleteWork = true;
+                if (finalInput && finalInput.value.trim() === '') hasIncompleteWork = true;
+                if (hasIncompleteWork) {
+                    finalGrade = 'ร';
+                    gradeClass += ' text-danger';
+                } else {
+                    let collectedScore = 0;
+                    rowElement.querySelectorAll('.score-input').forEach(input => collectedScore += parseFloat(input.value) || 0);
+                    const midtermScore = midtermInput ? (parseFloat(midtermInput.value) || 0) : 0;
+                    const finalScore = finalInput ? (parseFloat(finalInput.value) || 0) : 0;
+                    let overallTotalScore = collectedScore + midtermScore + finalScore;
+                    const grandMax = parseFloat(table.dataset.grandMaxScore) || 100;
+                    let percent = (grandMax > 0) ? (overallTotalScore / grandMax) * 100 : 0;
+                    rowElement.querySelector('.collected-score-display').textContent = collectedScore.toFixed(2).replace(/\.00$/, '');
+                    rowElement.querySelector('.total-score-display').textContent = overallTotalScore.toFixed(2).replace(/\.00$/, '');
+                    rowElement.querySelector('.percentage-display').textContent = `${percent.toFixed(0)}%`;
+                    const mapToGrade = p => {
+                        if (p >= 80) return '4';
+                        if (p >= 75) return '3.5';
+                        if (p >= 70) return '3';
+                        if (p >= 65) return '2.5';
+                        if (p >= 60) return '2';
+                        if (p >= 55) return '1.5';
+                        if (p >= 50) return '1';
+                        return '0';
+                    };
+                    const calculatedGrade = mapToGrade(percent);
+                    finalGrade = calculatedGrade;
+                    if (calculatedGrade === '0') gradeClass += ' text-danger';
+                }
+            }
+            const gradeDisplay = rowElement.querySelector('.grade-display');
+            if (gradeDisplay) {
+                gradeDisplay.textContent = finalGrade;
+                gradeDisplay.className = gradeClass;
+            }
+        }
+
+        function createStudentElement(enrollment) {
+            return `<div class="list-group-item list-group-item-action p-2" data-id="${enrollment.id}">
+                        <small>${enrollment.roll_number}. ${enrollment.name}</small>
+                    </div>`;
+        }
+
+        function createGroupCard(group, membersHtml = '') {
+            return `
+                <div class="card mb-3 group-card" data-group-id="${group.id}">
+                    <div class="card-header p-2 d-flex justify-content-between align-items-center">
+                        <input type="text" class="form-control form-control-sm group-name-input" value="${group.name}">
+                        <button class="btn btn-xs btn-outline-danger ms-2 delete-group-btn border-0">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                    <div class="card-body p-2 list-group group-dropzone" style="min-height: 50px;">
+                        ${membersHtml}
+                    </div>
+                </div>`;
+        }
+        
+        function renderGroupManagerUI(groups = []) {
+            const ungroupedList = document.getElementById('ungrouped-students-list');
+            const groupsContainer = document.getElementById('groups-container');
+            ungroupedList.innerHTML = '';
+            groupsContainer.innerHTML = '';
+            const groupedIds = new Set(groups.flatMap(g => g.enrollments));
+            allEnrollments.filter(en => !groupedIds.has(en.id))
+                .forEach(en => ungroupedList.innerHTML += createStudentElement(en));
+            groups.forEach(group => {
+                let membersHtml = '';
+                allEnrollments.filter(en => group.enrollments.includes(en.id))
+                    .forEach(member => membersHtml += createStudentElement(member));
+                groupsContainer.insertAdjacentHTML('beforeend', createGroupCard({ id: group.id, name: group.name }, membersHtml));
+            });
+            initializeAllSortables();
+        }
+        
+        async function saveGroups() {
+            const saveBtn = document.getElementById('save-groups-btn');
+            const planId = mainContainer.dataset.planId;
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> กำลังบันทึก...`;
+            const payload = {
+                groups: Array.from(document.querySelectorAll('#groups-container .group-card')).map(card => ({
+                    id: card.dataset.groupId.startsWith('new-') ? null : parseInt(card.dataset.groupId),
+                    name: card.querySelector('.group-name-input').value.trim(),
+                    members: Array.from(card.querySelectorAll('.list-group-item[data-id]')).map(item => parseInt(item.dataset.id))
+                })).filter(g => g.name),
+                course_id: courseId
+            };
+            try {
+                const response = await fetch(`/teacher/api/plan/${planId}/groups`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+                    body: JSON.stringify(payload)
+                });
+                if (!response.ok) throw new Error('Server error on save.');
+                Swal.fire('สำเร็จ!', 'บันทึกการจัดกลุ่มเรียบร้อยแล้ว', 'success');
+                groupModal.hide();
+                fetchAndRender();
+            } catch (error) {
+                Swal.fire('ผิดพลาด!', 'ไม่สามารถบันทึกข้อมูลได้', 'error');
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'บันทึกการจัดกลุ่ม';
+            }
+        }
+        
+        function initializeAllSortables() {
+            sortableInstances.forEach(s => s.destroy());
+            sortableInstances = [];
+            document.querySelectorAll('#groupManagementModal .list-group').forEach(list =>
+                sortableInstances.push(new Sortable(list, {
+                    group: 'students',
+                    animation: 150,
+                    ghostClass: 'bg-primary-soft'
+                }))
+            );
+        }
+        
+        async function openGroupManager() {
+            const planId = mainContainer.dataset.planId;
+            if (!planId) return Swal.fire('ข้อผิดพลาด', 'ไม่พบรหัสแผนการสอนในหน้านี้', 'error');
+            const loader = document.getElementById('group-manager-loader');
+            const content = document.getElementById('group-manager-content');
+            loader.classList.remove('d-none');
+            content.style.display = 'none';
+            groupModal.show();
+            try {
+                const groupsUrl = `/teacher/api/plan/${planId}/groups?course_id=${courseId}`;
+                const [enrollmentsRes, groupsRes] = await Promise.all([
+                    fetch(`{{ url_for('teacher.get_enrollments_for_classroom', classroom_id=0) }}`.replace('0', classroomId)),
+                    fetch(groupsUrl)
+                ]);
+                if (!enrollmentsRes.ok || !groupsRes.ok) throw new Error('Could not fetch initial data.');
+                allEnrollments = await enrollmentsRes.json();
+                const groups = await groupsRes.json();
+                renderGroupManagerUI(groups);
+                loader.classList.add('d-none');
+                content.style.display = 'flex';
+                initializeAllSortables();
+            } catch (error) {
+                loader.innerHTML = `<div class="text-danger">${error.message}</div>`;
+            }
+        }
+
+        // --- Main Initialization for this specific page ---
+        const init = () => {
+            mainContainer.addEventListener('click', e => {
+                // Listener for Manage Groups button
+                if (e.target.closest('#manage-groups-btn-workspace')) {
+                    openGroupManager();
+                }
+                // [ADDED] Listener for Unit Filter buttons
+                if (e.target.classList.contains('unit-filter-btn')) {
+                    const unitId = e.target.dataset.unitId;
+                    document.querySelectorAll('.unit-filter-btn').forEach(btn => {
+                        const isActive = btn.dataset.unitId === unitId;
+                        btn.classList.toggle('active', isActive);
+                        btn.classList.toggle('btn-primary', isActive);
+                        btn.classList.toggle('btn-outline-secondary', !isActive);
+                    });
+                    filterGradebookColumns(unitId);
+                }
+            });
+
+            // Group Management Modal event listener
+            document.getElementById('groupManagementModal').addEventListener('click', async (e) => {
+                const target = e.target;
+                const groupsContainer = document.getElementById('groups-container');
+                if (target.closest('#save-groups-btn')) {
+                    saveGroups();
+                } else if (target.closest('#add-new-group-btn')) {
+                    const groupHtml = createGroupCard({ id: `new-${Date.now()}`, name: `กลุ่มที่ ${groupsContainer.children.length + 1}` }, '');
+                    groupsContainer.insertAdjacentHTML('beforeend', groupHtml);
+                    initializeAllSortables();
+                } else if (target.closest('.delete-group-btn')) {
+                    const card = target.closest('.group-card');
+                    if (card) {
+                        card.querySelectorAll('.list-group-item').forEach(item => document.getElementById('ungrouped-students-list').appendChild(item));
+                        card.remove();
+                    }
+                } else if (target.closest('#auto-generate-groups-btn')) {
+                    const { value: numGroups } = await Swal.fire({
+                        target: document.getElementById('groupManagementModal'),
+                        title: 'สร้างกลุ่มอัตโนมัติ',
+                        input: 'number',
+                        inputLabel: 'คุณต้องการสร้างกี่กลุ่ม?',
+                        showCancelButton: true,
+                        inputValidator: (v) => { if (!v || v < 1) return 'กรุณาใส่จำนวนกลุ่มที่ถูกต้อง!'; }
+                    });
+                    if (numGroups) {
+                        const students = Array.from(document.querySelectorAll('#ungrouped-students-list .list-group-item[data-id]'));
+                        for (let i = students.length - 1; i > 0; i--) {
+                            const j = Math.floor(Math.random() * (i + 1));
+                            [students[i], students[j]] = [students[j], students[i]];
+                        }
+                        groupsContainer.innerHTML = '';
+                        const newGroupElements = [];
+                        for (let i = 1; i <= numGroups; i++) {
+                            const groupId = `new-${Date.now()}-${i}`;
+                            groupsContainer.insertAdjacentHTML('beforeend', createGroupCard({ id: groupId, name: `กลุ่มที่ ${i}` }, ''));
+                            newGroupElements.push(groupsContainer.querySelector(`[data-group-id="${groupId}"] .list-group`));
+                        }
+                        if (newGroupElements.length > 0) {
+                            students.forEach((studentNode, index) => {
+                                newGroupElements[index % numGroups].appendChild(studentNode);
+                            });
+                        }
+                        initializeAllSortables();
+                    }
+                }
+            });
+            
+            // Trigger the first load when the tab is shown
+            gradebookTab.addEventListener('shown.bs.tab', fetchAndRender);
+            if (gradebookTab.classList.contains('active')) {
+                fetchAndRender();
+            }
+        };
+
+        init();
+    };
+
+    // --- INITIALIZE ALL MODULES ---
+    attendanceModule();
+    gradebookModule();
+});
+</script>
+{% endblock %}

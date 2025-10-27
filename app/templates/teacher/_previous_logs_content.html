@@ -1,0 +1,35 @@
+{# FILE: app/templates/teacher/_previous_logs_content.html #}
+{% if grouped_logs %}
+    {% for unit, logs in grouped_logs.items()|sort(attribute='0.sequence') %} {# Sort by unit sequence #}
+        <div class="mb-4">
+            <h5><i class="bi bi-collection-fill text-primary me-2"></i>หน่วยที่ {{ unit.sequence }}: {{ unit.title }}</h5>
+            {% if logs %}
+                {% for log in logs %}
+                <div class="card mb-2 bg-light">
+                    <div class="card-body p-3">
+                        {% if log.log_content %}
+                        <p class="card-text small" style="white-space: pre-wrap;">{{ log.log_content }}</p>
+                        {% endif %}
+                        {% if log.problems_obstacles %}
+                            <p class="card-text small mb-1"><strong class="text-danger">ปัญหา/อุปสรรค:</strong> <span style="white-space: pre-wrap;">{{ log.problems_obstacles }}</span></p>
+                        {% endif %}
+                        {% if log.solutions %}
+                            <p class="card-text small mb-0"><strong class="text-success">แนวทางแก้ไข:</strong> <span style="white-space: pre-wrap;">{{ log.solutions }}</span></p>
+                        {% endif %}
+                        {% if not log.log_content and not log.problems_obstacles and not log.solutions %}
+                             <p class="card-text small fst-italic text-muted">ไม่มีเนื้อหาบันทึก</p>
+                        {% endif %}
+                    </div>
+                    <div class="card-footer bg-transparent border-top-0 py-1 px-3 text-end">
+                        <small class="text-muted">บันทึกโดย: {{ log.author.full_name }} เมื่อ {{ log.created_at.strftime('%d/%m/%Y %H:%M') }}</small>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                 <p class="text-muted fst-italic">ไม่มีบันทึกหลังสอนสำหรับหน่วยนี้</p>
+            {% endif %}
+        </div>
+    {% endfor %}
+{% else %}
+    <p class="text-muted text-center">ไม่พบบันทึกหลังสอนสำหรับแผนการสอนนี้</p>
+{% endif %}

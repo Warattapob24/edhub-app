@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+
+{% block sidebar %}
+    {% include 'academic/_sidebar.html' %}
+{% endblock %}
+
+{% block main_content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="h2"><i class="bi bi-person-check-fill me-2"></i> {{ title }}</h1>
+        <p class="text-muted">ภาคเรียนที่ {{ semester.term }}/{{ semester.academic_year.year }}</p>
+    </div>
+    <div>
+        <button class="btn btn-lg btn-primary" id="forward-all-btn" {% if stats.pending == 0 %}disabled{% endif %}>
+            <i class="bi bi-send-check-fill me-2"></i> เสนอผู้อำนวยการอนุมัติ ({{ stats.pending }} คน)
+        </button>
+    </div>
+</div>
+
+{# --- STATS CARDS --- #}
+{% if stats and stats.total > 0 %}
+<div class="row mb-4 g-3">
+    <div class="col-md-4"><div class="card shadow-sm p-3 h-100"><div class="d-flex align-items-center"><div class="fs-2 text-primary me-3"><i class="bi bi-inbox-fill"></i></div><div><div class="h1 fw-bold mb-0">{{ stats.pending }}</div><div class="text-muted">รอเสนออนุมัติ</div></div></div></div></div>
+    <div class="col-md-4"><div class="card shadow-sm p-3 h-100"><div class="d-flex align-items-center"><div class="fs-2 text-info me-3"><i class="bi bi-send-check"></i></div><div><div class="h1 fw-bold mb-0">{{ stats.forwarded }}</div><div class="text-muted">เสนออนุมัติแล้ว</div></div></div></div></div>
+    <div class="col-md-4"><div class="card shadow-sm p-3 h-100"><div class="d-flex align-items-center"><div class="fs-2 text-warning me-3"><i class="bi bi-hourglass-split"></i></div><div><div class="h1 fw-bold mb-0">{{ stats.awaiting }}</div><div class="text-muted">รอครูดำเนินการ</div></div></div></div></div>
+</div>
+{% endif %}
+
+{# --- PROGRESS BAR --- #}
+{% if stats and stats.total > 0 %}
+<div class="progress-stacked mb-5" style="height: 2.5rem; font-size: 1rem;">
+    {% if stats.percent_pending > 0 %}<div class="progress-bar bg-primary" role="progressbar" style="width: {{ stats.percent_pending }}%;" title="รอเสนออนุมัติ"><span class="fw-bold">{{ '%.0f'|format(stats.percent_pending) }}%</span></div>{% endif %}
+    {% if stats.percent_forwarded > 0 %}<div class="progress-bar bg-info" role="progressbar" style="width: {{ stats.percent_forwarded }}%;" title="เสนออนุมัติแล้ว"><span class="fw-bold">{{ '%.0f'|format(stats.percent_forwarded) }}%</span></div>{% endif %}
+    {% if stats.percent_awaiting > 0 %}<div class="progress-bar bg-warning text-dark" role="progressbar" style="width: {{ stats.percent_awaiting }}%;" title="รอครูดำเนินการ"><span class="fw-bold">{{ '%.0f'|format(stats.percent_awaiting) }}%</span></div>{% endif %}
+</div>
+{% endif %}
+
+{# --- Helper Macro --- #}
+{% macro render_student_table(students, title, icon_html) %}
+{% if students %}
+    <h4 class="mb-3">{{ icon_html|safe }} {{ title }} <small class="text-muted">({{ students|length }} คน)</small></h4>
+    <div class="card shadow-sm mb-4">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-3">ชื่อ-สกุล</th><th>รายวิชา</th><th>กลุ่มสาระฯ</th><th class="text-center">ผลการซ่อม</th><th class="text-center">สถานะ</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for grade_obj, enrollment in students|sort(attribute='0.student.first_name') %}
+                    <tr>
+                        <td class="ps-3">{{ enrollment.roll_number }}. {{ grade_obj.student.name_prefix }}{{ grade_obj.student.first_name }} {{ grade_obj.student.last_name }}</td>
+                        <td>{{ grade_obj.course.subject.name }} ({{ grade_obj.course.classroom.name }})</td>
+                        <td>{{ grade_obj.course.subject.subject_group.name }}</td>
+                        <td class="text-center">
+                            {% if grade_obj.original_final_grade %}
+                                <span class="badge bg-secondary">{{ grade_obj.original_final_grade }}</span> <i class="bi bi-arrow-right-short"></i> <span class="badge bg-success">{{ grade_obj.final_grade }}</span>
+                            {% else %}
+                                <span class="badge 
+                                {% if grade_obj.final_grade == 'มส' %}bg-danger
+                                {% elif grade_obj.final_grade == 'ร' %}bg-warning text-dark
+                                {% else %}bg-secondary{% endif %}">{{ grade_obj.final_grade }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if grade_obj.remediation_status == 'Approved' %}<span class="badge bg-success">อนุมัติแล้ว</span>
+                            {% elif grade_obj.remediation_status == 'Pending Director Approval' %}<span class="badge bg-info">รอผู้อำนวยการอนุมัติ</span>
+                            {% elif grade_obj.remediation_status == 'Submitted to Academic Affairs' %}<span class="badge bg-primary">รอเสนออนุมัติ</span>
+                            {% else %}<span class="badge bg-warning-soft text-warning">รอครูดำเนินการ</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+{% endif %}
+{% endmacro %}
+
+{# --- Render Sections --- #}
+{{ render_student_table(pending_approval_students, 'รอเสนออนุมัติ', '<i class="bi bi-inbox-fill text-primary"></i>') }}
+{{ render_student_table(forwarded_to_director_students, 'เสนออนุมัติแล้ว', '<i class="bi bi-send-check text-info"></i>') }}
+{{ render_student_table(awaiting_teacher_action_students, 'ภาพรวมที่ยังรอครูดำเนินการ', '<i class="bi bi-hourglass-split text-warning"></i>') }}
+
+{% if not pending_approval_students and not forwarded_to_director_students and not awaiting_teacher_action_students %}
+<div class="text-center text-muted py-5">
+    <h4><i class="bi bi-folder2-open"></i> ยังไม่มีผลการซ่อมที่ส่งเข้ามา</h4>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const forwardBtn = document.getElementById('forward-all-btn');
+    if (forwardBtn) {
+        forwardBtn.addEventListener('click', function() {
+            Swal.fire({
+                title: 'ยืนยันการเสนออนุมัติ?',
+                text: "ระบบจะรวบรวมผลการซ่อมทั้งหมดและส่งให้ผู้อำนวยการพิจารณา",
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: 'ยืนยันและเสนออนุมัติ',
+                cancelButtonText: 'ยกเลิก'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    fetch("{{ url_for('academic.forward_remediation_to_director') }}", {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': '{{ csrf_token() }}'
+                        }
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            Swal.fire('สำเร็จ!', data.message, 'success').then(() => location.reload());
+                        } else {
+                            Swal.fire('ผิดพลาด!', data.message, 'error');
+                        }
+                    })
+                    .catch(err => Swal.fire('ผิดพลาด!', 'การเชื่อมต่อล้มเหลว', 'error'));
+                }
+            });
+        });
+    }
+});
+</script>
+{% endblock %}

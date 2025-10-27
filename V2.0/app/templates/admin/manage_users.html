@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">
+                <i class="fas fa-users me-2"></i>จัดการบัญชีผู้ใช้
+            </h5>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addUserModal">
+                <i class="fas fa-plus me-1"></i> เพิ่มผู้ใช้ใหม่
+            </button>
+        </div>
+        <div class="card-body">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>ชื่อ-นามสกุล</th>
+                            <th>Username</th>
+                            <th>บทบาท</th>
+                            <th>กลุ่มสาระฯ</th>
+                            <th>สถานะ</th>
+                            <th>ดำเนินการ</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for user in users %}
+                        <tr>
+                            <td>{{ user.full_name }}</td>
+                            <td>{{ user.username }}</td>
+                            <td>
+                                {% for role in user.roles %}
+                                    <span class="badge bg-info text-dark">{{ role.name }}</span>
+                                {% endfor %}
+                            </td>
+                            <td>{{ user.learning_area.name if user.learning_area else '-' }}</td>
+                            <td>
+                                {% if user.active %}
+                                    <span class="badge bg-success">Active</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">Inactive</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <button class="btn btn-warning btn-sm edit-user-btn"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#editUserModal"
+                                        data-user-id="{{ user.id }}"
+                                        data-user-fullname="{{ user.full_name }}"
+                                        data-user-username="{{ user.username }}"
+                                        data-user-roles="{{ user.roles|map(attribute='id')|list|tojson }}"
+                                        data-user-area="{{ user.learning_area.id if user.learning_area else '' }}">
+                                    <i class="fas fa-edit"></i> แก้ไข
+                                </button>
+                                
+                                <form action="{{ url_for('admin.toggle_user_active', user_id=user.id) }}" method="POST" class="d-inline">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    {% if user.active %}
+                                        <button type="submit" class="btn btn-secondary btn-sm" {% if user.id == current_user.id %}disabled{% endif %}>
+                                            <i class="fas fa-power-off"></i> ปิดใช้งาน
+                                        </button>
+                                    {% else %}
+                                        <button type="submit" class="btn btn-success btn-sm">
+                                            <i class="fas fa-power-off"></i> เปิดใช้งาน
+                                        </button>
+                                    {% endif %}
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="addUserModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form action="{{ url_for('admin.add_user') }}" method="POST">
+                {{ add_form.hidden_tag() }}
+                <div class="modal-header">
+                    <h5 class="modal-title">เพิ่มผู้ใช้ใหม่</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">{{ add_form.username.label(class="form-label") }} {{ add_form.username(class="form-control") }}</div>
+                    <div class="mb-3">{{ add_form.full_name.label(class="form-label") }} {{ add_form.full_name(class="form-control") }}</div>
+                    <div class="mb-3">{{ add_form.password.label(class="form-label") }} {{ add_form.password(class="form-control") }}</div>
+                    <div class="mb-3">{{ add_form.confirm_password.label(class="form-label") }} {{ add_form.confirm_password(class="form-control") }}</div>
+                    <div class="mb-3">{{ add_form.roles.label(class="form-label") }} {{ add_form.roles(class="form-control") }}</div>
+                    <div class="mb-3">{{ add_form.learning_area.label(class="form-label") }} {{ add_form.learning_area(class="form-control") }}</div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+                    {{ add_form.submit(class="btn btn-primary") }}
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="editUserModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form id="editUserForm" method="POST">
+                {{ edit_form.hidden_tag() }}
+                <div class="modal-header">
+                    <h5 class="modal-title">แก้ไขข้อมูลผู้ใช้</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">{{ edit_form.username.label(class="form-label") }} {{ edit_form.username(class="form-control", id="edit_username") }}</div>
+                    <div class="mb-3">{{ edit_form.full_name.label(class="form-label") }} {{ edit_form.full_name(class="form-control", id="edit_full_name") }}</div>
+                    <hr>
+                    <p class="text-muted"><small>กรอกรหัสผ่านเฉพาะเมื่อต้องการเปลี่ยนแปลง</small></p>
+                    <div class="mb-3">{{ edit_form.password.label(class="form-label") }} {{ edit_form.password(class="form-control") }}</div>
+                    <div class="mb-3">{{ edit_form.confirm_password.label(class="form-label") }} {{ edit_form.confirm_password(class="form-control") }}</div>
+                    <hr>
+                    <div class="mb-3">{{ edit_form.roles.label(class="form-label") }} {{ edit_form.roles(class="form-control", id="edit_roles") }}</div>
+                    <div class="mb-3">{{ edit_form.learning_area.label(class="form-label") }} {{ edit_form.learning_area(class="form-control", id="edit_learning_area") }}</div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+                    {{ edit_form.submit(class="btn btn-primary") }}
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/js/all.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var editUserModal = document.getElementById('editUserModal');
+    editUserModal.addEventListener('show.bs.modal', function (event) {
+        var button = event.relatedTarget;
+        
+        // Extract info from data-* attributes
+        var userId = button.getAttribute('data-user-id');
+        var fullName = button.getAttribute('data-user-fullname');
+        var username = button.getAttribute('data-user-username');
+        var roleIds = JSON.parse(button.getAttribute('data-user-roles'));
+        var areaId = button.getAttribute('data-user-area');
+
+        // Update the modal's content.
+        var form = editUserModal.querySelector('#editUserForm');
+        form.action = '/admin/user/edit/' + userId;
+        
+        editUserModal.querySelector('#edit_username').value = username;
+        editUserModal.querySelector('#edit_full_name').value = fullName;
+        
+        // Select roles
+        var rolesSelect = editUserModal.querySelector('#edit_roles');
+        for (var i = 0; i < rolesSelect.options.length; i++) {
+            var option = rolesSelect.options[i];
+            option.selected = roleIds.includes(parseInt(option.value));
+        }
+
+        // Select learning area
+        editUserModal.querySelector('#edit_learning_area').value = areaId;
+    });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <title>ปถ.05 บันทึกเวลาเรียน</title>
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap');
+    body { font-family: 'Sarabun', sans-serif; font-size: 7.5pt; }
+    .container { width: 98%; margin: 15px auto; }
+    h3, p.header-info {
+        margin: 2px 0;
+        text-align: center;
+        font-size: 8.5pt;
+        page-break-after: avoid; /* [NEW] Try to prevent break after header */
+    }
+    table.attendance-table-chunk { /* [NEW] Class for each table chunk */
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 5px;
+        table-layout: fixed;
+        page-break-inside: auto; /* Allow table to break if absolutely necessary, but rows avoid breaking */
+    }
+    th, td { border: 1px solid black; padding: 0px 1px; text-align: center; vertical-align: middle; height: 16px; overflow: hidden; }
+    th { background-color: #f2f2f2; font-weight: bold; font-size: 6pt; white-space: nowrap;}
+    .student-name { text-align: left; padding-left: 2px; font-size: 7pt; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 0; }
+    tr.needs-attention td {
+        color: red; /* [FIX] Set text color to red */
+        /* font-weight: bold; */ /* Optional: Make text bold */
+    }
+    /* [RESTORED] Style for inactive students with RED line */
+    tr.student-inactive td {
+        text-decoration: line-through;
+        text-decoration-color: red; /* [NEW] Make the line red */
+        /* text-decoration-thickness: 1px; */ /* Optional: Make line thicker */
+        color: gray; /* Keep text gray */
+    }    
+    .col-roll { width: 2.5%; }
+    .col-id { width: 5%; }
+    .col-name { width: 22%; }
+    .col-status { width: 5%; font-size: 6pt; }
+    .col-hour { width: 1.4%; /* Slightly wider hour columns */ }
+    .col-total { width: 3.2%; font-size: 6.5pt; }
+
+    thead { display: table-header-group; }
+    tr { page-break-inside: avoid; }
+    /* table { page-break-after: auto; } REMOVED - Controlled by chunk page break */
+    .page-break { page-break-before: always; } /* Ensure this exists */
+    .att-mark { font-size: 6.5pt; }
+    .status-ms { color: red; font-weight: bold; font-size: 5pt; }
+    .status-other { color: gray; font-style: italic; font-size: 6pt; }
+    .vertical-header { writing-mode: vertical-rl; text-orientation: mixed; white-space: nowrap; padding: 3px 0px; height: 35px; }
+    .footer-note { font-size: 7pt; text-align: left; margin-top: 5px; } /* Footer class */
+</style>
+</head>
+<body>
+    <div class="container attendance-page">
+        {# --- Header Info (Repeated conceptually, but rendered once per full PDF) --- #}
+        {# --- Logic for Multi-Page Tables --- #}
+        {% set schedule = hour_schedule_details or [] %}
+        {% set total_hours = schedule | length %}
+        {% set hours_per_page = 20 %} {# Define hours per page #}
+        {% set num_pages = (total_hours / hours_per_page) | round(0, 'ceil') | int %}
+
+        {# --- Outer loop for each page/table chunk --- #}
+        {% for page_num in range(num_pages) %}
+            {% set start_hour = page_num * hours_per_page + 1 %}
+            {# [FIX] Use conditional logic instead of min() #}
+            {% set calculated_end = (page_num + 1) * hours_per_page %}
+            {% set end_hour = total_hours if (page_num + 1) * hours_per_page > total_hours else (page_num + 1) * hours_per_page %}
+
+            <div class="{{ 'page-break' if page_num > 0 else '' }}"> {# Add page break before header on subsequent pages #}
+                <h3>แบบบันทึกเวลาเรียน</h3>
+                <p class="header-info">
+                    รหัสวิชา {{ course_info.subject_code }} รายวิชา {{ course_info.subject_name }} ชั้น {{ course_info.grade_level }} / {{ course_info.classroom_name.split('/')[-1] if '/' in course_info.classroom_name else course_info.classroom_name }}<br>
+                    ครูผู้สอน {{ course_info.teachers | join(', ') }} ภาคเรียนที่ {{ course_info.semester_term }} ปีการศึกษา {{ course_info.academic_year }}
+                </p>
+            </div>
+
+            {# Add class attendance-table-chunk to the table #}
+            <table class="attendance-table-chunk">
+                <thead>
+                    <tr>
+                        <th rowspan="3" class="col-roll">เลขที่</th>
+                        <th rowspan="3" class="col-id">เลข<br>ประจำตัว</th>
+                        <th rowspan="3" class="col-name">ชื่อ - สกุล</th>
+                        <th rowspan="3" class="col-status">สถานะ<br>นักเรียน/<br>เวลาเรียน</th>
+                        {# Generate Hour Headers for this page chunk #}
+                        {% for i in range(start_hour, end_hour + 1) %}
+                            <th class="col-hour">{{ i }}</th> {# Hour number #}
+                        {% endfor %}
+                        {# Totals only appear on the LAST page chunk #}
+                        {% if page_num == num_pages - 1 %}
+                            <th rowspan="3" class="col-total">มา<br>เรียน<br>(ชม.)</th>
+                            <th rowspan="3" class="col-total">ขาด<br>(ชม.)</th>
+                            <th rowspan="3" class="col-total">ลา<br>(ชม.)</th>
+                            <th rowspan="3" class="col-total">สาย<br>(ชม.)</th>
+                        {% endif %}
+                    </tr>
+                    
+                    {# [FIX 7.3.12] Row 2: Month Headers (Corrected Scoping) #}
+                    <tr>
+                        {# 1. Slice the schedule details for the current page ONLY #}
+                        {% set page_schedule = schedule[start_hour-1:end_hour] %}
+                        
+                        {# 2. Manually group the sliced schedule by month (to preserve order) #}
+                        {% set page_months = {} %}
+                        {% for detail in page_schedule %}
+                            {% if detail.month not in page_months %}
+                                {# Use a trick to update dict in-scope #}
+                                {% set _ = page_months.update({detail.month: 0}) %}
+                            {% endif %}
+                            {% set _ = page_months.update({detail.month: page_months[detail.month] + 1}) %}
+                        {% endfor %}
+
+                        {# 3. Loop through the *manually grouped* dictionary #}
+                        {% for month, count in page_months.items() %}
+                            <th colspan="{{ count }}">{{ month }}</th>
+                        {% endfor %}
+
+                        {# 4. Add empty cells for Total columns (only on last page) #}
+                        {% if page_num == num_pages - 1 %}
+                            <th colspan="4"></th> {# Span over total columns #}
+                        {% endif %}
+                    </tr>
+                    
+                    {# [FIX 7.3.12] Row 3: Date Headers (Using Sliced Data) #}
+                    <tr>
+                        {# 5. Loop through the *same sliced schedule* for dates #}
+                        {% for detail in page_schedule %}
+                            <th class="vertical-header">{{ detail.date }}</th>
+                        {% endfor %}
+
+                        {# 6. Add empty cells for Total columns (only on last page) #}
+                        {% if page_num == num_pages - 1 %}
+                            <th colspan="4"></th> {# Span over total columns #}
+                        {% endif %}
+                    </tr>
+                </thead>
+            <tbody>
+                {% for student in students_data %}
+                {# [FIX] Ensure needs_attention uses student.final_grade #}
+                {% set needs_attention = student.final_grade in ['0', 'ร', 'มส'] %}
+                {% set is_inactive = student.status != 'กำลังศึกษา' %}
+                {# Apply needs_attention only if NOT inactive #}
+                <tr class="{{ 'needs-attention' if needs_attention and not is_inactive else '' }} {{ 'student-inactive' if is_inactive else '' }}">
+                    <td>{{ student.roll_number }}</td>
+                    <td>{{ student.student_id }}</td>
+                    <td class="student-name">{{ student.full_name }}</td>
+                        <td class="col-status">
+                            {# Status text WITHOUT <s> tags #}
+                                        {% if student.status != 'กำลังศึกษา' %} <span class="status-other">{{ student.status }}</span>
+                                        {% else %}
+                                {% set summary = student.attendance_summary %} {% set total_possible = summary.total_possible %} {% set attended = summary.present + summary.late %}
+                                {% if total_possible > 0 %} {% set att_percent = (attended / total_possible) * 100 %}
+                                    {% if att_percent < 80 %} <span class="status-ms">มส {{ "%g"|format(att_percent | round(1)) }}%</span>
+                                    {% else %} <span>ปกติ</span> {% endif %}
+                                {% else %} <span>ปกติ</span> {% endif %}
+                            {% endif %}
+                            {% if is_inactive %}</s>{% endif %}
+                        </td>
+
+                        {# [FIX 1] Loop only for hours on this page #}
+                        {% for i in range(start_hour, end_hour + 1) %}
+                            <td>{% if is_inactive %}<s>{% endif %}
+                                <span class="att-mark">
+                                    {% set hour_key = 'H' + i|string %}
+                                    {% set status = student.attendance.get(hour_key, 'PRESENT') %}
+                                    {% if status == 'PRESENT' %} /
+                                    {% elif status == 'ABSENT' %} ข
+                                    {% elif status == 'LATE' %} ส
+                                    {% elif status == 'LEAVE' %} ล
+                                    {% endif %}
+                                </span>
+                            {% if is_inactive %}</s>{% endif %}</td>
+                        {% endfor %}
+
+                        {# [FIX 2] Only show totals on the LAST page chunk #}
+                        {% if page_num == num_pages - 1 %}
+                            {# Totals WITHOUT <s> tags #}
+                            <td>{{ student.attendance_summary.present }}</td>
+                            <td>{{ student.attendance_summary.absent }}</td>
+                            <td>{{ student.attendance_summary.leave }}</td>
+                            <td>{{ student.attendance_summary.late }}</td>
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+         {% endfor %} {# End of outer loop for pages/chunks #}
+
+         <p class="footer-note">หมายเหตุ: / = มาเรียน, ข = ขาดเรียน, ล = ลาป่วย/ลากิจ, ส = มาสาย</p>
+    </div>
+</body>
+</html>

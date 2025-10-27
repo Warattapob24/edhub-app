@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-3">
+        {% include 'admin/_admin_menu.html' %}
+    </div>
+    <div class="col-md-9">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h1>จัดการคลังรายวิชา</h1>
+            <a href="{{ url_for('admin.add_subject') }}" class="btn btn-primary">เพิ่มวิชาใหม่</a>
+        </div>
+        <p>จัดการรายวิชาทั้งหมดที่เปิดสอนในโรงเรียน</p>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                <div class="alert alert-{{ 'danger' if category == 'error' else 'success' }}" role="alert">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <table class="table table-hover">
+            <thead class="table-light">
+                <tr>
+                    <th>รหัสวิชา</th>
+                    <th>ชื่อวิชา</th>
+                    <th>กลุ่มสาระฯ</th>
+                    <th>หน่วยกิต</th>
+                    <th>ดำเนินการ</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for subject in subjects %}
+                <tr>
+                    <td>{{ subject.subject_code }}</td>
+                    <td>{{ subject.name }}</td>
+                    <td>{{ subject.department }}</td>
+                    <td>{{ subject.default_credits }}</td>
+                    <td>
+                        <a href="{{ url_for('admin.edit_subject', id=subject.id) }}" class="btn btn-warning btn-sm">แก้ไข</a>
+                        <form action="{{ url_for('admin.delete_subject', id=subject.id) }}" method="POST" class="d-inline" onsubmit="return confirm('คุณแน่ใจหรือไม่ว่าต้องการลบ?');">
+                            <button type="submit" class="btn btn-danger btn-sm">ลบ</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

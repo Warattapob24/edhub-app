@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row">
+    <div class="col-md-3">
+        {% include 'admin/_admin_menu.html' %}
+    </div>
+    <div class="col-md-9">
+        <h1><i class="fas fa-database"></i> สำรองและกู้คืนข้อมูล</h1>
+        <p>เครื่องมือสำหรับผนึกความทรงจำทั้งหมดของปราสาท หรือคลายผนึกเพื่อฟื้นคืนชีพ</p>
+
+        <div class="card border-primary mb-4">
+            <div class="card-header bg-primary text-white">
+                <h4><i class="fas fa-cloud-download-alt"></i> สำรองข้อมูล (Backup)</h4>
+            </div>
+            <div class="card-body">
+                <p>คลิกปุ่มด้านล่างเพื่อรวบรวมข้อมูลสำคัญทั้งหมด (ผู้ใช้, รายวิชา, หลักสูตร, ฯลฯ) บันทึกออกมาเป็นไฟล์ .zip ไฟล์เดียว</p>
+                <form action="{{ url_for('admin.execute_backup') }}" method="POST">
+                    <button type="submit" class="btn btn-primary btn-lg">
+                        เริ่มการสำรองข้อมูลทั้งหมด
+                    </button>
+                </form>
+            </div>
+        </div>
+
+<div class="card border-danger">
+    <div class="card-header bg-danger text-white">
+         <h4><i class="fas fa-cloud-upload-alt"></i> กู้คืนข้อมูล (Restore)</h4>
+    </div>
+    <div class="card-body">
+        <p class="text-danger"><strong>คำเตือน:</strong> การกระทำนี้อันตรายอย่างยิ่ง! ข้อมูลทั้งหมดที่มีอยู่จะถูกลบอย่างถาวร ก่อนจะถูกแทนที่ด้วยข้อมูลจากไฟล์ที่ท่านอัปโหลด</p>
+
+        <form action="{{ url_for('admin.execute_restore') }}" method="POST" enctype="multipart/form-data"
+              onsubmit="return confirm('คุณแน่ใจ 100% หรือไม่? ข้อมูลทั้งหมดในระบบปัจจุบันจะถูกลบอย่างถาวร!');">
+            {{ restore_form.hidden_tag() }}
+            <div class="input-group">
+                {{ restore_form.backup_file(class="form-control") }}
+                {{ restore_form.submit_restore(class="btn btn-danger") }}
+            </div>
+        </form>
+    </div>
+</div>
+    </div>
+</div>
+{% endblock %}

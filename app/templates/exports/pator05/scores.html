@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <title>ปถ.05 บันทึกคะแนน</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap');
+        body { font-family: 'Sarabun', sans-serif; font-size: 8pt; }
+        .container { width: 98%; margin: 15px auto; }
+        h3, p.header-info { page-break-after: avoid; margin: 2px 0; text-align: center; font-size: 8.5pt;}
+        table.score-table-chunk { page-break-inside: auto; /* [NEW] Class for table chunk */
+            width: 100%; border-collapse: collapse; margin-top: 5px; table-layout: fixed;
+            page-break-inside: auto;
+        }
+
+        th, td { border: 1px solid black; padding: 1px; text-align: center; vertical-align: middle; height: 16px; overflow: hidden; }
+        th { background-color: #f2f2f2; font-weight: bold; font-size: 6.5pt; white-space: nowrap; }
+        .student-name { text-align: left; padding-left: 2px; font-size: 7pt; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 0;}
+        tr.needs-attention td { color: red; }
+        tr.student-inactive td { text-decoration: line-through; text-decoration-color: red; color: gray; }
+
+        .col-roll { width: 3%; }
+        .col-id { width: 5%; }
+        .col-name { width: 22%; }
+        .col-score { width: 2.5%; /* Slightly wider score columns */ }
+        .col-unit-total { width: 4%; font-weight: bold; font-size: 7pt;} /* Unit Total */
+
+        .rotate-text { writing-mode: vertical-rl; text-orientation: mixed; white-space: nowrap; transform: rotate(0deg); font-size: 6pt; padding: 1px 0px; height: 50px; /* Shorter KPA */ }
+         thead { display: table-header-group; }
+         tbody {
+            display: table-row-group;
+            page-break-before: auto;
+         }
+         tr { page-break-inside: avoid; }
+         .page-break { page-break-before: always; }
+         .footer-note { font-size: 7pt; text-align: left; margin-top: 5px; }
+    </style>
+</head>
+<body>
+    <div class="container scores-page">
+        {# --- [NEW] Outer loop to batch units per page --- #}
+        {% set units_per_page = 4 %}
+        {% for unit_chunk in score_structure.units | batch(units_per_page) %}
+            {% set page_index = loop.index0 %}
+
+            {# --- [MOVED HERE] Header Info --- #}
+            <div class="{{ 'page-break' if page_index > 0 else '' }}"> {# Add page break before header on subsequent pages #}
+                <h3>ตารางบันทึกผลการจัดการเรียนรู้</h3>
+                 <p class="header-info">
+                    รหัสวิชา {{ course_info.subject_code }} รายวิชา {{ course_info.subject_name }} ชั้น {{ course_info.grade_level }} / {{ course_info.classroom_name.split('/')[-1] if '/' in course_info.classroom_name else course_info.classroom_name }}<br>
+                    ครูผู้สอน {{ course_info.teachers | join(', ') }} ภาคเรียนที่ {{ course_info.semester_term }} ปีการศึกษา {{ course_info.academic_year }} อัตราส่วนคะแนน {{ "%g"|format(score_structure.ratio_collected + score_structure.ratio_midterm) }}:{{ "%g"|format(score_structure.ratio_final) }}
+                </p>
+            </div>
+
+            {# Add class for page break control #}
+            <table class="score-table-chunk">
+                <thead>
+                    <tr>
+                        {# Fixed columns span 3 rows #}
+                        <th rowspan="3" class="col-roll">เลขที่</th>
+                        <th rowspan="3" class="col-id">เลข<br>ประจำตัว</th>
+                        <th rowspan="3" class="col-name">ชื่อ - สกุล</th>
+
+                        {# Loop through units IN THIS CHUNK #}
+                        {% for unit in unit_chunk %}
+                            {# Calculate colspan: number of items + 1 for unit total #}
+                            {# [FIX 7.3.15] Use graded_items_structure length for colspan #}
+                            {% set num_items = unit['graded_items_structure'] | length if unit['graded_items_structure'] else 1 %}
+                            {% set unit_colspan = num_items + 1 %}
+                            <th colspan="{{ unit_colspan }}">หน่วยที่ {{ page_index * units_per_page + loop.index }}: {{ unit.title | truncate(15) }}</th>
+                        {% endfor %}
+                         {# Removed Overall Total Column from Header #}
+                    </tr>
+                    <tr>
+                         {# Second level header (K, P, A - Rotated) #}
+                         {% for unit in unit_chunk %}
+                            {# [FIX 7.3.15] Loop through graded_items_structure for headers #}
+                            {% if unit['graded_items_structure'] %}
+                                {% for item in unit['graded_items_structure'] %}
+                                    {# Display K/P/A instead of item name #}
+                                    <th class="rotate-text col-score">{{ item.dimension }}</th>
+                                {% endfor %}
+                            {% else %}
+                                <th>-</th> {# Placeholder if unit has no items #}
+                            {% endif %}
+                            {# Header for Unit Total column #}
+                            <th class="rotate-text col-unit-total">รวมหน่วย</th>
+                         {% endfor %}
+                    </tr>
+                     <tr>
+                         {# Third level header (Max Score) #}
+                         {% for unit in unit_chunk %}
+                             {# [FIX 7.3.15] Loop through graded_items_structure for max scores #}
+                             {% if unit['graded_items_structure'] %}
+                                {% for item in unit['graded_items_structure'] %}
+                                    {# Use %g format #}
+                                    <th class="col-score">({{ "%g"|format(item.max_score) if item.max_score is not none else '-' }})</th>
+                                {% endfor %}
+                             {% else %}
+                                <th>(-)</th> {# Placeholder if unit has no items #}
+                             {% endif %}
+                             {# Header for Unit Total Max Score #}
+                             {# Use %g format #}
+                             <th class="col-unit-total">({{ "%g"|format(unit.unit_collected_total) if unit.unit_collected_total is not none else '-' }})</th>
+                         {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                     {% for student in students_data %}
+                        {% set needs_attention = student.final_grade in ['0', 'ร', 'มส'] %}
+                        {% set is_inactive = student.status != 'กำลังศึกษา' %}
+                        <tr class="{{ 'needs-attention' if needs_attention and not is_inactive else '' }} {{ 'student-inactive' if is_inactive else '' }}">
+                            <td>{{ student.roll_number }}</td>
+                            <td>{{ student.student_id }}</td>
+                            <td class="student-name">{{ student.full_name }}</td>
+                            {# Loop through units IN THIS CHUNK #}
+                            {% for unit in unit_chunk %}
+                                {# [FIX 7.3.15] Loop through graded_items_structure for scores #}
+                                {% if unit['graded_items_structure'] %}
+                                    {% for item in unit['graded_items_structure'] %}
+                                        <td class="col-score">
+                                            {# Get score from student.scores using item.id #}
+                                            {# Use %g format and default to '0' #}
+                                            {{ "%g"|format(student.scores[item.id]) if item.id in student.scores and student.scores[item.id] is not none else '0' }}
+                                        </td>
+                                    {% endfor %}
+                                {% else %}
+                                    {# Placeholder if unit has no graded items #}
+                                     <td>0</td>
+                                {% endif %}
+                                {# Display Unit Total Score from student.unit_totals #}
+                                <td class="col-unit-total">
+                                     {# Use %g format and default to '0' #}
+                                     {{ "%g"|format(student.unit_totals[unit.unit_id]) if unit.unit_id in student.unit_totals and student.unit_totals[unit.unit_id] is not none else '0' }}
+                                </td>
+                            {% endfor %}
+                             {# Removed Overall Total Column from Body #}
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% endfor %} {# End of loop for unit chunks #}
+
+        <p class="footer-note">หมายเหตุ: K=ความรู้, P=ทักษะ/กระบวนการ, A=คุณลักษณะ</p>
+    </div>
+</body>
+</html>

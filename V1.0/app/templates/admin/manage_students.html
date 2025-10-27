@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-3">
+        {% include 'admin/_admin_menu.html' %}
+    </div>
+    <div class="col-md-9">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h1>จัดการข้อมูลนักเรียน</h1>
+            <a href="{{ url_for('admin.import_students') }}" class="btn btn-primary">นำเข้าข้อมูลนักเรียน</a>
+        </div>
+                
+        <form method="GET" class="row g-3 align-items-center my-3 p-3 bg-light rounded">
+            <div class="col-auto">
+                <label for="class_group-filter" class="col-form-label">กรองตามห้องเรียน:</label>
+            </div>
+            <div class="col-auto">
+                <select name="class_group_id" id="class_group-filter" class="form-select">
+                    <option value="">-- ทุกห้อง --</option>
+                    {% for class_group in all_class_groups %}
+                    <option value="{{ class_group.id }}" {% if class_group.id == selected_class_group_id %}selected{% endif %}>
+                        {{ class_group.grade_level.name }} / ห้อง {{ class_group.room_number }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-primary">กรอง</button>
+            </div>
+        </form>
+
+        <table class="table table-striped table-sm">
+            <thead class="table-light">
+                <tr>
+                    <th>ห้อง</th>
+                    <th>เลขที่</th>
+                    <th>รหัสนักเรียน</th>
+                    <th>ชื่อ - นามสกุล</th>
+                    <th>สถานะ</th>
+                    <th>ดำเนินการ</th> </tr>
+            </thead>
+            <tbody>
+                {% for student in students %}
+                <tr>
+                    <td>
+                        {% if student.class_group %}
+                            {{ student.class_group.grade_level.name }} / {{ student.class_group.room_number }}
+                        {% else %}
+                            <span class="text-muted">ยังไม่มีห้อง</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ student.class_number }}</td>
+                    <td>{{ student.student_id }}</td>
+                    <td>{{ student.prefix }}{{ student.first_name }} {{ student.last_name }}</td>
+                    <td><span class="badge bg-success">{{ student.status }}</span></td>
+<td>
+    <a href="{{ url_for('admin.edit_student', id=student.id) }}" class="btn btn-warning btn-sm">แก้ไข</a>
+    <a href="{{ url_for('manager.poh01_report_student', student_id=student.id) }}" target="_blank" class="btn btn-success btn-sm">พิมพ์ ปถ.01</a>
+    <a href="{{ url_for('manager.poh02_report_student', student_id=student.id) }}" target="_blank" class="btn btn-info btn-sm">พิมพ์ ปถ.02</a>
+    <form action="{{ url_for('admin.delete_student', id=student.id) }}" method="POST" class="d-inline" onsubmit="return confirm('คุณแน่ใจหรือไม่ว่าต้องการลบ?');">
+        <button type="submit" class="btn btn-danger btn-sm">ลบ</button>
+    </form>
+</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" class="text-center text-muted">ยังไม่มีข้อมูลนักเรียนในระบบ</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,73 @@
+<nav id="sidebarMenu" class="bg-light sidebar">
+    <div class="position-sticky pt-3">
+        <div class="d-flex justify-content-end align-items-center px-3 mb-2">
+            <i class="bi bi-list fs-4" id="sidebar-toggle" title="ยุบ/ขยายเมนู"></i>
+        </div>
+        <hr class="mt-0">
+
+        <h6 class="sidebar-heading px-3 mt-2 mb-1 text-muted"><span>แดชบอร์ดหลัก</span></h6>
+        <ul class="nav flex-column">
+            {% if current_user.has_role('Teacher') or current_user.advised_classrooms or current_user.courses %}<li class="nav-item"><a class="nav-link" href="{{ url_for('teacher.dashboard') }}"><i class="bi bi-person-video3 me-1"></i> <span>หน้าหลักครู</span></a></li>{% endif %}
+            {% if current_user.has_role('Advisor') %}<li class="nav-item"><a class="nav-link" href="{{ url_for('advisor.dashboard') }}"><i class="bi bi-speedometer2 me-2"></i> <span>ครูที่ปรึกษา</span></a></li>{% endif %}
+            {% if current_user.led_subject_group %}<li class="nav-item"><a class="nav-link" href="{{ url_for('department.dashboard') }}"><i class="bi bi-diagram-3-fill me-1"></i> <span>หัวหน้ากลุ่มสาระฯ</span></a></li>{% endif %}
+            {% if current_user.has_role('Academic') %}<li class="nav-item"><a class="nav-link" href="{{ url_for('academic.dashboard') }}"><i class="bi bi-building-gear me-1"></i> <span>ฝ่ายวิชาการ</span></a></li>{% endif %}
+            {% if current_user.led_grade_level %}<li class="nav-item"><a class="nav-link" href="{{ url_for('grade_level_head.dashboard') }}"><i class="bi bi-person-badge me-2"></i> <span>หัวหน้าสายชั้น</span></a></li>{% endif %}
+            {% if current_user.has_role('ผู้อำนวยการ') %}<li class="nav-item"><a class="nav-link" href="{{ url_for('director.dashboard') }}"><i class="bi bi-person-workspace me-1"></i> <span>ผู้อำนวยการ</span></a></li>{% endif %}
+            {% if current_user.has_role('Admin') %}<li class="nav-item"><a class="nav-link active" href="{{ url_for('admin.index') }}"><i class="bi bi-shield-lock-fill me-1"></i> <span>ผู้ดูแลระบบ</span></a></li>{% endif %}
+        </ul>
+        <hr>   
+        {% if current_user.has_role('Admin') %}
+        <h6 class="sidebar-heading d-flex justify-content-between align-items-center px-3 mt-4 mb-1 text-muted text-uppercase">
+            <span>ตั้งค่าระบบ</span>
+        </h6>
+        <ul class="nav flex-column">
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('admin.index') }}"><i class="bi bi-house-door-fill me-1"></i> <span>หน้าหลักแอดมิน</span></a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('admin.audit_log') }}"><i class="bi bi-clock-history me-1"></i><span>ประวัติการใช้งานระบบ</span></a></li>            
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('admin.manage_settings') }}"><i class="bi bi-gear-fill me-1"></i> <span>ตั้งค่าโรงเรียน</span></a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('admin.list_academic_years') }}"><i class="bi bi-calendar3 me-1"></i> <span>ปี/ภาคการเรียน</span></a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('admin.list_semesters_for_schedules') }}"><i class="bi bi-calendar-week me-1"></i><span>จัดการตารางสอน</span></a></li>
+            <li class="nav-item">
+                <a class="nav-link" href="{{ url_for('admin.backup_restore_page') }}"> {# Adjust route name if needed #}
+                    <i class="bi bi-database-fill-gear me-2"></i>
+                    <span>สำรอง/กู้คืนข้อมูล</span>
+                </a>
+            </li>
+        </ul>
+
+        <h6 class="sidebar-heading d-flex justify-content-between align-items-center px-3 mt-4 mb-1 text-muted text-uppercase">
+            <span>ข้อมูลบุคคล</span>
+        </h6>
+        <ul class="nav flex-column">
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('admin.manage_positions') }}"><i class="bi bi-diagram-3 me-1"></i> <span>ผังองค์กร/ตำแหน่ง</span></a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('admin.list_users') }}"><i class="bi bi-people me-1"></i> <span>จัดการผู้ใช้งาน</span></a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('admin.list_roles') }}"><i class="bi bi-key me-1"></i> <span>จัดการบทบาท</span></a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('admin.list_students') }}"><i class="bi bi-person-badge me-1"></i> <span>จัดการข้อมูลนักเรียน</span></a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('admin.promote_students_page') }}"><i class="bi bi-person-check-fill me-1"></i> <span>เลื่อนชั้นนักเรียน</span></a></li>
+        </ul>
+
+        <h6 class="sidebar-heading d-flex justify-content-between align-items-center px-3 mt-4 mb-1 text-muted text-uppercase">
+            <span>ข้อมูลหลักสูตร</span>
+        </h6>
+        <ul class="nav flex-column">
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('admin.list_grade_levels') }}"><i class="bi bi-bar-chart-steps"></i> <span>ระดับชั้น</span></a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('admin.manage_grade_level_heads') }}"><i class="bi bi-person-badge-fill me-2"></i><span>จัดการหัวหน้าสายชั้น</span></a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('admin.list_classrooms') }}"><i class="bi bi-grid-3x3-gap"></i> <span>ห้องเรียน</span></a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('admin.manage_rooms') }}"><i class="bi bi-building"></i> <span>ห้องสอน (สถานที่)</span></a></li>            
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('admin.list_subject_groups') }}"><i class="bi bi-collection"></i> <span>กลุ่มสาระฯ</span></a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('admin.list_subject_types') }}"><i class="bi bi-tags"></i> <span>ประเภทวิชา</span></a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('admin.list_subjects') }}"><i class="bi bi-book"></i> <span>รายวิชา</span></a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('admin.manage_curriculum') }}"><i class="bi bi-journal-check"></i> <span>จัดหลักสูตร</span></a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('admin.manage_assignments') }}"><i class="bi bi-person-check-fill"></i> <span>มอบหมายการสอน</span></a></li>
+        </ul>
+
+        <h6 class="sidebar-heading d-flex justify-content-between align-items-center px-3 mt-4 mb-1 text-muted text-uppercase">
+             <span>การวัดและประเมินผล</span>
+        </h6>
+        <ul class="nav flex-column mb-2">
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('admin.manage_standards') }}"><i class="bi bi-journal-bookmark-fill"></i> <span>คลังมาตรฐานการเรียนรู้/ตัวชี้วัด</span></a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('admin.list_dimensions') }}"><i class="bi bi-rulers"></i> <span>จัดการมิติการประเมิน</span></a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('admin.list_assessment_templates') }}"><i class="bi bi-pencil-square"></i> <span>สร้างแม่แบบการประเมิน</span></a></li>
+        </ul>
+        {% endif %}
+    </div>
+</nav>

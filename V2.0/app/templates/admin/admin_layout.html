@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} - EdHub Admin</title>
+    <link rel="stylesheet" href="https://cdn.simplecss.org/simple.min.css">
+    <style>
+        body { max-width: 90%; margin: auto; }
+        .flash { padding: 1em; margin: 1em 0; border: 1px solid; border-radius: 4px; }
+        .success { background-color: #d4edda; color: #155724; border-color: #c3e6cb; }
+        .danger { background-color: #f8d7da; color: #721c24; border-color: #f5c6cb; }
+        nav a { margin-right: 1em; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>EdHub - Administrator Panel</h1>
+<nav>
+    <a href="{{ url_for('admin.manage_users') }}">จัดการผู้ใช้</a>
+    <a href="{{ url_for('admin.manage_academic_years') }}">จัดการปีการศึกษา</a>
+    <a href="{{ url_for('admin.manage_structure') }}">จัดการสายชั้น/ห้องเรียน</a>
+    <a href="{{ url_for('admin.manage_courses') }}">จัดการคลังรายวิชา</a>
+</nav>
+    </header>
+    <main>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+            <div class="flash {{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+        {% endwith %}
+        {% block content %}{% endblock %}
+    </main>
+    <footer>
+        <p>&copy; 2025 EdHub</p>
+    </footer>
+</body>
+</html>

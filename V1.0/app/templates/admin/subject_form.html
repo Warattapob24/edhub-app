@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-3">
+        {% include 'admin/_admin_menu.html' %}
+    </div>
+    <div class="col-md-9">
+        <h1>{{ title }}</h1>
+        <hr>
+        <form method="POST">
+            {{ form.hidden_tag() }}
+            <div class="mb-3">
+                {{ form.subject_code.label(class="form-label") }}
+                {{ form.subject_code(class="form-control") }}
+            </div>
+            <div class="mb-3">
+                {{ form.name.label(class="form-label") }}
+                {{ form.name(class="form-control") }}
+            </div>
+            <div class="mb-3">
+                {{ form.department.label(class="form-label") }}
+                {{ form.department(class="form-control") }}
+            </div>
+            <div class="mb-3">
+                {{ form.default_credits.label(class="form-label") }}
+                {{ form.default_credits(class="form-control") }}
+            </div>
+            <div class="mt-4">
+                {{ form.submit(class="btn btn-primary") }}
+                <a href="{{ url_for('admin.manage_subjects') }}" class="btn btn-secondary">ยกเลิก</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

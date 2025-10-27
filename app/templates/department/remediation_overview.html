@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+
+{% block sidebar %}
+    {% include 'department/_sidebar.html' %}
+{% endblock %}
+
+{% block main_content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="h2"><i class="bi bi-person-check-fill me-2"></i> {{ title }}</h1>
+        <p class="text-muted">ภาคเรียนที่ {{ semester.term }}/{{ semester.academic_year.year }}</p>
+    </div>
+    <div>
+        <button class="btn btn-lg btn-primary" id="forward-all-btn" {% if stats.submitted_for_approval == 0 %}disabled{% endif %}>
+            <i class="bi bi-send-check-fill me-2"></i> ส่งต่อผลทั้งหมดให้ฝ่ายวิชาการ ({{ stats.submitted_for_approval }} คน)
+        </button>
+    </div>
+</div>
+
+{# --- STATS CARDS --- #}
+{% if stats and stats.total > 0 %}
+<div class="row mb-4 g-3">
+    <div class="col-md-4">
+        <div class="card shadow-sm p-3 h-100">
+            <div class="d-flex align-items-center">
+                <div class="fs-2 text-primary me-3"><i class="bi bi-inbox-fill"></i></div>
+                <div>
+                    <div class="h1 fw-bold mb-0">{{ stats.submitted_for_approval }}</div>
+                    <div class="text-muted">รอตรวจสอบ</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card shadow-sm p-3 h-100">
+            <div class="d-flex align-items-center">
+                <div class="fs-2 text-info me-3"><i class="bi bi-send-check"></i></div>
+                <div>
+                    <div class="h1 fw-bold mb-0">{{ stats.forwarded }}</div>
+                    <div class="text-muted">ส่งต่อแล้ว</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card shadow-sm p-3 h-100">
+            <div class="d-flex align-items-center">
+                <div class="fs-2 text-warning me-3"><i class="bi bi-hourglass-split"></i></div>
+                <div>
+                    <div class="h1 fw-bold mb-0">{{ stats.awaiting_teacher_action }}</div>
+                    <div class="text-muted">รอครูดำเนินการ</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{# --- PROGRESS BAR --- #}
+{% if stats and stats.total > 0 %}
+<div class="progress-stacked mb-5" style="height: 2.5rem; font-size: 1rem;">
+    {% if stats.percent_submitted > 0 %}<div class="progress-bar bg-primary" role="progressbar" style="width: {{ stats.percent_submitted }}%;" title="รอตรวจสอบ"><span class="fw-bold">{{ '%.0f'|format(stats.percent_submitted) }}%</span></div>{% endif %}
+    {% if stats.percent_forwarded > 0 %}<div class="progress-bar bg-info" role="progressbar" style="width: {{ stats.percent_forwarded }}%;" title="ส่งต่อแล้ว"><span class="fw-bold">{{ '%.0f'|format(stats.percent_forwarded) }}%</span></div>{% endif %}
+    {% if stats.percent_awaiting > 0 %}<div class="progress-bar bg-warning text-dark" role="progressbar" style="width: {{ stats.percent_awaiting }}%;" title="รอครูดำเนินการ"><span class="fw-bold">{{ '%.0f'|format(stats.percent_awaiting) }}%</span></div>{% endif %}
+</div>
+{% endif %}
+
+
+{# --- ACTION ZONE: Submitted for Approval --- #}
+<h4 class="mb-3"><i class="bi bi-inbox-fill text-primary"></i> ผลการซ่อมที่รอตรวจสอบ <small class="text-muted">({{ submitted_students|length }} คน)</small></h4>
+<div class="card shadow-sm mb-5">
+    {% if submitted_students %}
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-3">ชื่อ-สกุล</th><th>รายวิชา</th><th>ครูผู้สอน</th><th class="text-center">ผลการซ่อม</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for grade_obj, enrollment in submitted_students|sort(attribute='0.course.subject.name') %}
+                    <tr>
+                        <td class="ps-3">{{ enrollment.roll_number }}. {{ grade_obj.student.name_prefix }}{{ grade_obj.student.first_name }} {{ grade_obj.student.last_name }}</td>
+                        <td>{{ grade_obj.course.subject.name }} ({{ grade_obj.course.classroom.name }})</td>
+                        <td>{{ grade_obj.course.teachers|map(attribute='first_name')|join(', ') }}</td>
+                        <td class="text-center">
+                            <span class="badge bg-secondary">{{ grade_obj.original_final_grade }}</span>
+                            <i class="bi bi-arrow-right-short"></i>
+                            <span class="badge bg-success">{{ grade_obj.final_grade }}</span>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div class="card-body text-center text-muted p-4">ยังไม่มีผลการซ่อมที่ส่งเข้ามาเพื่อรอการตรวจสอบ</div>
+    {% endif %}
+</div>
+
+
+{# --- LOG ZONE 1: Forwarded --- #}
+<h4 class="mb-3"><i class="bi bi-send-check text-info"></i> ผลการซ่อมที่ส่งต่อไปแล้ว <small class="text-muted">({{ forwarded_students|length }} คน)</small></h4>
+<div class="card shadow-sm mb-5">
+    {% if forwarded_students %}
+        <div class="table-responsive">
+            <table class="table table-hover table-sm align-middle mb-0">
+                 <thead class="table-light">
+                    <tr>
+                        <th class="ps-3">ชื่อ-สกุล</th><th>รายวิชา</th><th>ผลการซ่อม</th><th class="text-center">สถานะ</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for grade_obj, enrollment in forwarded_students|sort(attribute='0.student.first_name') %}
+                    <tr class="text-muted">
+                        <td class="ps-3">{{ enrollment.roll_number }}. {{ grade_obj.student.name_prefix }}{{ grade_obj.student.first_name }} {{ grade_obj.student.last_name }}</td>
+                        <td>{{ grade_obj.course.subject.name }} ({{ grade_obj.course.classroom.name }})</td>
+                        <td><span class="badge bg-secondary">{{ grade_obj.original_final_grade }}</span> <i class="bi bi-arrow-right-short"></i> <span class="badge bg-success">{{ grade_obj.final_grade }}</span></td>
+                        <td class="text-center">
+                            {% if grade_obj.remediation_status == 'Approved' %}
+                                <span class="badge bg-success">อนุมัติแล้ว</span>
+                            {% else %}
+                                <span class="badge bg-info">ส่งต่อแล้ว</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div class="card-body text-center text-muted p-4">ยังไม่มีผลการซ่อมที่ถูกส่งต่อไปยังฝ่ายวิชาการ</div>
+    {% endif %}
+</div>
+
+
+{# --- LOG ZONE 2: Still Failing --- #}
+<h4 class="mb-3"><i class="bi bi-hourglass-split text-warning"></i> ภาพรวมที่ยังรอครูดำเนินการ <small class="text-muted">({{ awaiting_remediation_students|length }} คน)</small></h4>
+<div class="card shadow-sm">
+    {% if awaiting_remediation_students %}
+        <div class="table-responsive">
+            <table class="table table-hover table-sm align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-3">ชื่อ-สกุล</th><th>รายวิชา</th><th class="text-center">ผลการเรียน</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for grade_obj, enrollment in awaiting_remediation_students|sort(attribute='0.course.subject.name') %}
+                    <tr class="text-muted">
+                        <td class="ps-3">{{ enrollment.roll_number }}. {{ grade_obj.student.name_prefix }}{{ grade_obj.student.first_name }} {{ grade_obj.student.last_name }}</td>
+                        <td>{{ grade_obj.course.subject.name }} ({{ grade_obj.course.classroom.name }})</td>
+                        <td class="text-center">
+                            {% if grade_obj.final_grade == 'มส' %}<span class="badge bg-danger">มส</span>
+                            {% elif grade_obj.final_grade == 'ร' %}<span class="badge bg-warning text-dark">ร</span>
+                            {% else %}<span class="badge bg-secondary">0</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div class="card-body text-center text-muted p-4">ไม่พบนักเรียนที่ยังไม่ผ่านเกณฑ์</div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const forwardBtn = document.getElementById('forward-all-btn');
+    if (forwardBtn) {
+        forwardBtn.addEventListener('click', function() {
+            Swal.fire({
+                title: 'ยืนยันการส่งต่อ?',
+                text: "ระบบจะรวบรวมผลการซ่อมทั้งหมดและส่งให้ฝ่ายวิชาการตรวจสอบ",
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: 'ยืนยันและส่งต่อ',
+                cancelButtonText: 'ยกเลิก'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    fetch("{{ url_for('department.forward_remediation_to_academic') }}", {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': '{{ csrf_token() }}'
+                        }
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            Swal.fire('สำเร็จ!', data.message, 'success').then(() => location.reload());
+                        } else {
+                            Swal.fire('ผิดพลาด!', data.message, 'error');
+                        }
+                    })
+                    .catch(err => Swal.fire('ผิดพลาด!', 'การเชื่อมต่อล้มเหลว', 'error'));
+                }
+            });
+        });
+    }
+});
+</script>
+{% endblock %}

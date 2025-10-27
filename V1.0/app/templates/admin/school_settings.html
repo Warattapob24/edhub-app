@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-3">
+        {% include 'admin/_admin_menu.html' %}
+    </div>
+    <div class="col-md-9">
+        <h1>ตั้งค่าข้อมูลโรงเรียน</h1>
+        <p>กำหนดข้อมูลพื้นฐานของโรงเรียนที่จะปรากฏในรายงานต่างๆ</p>
+        <hr>
+        <div class="col-md-8">
+            <form method="POST">
+                {{ form.hidden_tag() }}
+                <div class="mb-3">
+                    {{ form.school_name.label(class="form-label") }}
+                    {{ form.school_name(class="form-control") }}
+                </div>
+                <div class="mb-3">
+                    {{ form.school_director.label(class="form-label") }}
+                    {{ form.school_director(class="form-control") }}
+                </div>
+                {{ form.submit(class="btn btn-primary") }}
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

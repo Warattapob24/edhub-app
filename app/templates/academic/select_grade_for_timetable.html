@@ -1,0 +1,28 @@
+
+{% block title %}EdHub {{ title }}{% endblock %}
+
+{% block sidebar %}
+    {% include 'academic/_sidebar.html' %}
+{% endblock %}
+
+{% block main_content %}
+<div class="container-fluid py-4">
+    <h2 class="mb-4"><i class="bi bi-grid-3x3-gap-fill me-2"></i>จัดตารางสอนหลัก - ภาคเรียน {{ semester.term }}/{{ semester.academic_year.year }}</h2>
+    
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">กรุณาเลือกระดับชั้นที่ต้องการจัดการ</h5>
+        </div>
+        <div class="list-group list-group-flush">
+            {% for grade in grade_levels %}
+                <a href="{{ url_for('academic.manage_timetable', semester_id=semester.id, grade_level_id=grade.id) }}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                    <div class="fw-bold fs-5">{{ grade.name }}</div>
+                    <i class="bi bi-chevron-right"></i>
+                </a>
+            {% else %}
+                <div class="list-group-item text-muted">ไม่พบข้อมูลระดับชั้น</div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}
