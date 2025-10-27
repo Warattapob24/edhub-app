@@ -4,7 +4,6 @@ from datetime import datetime
 import random, json
 from sqlite3 import IntegrityError
 from statistics import StatisticsError, mode
-from tkinter import Entry
 from flask import current_app, jsonify, redirect, render_template, abort, flash, request, url_for
 from flask_login import login_required, current_user
 from flask_wtf import FlaskForm
