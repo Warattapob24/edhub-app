@@ -965,7 +965,7 @@ def remove_enrollment(classroom_id, student_id):
     flash('นำนักเรียนออกจากห้องเรียบร้อยแล้ว', 'info')
     return redirect(url_for('admin.manage_enrollment', classroom_id=classroom_id))
 
-@bp.route('/students/execute-import', methods=['POST'])
+@bp.route('/students/execute-import', methods=['GET', 'POST'])
 @login_required
 def execute_student_import():
     # 1. รับหมายเลข Batch และหาไฟล์
@@ -1292,7 +1292,7 @@ def import_teachers():
                             form=form)
     return render_template('admin/import_teachers.html', title='นำเข้าข้อมูลครู', form=form)
 
-@bp.route('/teachers/execute-import', methods=['POST'])
+@bp.route('/teachers/execute-import', methods=['GET', 'POST'])
 @login_required # Make sure login_required is here
 def execute_teacher_import():
     # 1. รับหมายเลข Batch และหาไฟล์
@@ -1733,7 +1733,7 @@ def import_subjects():
                         upload_form=FlaskForm(),
                         form=form)
 
-@bp.route('/subjects/execute-import', methods=['POST'])
+@bp.route('/subjects/execute-import', methods=['GET', 'POST'])
 @login_required # Make sure login_required is here
 def execute_subject_import():
     # 1. รับหมายเลข Batch และหาไฟล์
@@ -2238,7 +2238,7 @@ def import_standards_preview():
         flash(f'เกิดข้อผิดพลาดในการแสดงผลตัวอย่าง: {e}', 'danger')
         return redirect(url_for('admin.import_standards'))
 
-@bp.route('/execute-import-standards', methods=['POST'])
+@bp.route('/execute-import-standards', methods=['GET', 'POST'])
 @login_required # Make sure login_required is here
 def execute_import_standards():
     form = DummyForm()
