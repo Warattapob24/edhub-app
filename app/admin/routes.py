@@ -2348,15 +2348,20 @@ def import_standards_preview():
         flash(f'เกิดข้อผิดพลาดในการแสดงผลตัวอย่าง: {e}', 'danger')
         return redirect(url_for('admin.import_standards'))
 
-@bp.route('/execute-import-standards', methods=['GET', 'POST'])
-@login_required # Make sure login_required is here
+@bp.route('/execute-import-standards', methods=['GET', 'POST']) # <-- ตรวจสอบว่ามี GET, POST
+@login_required
 def execute_import_standards():
-    form = DummyForm()
-    if not form.validate_on_submit():
-        flash('CSRF Token ไม่ถูกต้อง', 'danger')
-        return redirect(url_for('admin.import_standards'))
 
-    # 1. รับหมายเลข Batch และหาไฟล์
+    # --- [ START V21.1 FIX ] ---
+    # ตรวจสอบ CSRF เฉพาะเมื่อเป็น POST request (Batch 1) เท่านั้น
+    if request.method == 'POST':
+        form = DummyForm() # สร้าง Form เฉพาะตอน POST
+        if not form.validate_on_submit():
+            flash('CSRF Token ไม่ถูกต้อง หรือ Session หมดอายุ', 'danger')
+            return redirect(url_for('admin.import_standards'))
+    # --- [ END V21.1 FIX ] ---
+
+    # --- ส่วน Logic การทำงาน Batch (เหมือนเดิม) ---
     batch = request.args.get('batch', 1, type=int)
     temp_filename = session.get('import_temp_file')
 
@@ -2370,12 +2375,12 @@ def execute_import_standards():
          flash(f'ไม่พบไฟล์นำเข้าชั่วคราว ({temp_filename}) กรุณาลองอัปโหลดใหม่อีกครั้ง', 'danger')
          session.pop('import_temp_file', None)
          return redirect(url_for('admin.import_standards'))
-    
+
     try:
-        # 3. อ่านข้อมูลและคำนวณ Batch
+        # อ่านข้อมูลและคำนวณ Batch
         with open(json_filepath, 'r', encoding='utf-8') as f:
             data = json.load(f)
-        
+
         total_items = len(data)
         if total_items == 0:
             _cleanup_file(json_filepath)
@@ -2390,57 +2395,51 @@ def execute_import_standards():
 
         current_app.logger.info(f"Processing standard import batch {batch}/{total_batches} ({start_index+1} to {end_index})")
 
-        # 4. ประมวลผลข้อมูล (Logic จาก tasks.py)
+        # ประมวลผลข้อมูล
         imported_count = request.args.get('new', 0, type=int)
         skipped_count = request.args.get('skip', 0, type=int)
         error_count = request.args.get('err', 0, type=int)
 
-        # Pre-load lookups
         all_groups = {g.name: g for g in SubjectGroup.query.all()}
         all_strands = {(s.name, s.subject_group_id): s for s in LearningStrand.query.all()}
         all_standards = {(s.code, s.learning_strand_id): s for s in Standard.query.all()}
 
         for row in batch_data:
             try:
-                # Skip rows with warnings
-                if row['warnings']:
+                if 'warnings' in row and row['warnings']:
                     skipped_count += 1
                     continue
 
-                # 1. Get or Create SubjectGroup
                 group_name = row.get('subject_group')
                 subject_group = all_groups.get(group_name)
                 if not subject_group:
                     subject_group = SubjectGroup(name=group_name)
                     db.session.add(subject_group)
-                    db.session.flush() # Get ID
+                    db.session.flush()
                     all_groups[group_name] = subject_group
 
-                # 2. Get or Create LearningStrand
                 strand_name = row.get('strand')
                 strand = all_strands.get((strand_name, subject_group.id))
                 if not strand:
                     strand = LearningStrand(name=strand_name, subject_group=subject_group)
                     db.session.add(strand)
-                    db.session.flush() # Get ID
+                    db.session.flush()
                     all_strands[(strand_name, subject_group.id)] = strand
 
-                # 3. Get or Create Standard
                 std_code = row.get('standard_code')
                 standard = all_standards.get((std_code, strand.id))
                 if not standard:
                     standard = Standard(code=std_code, description=row.get('standard_description'), learning_strand=strand)
                     db.session.add(standard)
-                    db.session.flush() # Get ID
+                    db.session.flush()
                     all_standards[(std_code, strand.id)] = standard
-                
-                # 4. Create Indicator
+
                 indicator_code = row.get('indicator_code')
                 existing_indicator = Indicator.query.filter_by(standard_id=standard.id, code=indicator_code).first()
                 if existing_indicator:
                      skipped_count += 1
-                     continue 
-                     
+                     continue
+
                 indicator = Indicator(
                     standard_id=standard.id,
                     code=indicator_code,
@@ -2449,16 +2448,16 @@ def execute_import_standards():
                 )
                 db.session.add(indicator)
                 imported_count += 1
-            
+
             except Exception as rec_err:
                  db.session.rollback()
                  error_count += 1
                  current_app.logger.error(f"Error processing standard import record {row.get('standard_code','?')}: {rec_err}", exc_info=True)
                  continue
-        
-        db.session.commit() # Commit หลังจากจบ Batch
 
-        # 5. ตัดสินใจขั้นตอนต่อไป
+        db.session.commit()
+
+        # ตัดสินใจขั้นตอนต่อไป
         if batch >= total_batches:
             _cleanup_file(json_filepath)
             session.pop('import_temp_file', None)
@@ -2466,10 +2465,10 @@ def execute_import_standards():
             return redirect(url_for('admin.manage_standards'))
         else:
             flash(f'กำลังประมวลผล... (ส่วนที่ {batch}/{total_batches} - {end_index}/{total_items} รายการ)', 'info')
-            next_url = url_for('admin.execute_import_standards', 
-                               batch=batch + 1, 
-                               new=imported_count, 
-                               skip=skipped_count, 
+            next_url = url_for('admin.execute_import_standards',
+                               batch=batch + 1,
+                               new=imported_count,
+                               skip=skipped_count,
                                err=error_count)
             return redirect(next_url)
 
