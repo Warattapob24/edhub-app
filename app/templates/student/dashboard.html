@@ -137,6 +137,7 @@
                     {# --- Collapsible Details for Current Period --- #}
                     {% if current_slot_info.is_teaching and current_entry_data %}
                         <div class="collapse" id="details-current">
+                            {# 👇 เรียกใช้ Macro ตรงนี้ 👇 #}
                             {{ render_summary_details(course_summaries.get(current_entry_data.course_id)) }}
                         </div>
                     {% endif %}
@@ -226,9 +227,11 @@
                                     </div>
                                     {# --- Collapsible Details for each entry --- #}
                                     {% if entry.is_teaching %}
-                                    <div class="collapse" id="details-{{ entry.course_id }}">
-                                        {{ render_summary_details(summary) }}
-                                    </div>
+                                        <div class="collapse" id="details-{{ entry.course_id }}">
+                                            {# 👇 เรียกใช้ Macro ตรงนี้ 👇 #}
+                                            {{ render_summary_details(summary) }} {# summary = course_summaries.get(entry.course_id) #}
+                                        </div>
+                                    {% endif %}
                                     {% endif %}
                                 </li>
                             {% endfor %}

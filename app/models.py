@@ -99,7 +99,7 @@ class User(UserMixin, db.Model):
         return f"{self.name_prefix or ''}{self.first_name} {self.last_name}".strip()
 
     def set_password(self, password):
-        self.password_hash = generate_password_hash(password)
+        self.password_hash = generate_password_hash(password, method='pbkdf2:sha256:260000')
 
     def check_password(self, password):
         if self.password_hash:

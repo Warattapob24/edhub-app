@@ -386,6 +386,10 @@ document.addEventListener('DOMContentLoaded', function () {
         document.getElementById('slot-form')?.addEventListener('submit', function(e) {
             // ... (โค้ดส่วนนี้เหมือนเดิม ไม่มีการเปลี่ยนแปลง)...
             e.preventDefault();
+            if (!semesterId) {
+                Swal.fire('ข้อผิดพลาด', 'กรุณาเลือกภาคเรียนก่อนบันทึก', 'error');
+                return;
+            }
             const slotIdValue = document.getElementById('modal-slot-id')?.value;
             const isEditMode = !!slotIdValue;
             const selectedGradeIds = gradeSelect ? gradeSelect.getValue() : [];

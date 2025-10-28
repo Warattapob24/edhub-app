@@ -6,6 +6,8 @@ import shutil
 import zipfile
 from flask_wtf.file import FileAllowed
 import io
+import math
+from sqlalchemy.exc import IntegrityError # สำหรับดักจับ Error ข้อมูลซ้ำ
 from flask_wtf import FlaskForm
 from wtforms import FileField, HiddenField, StringField, SubmitField, TextAreaField
 from wtforms.validators import DataRequired
@@ -23,6 +25,17 @@ from werkzeug.utils import secure_filename
 
 from app.services import log_action, promote_students_to_next_year, copy_schedule_structure
 # from flask_login import login_required # This will be enabled later
+
+BATCH_SIZE = 20 # กำหนดขนาดของแต่ละ Batch (ปรับค่าได้ตามความเหมาะสม)
+
+def _cleanup_file(filepath):
+    """ Safely delete a file if it exists. """
+    try:
+        if os.path.exists(filepath):
+            os.remove(filepath)
+            current_app.logger.info(f"Deleted temporary import file: {filepath}")
+    except Exception as del_err:
+        current_app.logger.error(f"Error deleting temporary import file {filepath}: {del_err}")
 
 @bp.route('/')
 @login_required
@@ -955,71 +968,145 @@ def remove_enrollment(classroom_id, student_id):
 @bp.route('/students/execute-import', methods=['POST'])
 @login_required
 def execute_student_import():
+    # 1. รับหมายเลข Batch และหาไฟล์
+    batch = request.args.get('batch', 1, type=int)
     temp_filename = session.get('import_filename')
+    
     if not temp_filename:
         flash('ไม่พบข้อมูลสำหรับนำเข้า หรือ Session หมดอายุ', 'warning')
         return redirect(url_for('admin.import_students'))
 
-    temp_filepath = os.path.join(current_app.instance_path, temp_filename)
-    
-    try:
-        with open(temp_filepath, 'r', encoding='utf-8') as f:
-            import_data = json.load(f)
+    json_filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], temp_filename)
 
-        # ดึงข้อมูลปีการศึกษาปัจจุบันเพื่อใช้ในการ Enrollment
+    if not os.path.exists(json_filepath):
+         flash(f'ไม่พบไฟล์นำเข้าชั่วคราว ({temp_filename}) กรุณาลองอัปโหลดใหม่อีกครั้ง', 'danger')
+         session.pop('import_filename', None)
+         return redirect(url_for('admin.import_students'))
+
+    try:
+        # 3. อ่านข้อมูลและคำนวณ Batch
+        with open(json_filepath, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        total_items = len(data)
+        if total_items == 0:
+            _cleanup_file(json_filepath)
+            flash('ไฟล์ข้อมูลว่างเปล่า', 'info')
+            session.pop('import_filename', None)
+            return redirect(url_for('admin.list_students'))
+
+        total_batches = math.ceil(total_items / BATCH_SIZE)
+        start_index = (batch - 1) * BATCH_SIZE
+        end_index = min(batch * BATCH_SIZE, total_items)
+        batch_data = data[start_index:end_index]
+
+        current_app.logger.info(f"Processing student import batch {batch}/{total_batches} ({start_index+1} to {end_index})")
+
+        # 4. ประมวลผลข้อมูล (Logic จาก tasks.py)
+        # Get current academic year ID *once*
         current_semester = Semester.query.filter_by(is_current=True).first()
         if not current_semester:
-            flash('กรุณากำหนดภาคเรียนปัจจุบันก่อนทำการนำเข้าข้อมูล', 'danger')
-            return redirect(url_for('admin.import_students'))
+             raise Exception("Cannot run student import: No current semester is set.")
         current_academic_year_id = current_semester.academic_year_id
+        
+        # Pre-load classrooms for the current year into a map
+        classrooms_in_year = Classroom.query.filter_by(academic_year_id=current_academic_year_id).all()
+        classroom_map = {c.name: c for c in classrooms_in_year}
 
-        for record in import_data:
-            # ข้ามแถวที่มีคำเตือน (ยกเว้นเรื่องการอัปเดตข้อมูลเดิม)
-            if any(w for w in record['warnings']):
-                continue
-            
-            # --- Upsert Student ---
-            student = Student.query.filter_by(student_id=record['student_id']).first()
-            if not student:
-                student = Student(student_id=record['student_id'])
-            
-            student.name_prefix = record['name_prefix']
-            student.first_name = record['first_name']
-            student.last_name = record['last_name']
-            db.session.add(student)
-            
-            # --- Upsert Enrollment ---
-            classroom = Classroom.query.filter_by(name=record['classroom_name'], academic_year_id=current_academic_year_id).first()
-            if classroom:
-                # ลบ Enrollment เก่าในปีการศึกษาเดียวกัน (ถ้ามี) เพื่อป้องกันการอยู่หลายห้อง
-                Enrollment.query.filter(
-                    Enrollment.student_id == student.id,
-                    Enrollment.classroom.has(academic_year_id=current_academic_year_id)
-                ).delete(synchronize_session=False)
+        new_count = request.args.get('new', 0, type=int)
+        update_count = request.args.get('upd', 0, type=int)
+        error_count = request.args.get('err', 0, type=int)
+        skipped_count = request.args.get('skip', 0, type=int)
 
-                # สร้าง Enrollment ใหม่
-                enrollment = Enrollment(
-                    student=student,
-                    classroom=classroom,
-                    roll_number=int(record['roll_number']) if pd.notna(record['roll_number']) else None
-                )
-                db.session.add(enrollment)
+        for record in batch_data:
+            try:
+                # Skip rows with warnings (ที่มาจากหน้า preview)
+                if any(w for w in record['warnings']):
+                    skipped_count += 1
+                    continue
 
-        db.session.commit()
-        flash(f'นำเข้าและอัปเดตข้อมูลนักเรียน {len(import_data)} รายการสำเร็จ!', 'success')
+                student_id_str = record['student_id']
+                classroom_name = record['classroom_name']
+
+                # --- Upsert Student ---
+                student = Student.query.filter_by(student_id=student_id_str).first()
+                if not student:
+                    student = Student(student_id=student_id_str)
+                    status = 'New'
+                else:
+                     status = 'Update'
+                
+                student.name_prefix = record['name_prefix']
+                student.first_name = record['first_name']
+                student.last_name = record['last_name']
+                if status == 'New':
+                     student.status = 'กำลังศึกษา' 
+                db.session.add(student)
+                db.session.flush() # Ensure student has ID
+
+                # --- Upsert Enrollment ---
+                classroom = classroom_map.get(classroom_name)
+                if classroom:
+                    Enrollment.query.filter(
+                        Enrollment.student_id == student.id,
+                        Enrollment.classroom_id.in_(
+                            db.session.query(Classroom.id).filter_by(academic_year_id=current_academic_year_id)
+                        )
+                    ).delete(synchronize_session=False)
+
+                    roll_number_val = None
+                    if pd.notna(record['roll_number']):
+                         try:
+                             roll_number_val = int(float(record['roll_number']))
+                         except (ValueError, TypeError):
+                              pass
+                              
+                    enrollment = Enrollment(
+                        student=student,
+                        classroom=classroom,
+                        roll_number=roll_number_val
+                    )
+                    db.session.add(enrollment)
+                    
+                    if status == 'New': new_count += 1
+                    else: update_count += 1
+                else:
+                    error_count += 1
+                    current_app.logger.warning(f"Row {record.get('row_num', '?')} ({student_id_str}): Classroom '{classroom_name}' not found during execution.")
+                    db.session.rollback() # Rollback student add/update for this record
+                    continue
+
+            except Exception as rec_err:
+                 db.session.rollback()
+                 error_count += 1
+                 current_app.logger.error(f"Error processing student import record {record.get('student_id','?')}: {rec_err}", exc_info=True)
+                 continue
+
+        db.session.commit() # Commit หลังจากจบ Batch
+
+        # 5. ตัดสินใจขั้นตอนต่อไป
+        if batch >= total_batches:
+            _cleanup_file(json_filepath)
+            session.pop('import_filename', None)
+            flash(f'นำเข้าข้อมูลนักเรียนสำเร็จ! (ใหม่: {new_count}, อัปเดต: {update_count}, ข้าม: {skipped_count}, ผิดพลาด: {error_count})', 'success')
+            return redirect(url_for('admin.list_students'))
+        else:
+            flash(f'กำลังประมวลผล... (ส่วนที่ {batch}/{total_batches} - {end_index}/{total_items} รายการ)', 'info')
+            next_url = url_for('admin.execute_student_import', 
+                               batch=batch + 1, 
+                               new=new_count, 
+                               upd=update_count, 
+                               err=error_count, 
+                               skip=skipped_count)
+            return redirect(next_url)
 
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error(f"Error during student import execution: {e}")
-        flash(f'เกิดข้อผิดพลาดร้ายแรงระหว่างการบันทึกข้อมูล: {e}', 'danger')
-        return redirect(url_for('admin.import_students'))
-    finally:
-        # --- Cleanup ---
-        if os.path.exists(temp_filepath):
-            os.remove(temp_filepath)
+        _cleanup_file(json_filepath)
         session.pop('import_filename', None)
-
-    return redirect(url_for('admin.list_students'))
+        current_app.logger.error(f"Critical error during student import batch {batch}: {e}", exc_info=True)
+        flash(f'เกิดข้อผิดพลาดร้ายแรงระหว่างประมวลผลส่วนที่ {batch}: {e}', 'danger')
+        return redirect(url_for('admin.import_students'))
 
 # เส้นทางสำหรับดาวน์โหลดไฟล์ Template
 @bp.route('/students/download-template')
@@ -1116,8 +1203,8 @@ def import_students():
             preview_data.append(record)
         
         temp_filename = f"import_{uuid.uuid4().hex}.json"
-        temp_filepath = os.path.join(current_app.instance_path, temp_filename)
-        os.makedirs(current_app.instance_path, exist_ok=True)
+        temp_filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], temp_filename)
+        os.makedirs(current_app.config['UPLOAD_FOLDER'], exist_ok=True)
         with open(temp_filepath, 'w', encoding='utf-8') as f:
             json.dump(preview_data, f)
         
@@ -1189,8 +1276,8 @@ def import_teachers():
         
         # --- (ส่วนของการบันทึกไฟล์ชั่วคราวและแสดงผลเหมือนเดิม) ---
         temp_filename = f"teacher_import_{uuid.uuid4().hex}.json"
-        temp_filepath = os.path.join(current_app.instance_path, temp_filename)
-        os.makedirs(current_app.instance_path, exist_ok=True)
+        temp_filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], temp_filename)
+        os.makedirs(current_app.config['UPLOAD_FOLDER'], exist_ok=True)
         with open(temp_filepath, 'w', encoding='utf-8') as f:
             json.dump(preview_data, f)
         
@@ -1206,78 +1293,175 @@ def import_teachers():
     return render_template('admin/import_teachers.html', title='นำเข้าข้อมูลครู', form=form)
 
 @bp.route('/teachers/execute-import', methods=['POST'])
+@login_required # Make sure login_required is here
 def execute_teacher_import():
+    # 1. รับหมายเลข Batch และหาไฟล์
+    batch = request.args.get('batch', 1, type=int)
     temp_filename = session.get('teacher_import_filename')
+    
     if not temp_filename:
         flash('ไม่พบข้อมูลสำหรับนำเข้า หรือ Session หมดอายุ', 'warning')
         return redirect(url_for('admin.import_teachers'))
 
-    temp_filepath = os.path.join(current_app.instance_path, temp_filename)
-    
+    json_filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], temp_filename)
+
+    if not os.path.exists(json_filepath):
+         flash(f'ไม่พบไฟล์นำเข้าชั่วคราว ({temp_filename}) กรุณาลองอัปโหลดใหม่อีกครั้ง', 'danger')
+         session.pop('teacher_import_filename', None)
+         return redirect(url_for('admin.import_teachers'))
+
     try:
-        with open(temp_filepath, 'r', encoding='utf-8') as f:
-            import_data = json.load(f)
-
-        for record in import_data:
-            username = record['username']
-            email = record['email'] if pd.notna(record['email']) and record['email'] else None
-
-            # --- ส่วนที่แก้ไข: ค้นหา User จาก username หรือ email ---
-            query = db.session.query(User)
-            if email:
-                user = query.filter(or_(User.username == username, User.email == email)).first()
-            else:
-                user = query.filter(User.username == username).first()
-            # ----------------------------------------------------
-
-            if not user:
-                user = User(username=username)
-                user.set_password('ntu1234')
-                user.must_change_password = True
-            
-            user.email = email
-            user.name_prefix = record['name_prefix'] if pd.notna(record['name_prefix']) else None
-            user.first_name = record['first_name'] if pd.notna(record['first_name']) else ''
-            user.last_name = record['last_name'] if pd.notna(record['last_name']) else ''
-            
-            user.roles.clear()
-            for role_name in record.get('roles', []):
-                role = Role.query.filter_by(name=role_name).first()
-                if role: user.roles.append(role)
-            db.session.add(user)
-        db.session.commit()
-
-        for record in import_data:
-            user = User.query.filter_by(username=record['username']).first()
-            if not user: continue
-            
-            if record.get('homeroom_classroom'):
-                classroom = Classroom.query.filter_by(name=record['homeroom_classroom']).first()
-                if classroom and user not in classroom.advisors:
-                    classroom.advisors.append(user)
-            if record.get('department_head_of'):
-                group = SubjectGroup.query.filter_by(name=record['department_head_of']).first()
-                if group:
-                    if user not in group.members: group.members.append(user)
-                    group.head = user
-            if record.get('subject_group_member_of'):
-                group = SubjectGroup.query.filter_by(name=record['subject_group_member_of']).first()
-                if group and user not in group.members:
-                    group.members.append(user)
-        db.session.commit()
+        # 3. อ่านข้อมูลและคำนวณ Batch
+        with open(json_filepath, 'r', encoding='utf-8') as f:
+            data = json.load(f)
         
-        flash('นำเข้าและมอบหมายหน้าที่ครูเรียบร้อยแล้ว!', 'success')
+        total_items = len(data)
+        if total_items == 0:
+            _cleanup_file(json_filepath)
+            flash('ไฟล์ข้อมูลว่างเปล่า', 'info')
+            session.pop('teacher_import_filename', None)
+            return redirect(url_for('admin.list_users'))
+
+        total_batches = math.ceil(total_items / BATCH_SIZE)
+        start_index = (batch - 1) * BATCH_SIZE
+        end_index = min(batch * BATCH_SIZE, total_items)
+        batch_data = data[start_index:end_index]
+
+        current_app.logger.info(f"Processing teacher import batch {batch}/{total_batches} ({start_index+1} to {end_index})")
+
+        # 4. ประมวลผลข้อมูล
+        new_count = request.args.get('new', 0, type=int)
+        update_count = request.args.get('err', 0, type=int) 
+        error_count = request.args.get('skip', 0, type=int) 
+
+        # --- [ START FIX SAWarning V6 ] ---
+        # Pre-load all existing Roles, Classrooms, and Groups *once* per batch (or even once globally if preferred)
+        # This prevents querying inside the loop, which stops the autoflush warning.
+        
+        # 1. Pre-load Roles
+        all_roles_in_db = Role.query.all()
+        role_map = {role.name: role for role in all_roles_in_db}
+
+        # 2. Pre-load Classrooms (Ideally, filter by current year if possible)
+        all_classrooms_in_db = Classroom.query.all()
+        classroom_map = {c.name: c for c in all_classrooms_in_db}
+        
+        # 3. Pre-load SubjectGroups
+        all_groups_in_db = SubjectGroup.query.all()
+        group_map = {g.name: g for g in all_groups_in_db}
+        # --- [ END FIX SAWarning V6 ] ---
+
+
+        for record in batch_data:
+            try:
+                username = record['username']
+                email = record.get('email', '') if pd.notna(record.get('email')) and record.get('email') else None
+
+                query = db.session.query(User)
+                if email:
+                    user = query.filter(or_(User.username == username, User.email == email)).first()
+                else:
+                    user = query.filter(User.username == username).first()
+
+                if user:
+                    # Update existing user
+                    user.name_prefix = record['name_prefix'] if pd.notna(record['name_prefix']) else None
+                    user.first_name = record['first_name'] if pd.notna(record['first_name']) else ''
+                    user.last_name = record['last_name'] if pd.notna(record['last_name']) else ''
+                    user.email = email
+                    update_count += 1
+                else:
+                    # Create new user
+                    user = User(
+                        username=username,
+                        name_prefix=record['name_prefix'] if pd.notna(record['name_prefix']) else None,
+                        first_name=record['first_name'] if pd.notna(record['first_name']) else '',
+                        last_name=record['last_name'] if pd.notna(record['last_name']) else '',
+                        email=email,
+                        must_change_username=True,
+                        must_change_password=True
+                    )
+                    db.session.add(user)
+                    user.set_password('ntu1234') # (ต้องใช้ pbkdf2 จาก models.py)
+                    new_count += 1
+                
+                # --- [ START FIX SAWarning V6 ] ---
+                # --- Handle Roles (using the pre-loaded map) ---
+                user.roles.clear() 
+                for role_name in record.get('roles', []):
+                    role = role_map.get(role_name) # Get from map (no query)
+                    if not role:
+                        # Create new role if not in map
+                        role = Role(name=role_name, description=f"{role_name} Role")
+                        db.session.add(role)
+                        role_map[role_name] = role # Add to map for this batch
+                    if role not in user.roles:
+                         user.roles.append(role)
+                
+                db.session.flush() # Flush *after* adding new roles, before linking advisors
+
+                # --- Handle Homeroom Advisor (using map) ---
+                homeroom_name = record.get('homeroom_classroom')
+                if homeroom_name:
+                    classroom = classroom_map.get(homeroom_name) # Get from map
+                    if classroom and user not in classroom.advisors:
+                        classroom.advisors.append(user)
+
+                # --- Handle Department Head (using map) ---
+                dept_head_name = record.get('department_head_of')
+                if dept_head_name:
+                    group = group_map.get(dept_head_name) # Get from map
+                    if group:
+                        if user not in group.members: group.members.append(user)
+                        group.head = user
+
+                # --- Handle Subject Group Member (using map) ---
+                member_groups_str = record.get('subject_group_member_of')
+                if member_groups_str:
+                    group_names = [g.strip() for g in member_groups_str.split(',') if g.strip()]
+                    for group_name in group_names:
+                        subj_group = group_map.get(group_name) # Get from map
+                        if subj_group and user not in subj_group.members:
+                            subj_group.members.append(user)
+                # --- [ END FIX SAWarning V6 ] ---
+
+            except IntegrityError as ie:
+                db.session.rollback() # Rollback record ที่ซ้ำ
+                error_count += 1
+                current_app.logger.warning(f"Teacher import skipped duplicate: {username} or {email}. Error: {ie}")
+            except Exception as user_err:
+                db.session.rollback() # Rollback record ที่มีปัญหา
+                error_count += 1
+                error_msg = f"Row {record.get('row_num', '?')} ({record.get('username','?')}) Error: {user_err}"
+                current_app.logger.error(f"Error processing teacher import record: {error_msg}", exc_info=True)
+                continue # ข้ามไปทำรายการถัดไปใน Batch
+
+        db.session.commit() # Commit หลังจากจบ Batch
+
+        # 5. ตัดสินใจขั้นตอนต่อไป
+        if batch >= total_batches:
+            # Batch สุดท้าย: ลบไฟล์และกลับหน้าหลัก
+            _cleanup_file(json_filepath)
+            session.pop('teacher_import_filename', None)
+            flash(f'นำเข้าข้อมูลครูสำเร็จ! (ใหม่: {new_count}, อัปเดต: {update_count}, ข้าม/ผิดพลาด: {error_count})', 'success')
+            return redirect(url_for('admin.list_users'))
+        else:
+            # ยังมี Batch ต่อไป: Redirect ไปยัง Batch ถัดไป
+            flash(f'กำลังประมวลผล... (ส่วนที่ {batch}/{total_batches} - {end_index}/{total_items} รายการ)', 'info')
+            next_url = url_for('admin.execute_teacher_import', 
+                               batch=batch + 1, 
+                               new=new_count, 
+                               err=update_count, 
+                               skip=error_count) 
+            return redirect(next_url)
 
     except Exception as e:
         db.session.rollback()
-        flash(f'เกิดข้อผิดพลาดร้ายแรงระหว่างการนำเข้าข้อมูล: {e}', 'danger')
-        return redirect(url_for('admin.import_teachers'))
-    finally:
-        if os.path.exists(temp_filepath):
-            os.remove(temp_filepath)
+        _cleanup_file(json_filepath)
         session.pop('teacher_import_filename', None)
-
-    return redirect(url_for('admin.list_users'))
+        current_app.logger.error(f"Critical error during teacher import batch {batch}: {e}", exc_info=True)
+        flash(f'เกิดข้อผิดพลาดร้ายแรงระหว่างประมวลผลส่วนที่ {batch}: {e}', 'danger')
+        return redirect(url_for('admin.import_teachers'))
 
 # --- ศูนย์บัญชาการกลุ่มสาระฯ (แทนที่ assign_heads เดิม) ---
 @bp.route('/subject-group/<int:group_id>/manage')
@@ -1533,8 +1717,8 @@ def import_subjects():
         
         # --- (ส่วนของการบันทึกไฟล์ชั่วคราวและแสดงผลเหมือนเดิม) ---
         temp_filename = f"subject_import_{uuid.uuid4().hex}.json"
-        temp_filepath = os.path.join(current_app.instance_path, temp_filename)
-        os.makedirs(current_app.instance_path, exist_ok=True)
+        temp_filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], temp_filename)
+        os.makedirs(current_app.config['UPLOAD_FOLDER'], exist_ok=True)
         with open(temp_filepath, 'w', encoding='utf-8') as f:
             json.dump(preview_data, f)
         session['subject_import_filename'] = temp_filename
@@ -1550,57 +1734,118 @@ def import_subjects():
                         form=form)
 
 @bp.route('/subjects/execute-import', methods=['POST'])
+@login_required # Make sure login_required is here
 def execute_subject_import():
+    # 1. รับหมายเลข Batch และหาไฟล์
+    batch = request.args.get('batch', 1, type=int)
     temp_filename = session.get('subject_import_filename')
+    
     if not temp_filename:
-        flash('ไม่พบข้อมูลสำหรับนำเข้า', 'warning')
+        flash('ไม่พบข้อมูลสำหรับนำเข้า หรือ Session หมดอายุ', 'warning')
         return redirect(url_for('admin.import_subjects'))
 
-    temp_filepath = os.path.join(current_app.instance_path, temp_filename)
-    
+    json_filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], temp_filename)
+
+    if not os.path.exists(json_filepath):
+         flash(f'ไม่พบไฟล์นำเข้าชั่วคราว ({temp_filename}) กรุณาลองอัปโหลดใหม่อีกครั้ง', 'danger')
+         session.pop('subject_import_filename', None)
+         return redirect(url_for('admin.import_subjects'))
+
     try:
-        with open(temp_filepath, 'r', encoding='utf-8') as f:
-            import_data = json.load(f)
-
-        for record in import_data:
-            # ข้ามรายการที่มีคำเตือน (ยกเว้นเรื่องมีอยู่แล้ว)
-            if any(w != 'รหัสวิชานี้มีอยู่แล้วในระบบ' for w in record['warnings']):
-                continue
-
-            data = record['data']
-            # ข้ามรายการที่ซ้ำ
-            if Subject.query.filter_by(subject_code=str(data['subject_code'])).first():
-                continue
-
-            subject_group = SubjectGroup.query.filter_by(name=str(data['subject_group'])).first()
-            subject_type = SubjectType.query.filter_by(name=str(data['subject_type'])).first()
-
-            grade_levels_str = str(data.get('grade_levels', ''))
-            grade_short_names = [g.strip() for g in grade_levels_str.split(',') if g.strip()]
-            grades = GradeLevel.query.filter(GradeLevel.short_name.in_(grade_short_names)).all()
-
-            new_subject = Subject(
-                subject_code=str(data['subject_code']),
-                name=str(data['name']),
-                credit=float(data['credit']),
-                subject_group=subject_group,
-                subject_type=subject_type,
-                grade_levels=grades
-            )
-            db.session.add(new_subject)
+        # 3. อ่านข้อมูลและคำนวณ Batch
+        with open(json_filepath, 'r', encoding='utf-8') as f:
+            data = json.load(f)
         
-        db.session.commit()
-        flash('นำเข้าข้อมูลรายวิชาเรียบร้อยแล้ว!', 'success')
+        total_items = len(data)
+        if total_items == 0:
+            _cleanup_file(json_filepath)
+            flash('ไฟล์ข้อมูลว่างเปล่า', 'info')
+            session.pop('subject_import_filename', None)
+            return redirect(url_for('admin.list_subjects'))
+
+        total_batches = math.ceil(total_items / BATCH_SIZE)
+        start_index = (batch - 1) * BATCH_SIZE
+        end_index = min(batch * BATCH_SIZE, total_items)
+        batch_data = data[start_index:end_index]
+
+        current_app.logger.info(f"Processing subject import batch {batch}/{total_batches} ({start_index+1} to {end_index})")
+
+        # 4. ประมวลผลข้อมูล (Logic จาก tasks.py)
+        imported_count = request.args.get('new', 0, type=int)
+        skipped_count = request.args.get('skip', 0, type=int)
+        error_count = request.args.get('err', 0, type=int)
+        
+        # Pre-load lookups
+        all_groups = {g.name: g for g in SubjectGroup.query.all()}
+        all_types = {t.name: t for t in SubjectType.query.all()}
+        all_grades = {gl.short_name: gl for gl in GradeLevel.query.all()}
+
+        for record in batch_data:
+            try:
+                # Skip rows with warnings (except for 'already exists')
+                if any(w != 'รหัสวิชานี้มีอยู่แล้วในระบบ' for w in record['warnings']):
+                    skipped_count += 1
+                    continue
+
+                data_row = record['data']
+                subject_code_str = str(data_row['subject_code'])
+
+                if Subject.query.filter_by(subject_code=subject_code_str).first():
+                    skipped_count += 1
+                    continue
+
+                subject_group = all_groups.get(str(data_row['subject_group']))
+                subject_type = all_types.get(str(data_row['subject_type']))
+                grade_levels_str = str(data_row.get('grade_levels', ''))
+                grade_short_names = [g.strip() for g in grade_levels_str.split(',') if g.strip()]
+                grades = [all_grades.get(g_name) for g_name in grade_short_names if all_grades.get(g_name)]
+
+                if not subject_group or not subject_type or len(grades) != len(grade_short_names):
+                     error_count += 1
+                     current_app.logger.warning(f"Row {record.get('row_num', '?')} ({subject_code_str}): Related data missing in DB (Group, Type, or Grade).")
+                     continue
+
+                new_subject = Subject(
+                    subject_code=subject_code_str,
+                    name=str(data_row['name']),
+                    credit=float(data_row['credit']),
+                    subject_group=subject_group,
+                    subject_type=subject_type,
+                    grade_levels=grades
+                )
+                db.session.add(new_subject)
+                imported_count += 1
+
+            except Exception as rec_err:
+                 db.session.rollback()
+                 error_count += 1
+                 current_app.logger.error(f"Error processing subject import record {record['data'].get('subject_code','?')}: {rec_err}", exc_info=True)
+                 continue
+
+        db.session.commit() # Commit หลังจากจบ Batch
+
+        # 5. ตัดสินใจขั้นตอนต่อไป
+        if batch >= total_batches:
+            _cleanup_file(json_filepath)
+            session.pop('subject_import_filename', None)
+            flash(f'นำเข้าข้อมูลรายวิชาสำเร็จ! (ใหม่: {imported_count}, ข้าม: {skipped_count}, ผิดพลาด: {error_count})', 'success')
+            return redirect(url_for('admin.list_subjects'))
+        else:
+            flash(f'กำลังประมวลผล... (ส่วนที่ {batch}/{total_batches} - {end_index}/{total_items} รายการ)', 'info')
+            next_url = url_for('admin.execute_subject_import', 
+                               batch=batch + 1, 
+                               new=imported_count, 
+                               skip=skipped_count, 
+                               err=error_count)
+            return redirect(next_url)
 
     except Exception as e:
         db.session.rollback()
-        flash(f'เกิดข้อผิดพลาดร้ายแรงระหว่างการนำเข้าข้อมูล: {e}', 'danger')
-    finally:
-        if os.path.exists(temp_filepath):
-            os.remove(temp_filepath)
+        _cleanup_file(json_filepath)
         session.pop('subject_import_filename', None)
-
-    return redirect(url_for('admin.list_subjects'))
+        current_app.logger.error(f"Critical error during subject import batch {batch}: {e}", exc_info=True)
+        flash(f'เกิดข้อผิดพลาดร้ายแรงระหว่างประมวลผลส่วนที่ {batch}: {e}', 'danger')
+        return redirect(url_for('admin.import_subjects'))
 
 @bp.route('/assignments', methods=['GET'])
 # @login_required # หมายเหตุ: หากระบบ login พร้อมใช้งานแล้ว สามารถเปิดใช้งานบรรทัดนี้ได้
@@ -1944,8 +2189,8 @@ def import_standards():
             preview_data.append(record)
 
         temp_filename = f"standards_import_{uuid.uuid4().hex}.json"
-        temp_filepath = os.path.join(current_app.instance_path, temp_filename)
-        os.makedirs(current_app.instance_path, exist_ok=True)
+        temp_filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], temp_filename)
+        os.makedirs(current_app.config['UPLOAD_FOLDER'], exist_ok=True)
         with open(temp_filepath, 'w', encoding='utf-8') as f:
             json.dump(preview_data, f)
         
@@ -1962,7 +2207,7 @@ def import_standards_preview():
         flash('ไม่พบข้อมูลสำหรับแสดงตัวอย่าง', 'warning')
         return redirect(url_for('admin.import_standards'))
         
-    temp_filepath = os.path.join(current_app.instance_path, temp_filename)
+    temp_filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], temp_filename)
     try:
         with open(temp_filepath, 'r', encoding='utf-8') as f:
             # โหลดข้อมูลดิบ (เป็น list of dictionaries)
@@ -1994,70 +2239,137 @@ def import_standards_preview():
         return redirect(url_for('admin.import_standards'))
 
 @bp.route('/execute-import-standards', methods=['POST'])
-# @login_required
+@login_required # Make sure login_required is here
 def execute_import_standards():
     form = DummyForm()
     if not form.validate_on_submit():
         flash('CSRF Token ไม่ถูกต้อง', 'danger')
         return redirect(url_for('admin.import_standards'))
 
-    temp_filename = session.pop('import_temp_file', None)
+    # 1. รับหมายเลข Batch และหาไฟล์
+    batch = request.args.get('batch', 1, type=int)
+    temp_filename = session.get('import_temp_file')
+
     if not temp_filename:
-        flash('ไม่พบข้อมูลสำหรับนำเข้า', 'warning')
+        flash('ไม่พบข้อมูลสำหรับนำเข้า หรือ Session หมดอายุ', 'warning')
         return redirect(url_for('admin.import_standards'))
+
+    json_filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], temp_filename)
+
+    if not os.path.exists(json_filepath):
+         flash(f'ไม่พบไฟล์นำเข้าชั่วคราว ({temp_filename}) กรุณาลองอัปโหลดใหม่อีกครั้ง', 'danger')
+         session.pop('import_temp_file', None)
+         return redirect(url_for('admin.import_standards'))
     
-    temp_filepath = os.path.join(current_app.instance_path, temp_filename)
     try:
-        with open(temp_filepath, 'r', encoding='utf-8') as f:
-            data_to_import = json.load(f)
-
-        imported_count, skipped_count = 0, 0
+        # 3. อ่านข้อมูลและคำนวณ Batch
+        with open(json_filepath, 'r', encoding='utf-8') as f:
+            data = json.load(f)
         
-        for row in data_to_import:
-            # Skip rows with warnings (except for the 'already exists' warning if you decide to allow updates)
-            if row['warnings']:
-                skipped_count += 1
-                continue
+        total_items = len(data)
+        if total_items == 0:
+            _cleanup_file(json_filepath)
+            flash('ไฟล์ข้อมูลว่างเปล่า', 'info')
+            session.pop('import_temp_file', None)
+            return redirect(url_for('admin.manage_standards'))
+
+        total_batches = math.ceil(total_items / BATCH_SIZE)
+        start_index = (batch - 1) * BATCH_SIZE
+        end_index = min(batch * BATCH_SIZE, total_items)
+        batch_data = data[start_index:end_index]
+
+        current_app.logger.info(f"Processing standard import batch {batch}/{total_batches} ({start_index+1} to {end_index})")
+
+        # 4. ประมวลผลข้อมูล (Logic จาก tasks.py)
+        imported_count = request.args.get('new', 0, type=int)
+        skipped_count = request.args.get('skip', 0, type=int)
+        error_count = request.args.get('err', 0, type=int)
+
+        # Pre-load lookups
+        all_groups = {g.name: g for g in SubjectGroup.query.all()}
+        all_strands = {(s.name, s.subject_group_id): s for s in LearningStrand.query.all()}
+        all_standards = {(s.code, s.learning_strand_id): s for s in Standard.query.all()}
+
+        for row in batch_data:
+            try:
+                # Skip rows with warnings
+                if row['warnings']:
+                    skipped_count += 1
+                    continue
+
+                # 1. Get or Create SubjectGroup
+                group_name = row.get('subject_group')
+                subject_group = all_groups.get(group_name)
+                if not subject_group:
+                    subject_group = SubjectGroup(name=group_name)
+                    db.session.add(subject_group)
+                    db.session.flush() # Get ID
+                    all_groups[group_name] = subject_group
+
+                # 2. Get or Create LearningStrand
+                strand_name = row.get('strand')
+                strand = all_strands.get((strand_name, subject_group.id))
+                if not strand:
+                    strand = LearningStrand(name=strand_name, subject_group=subject_group)
+                    db.session.add(strand)
+                    db.session.flush() # Get ID
+                    all_strands[(strand_name, subject_group.id)] = strand
+
+                # 3. Get or Create Standard
+                std_code = row.get('standard_code')
+                standard = all_standards.get((std_code, strand.id))
+                if not standard:
+                    standard = Standard(code=std_code, description=row.get('standard_description'), learning_strand=strand)
+                    db.session.add(standard)
+                    db.session.flush() # Get ID
+                    all_standards[(std_code, strand.id)] = standard
+                
+                # 4. Create Indicator
+                indicator_code = row.get('indicator_code')
+                existing_indicator = Indicator.query.filter_by(standard_id=standard.id, code=indicator_code).first()
+                if existing_indicator:
+                     skipped_count += 1
+                     continue 
+                     
+                indicator = Indicator(
+                    standard_id=standard.id,
+                    code=indicator_code,
+                    description=row.get('indicator_description'),
+                    creator_type='ADMIN'
+                )
+                db.session.add(indicator)
+                imported_count += 1
             
-            # 1. Get or Create SubjectGroup
-            subject_group = SubjectGroup.query.filter_by(name=row.get('subject_group')).first()
-            if not subject_group:
-                subject_group = SubjectGroup(name=row.get('subject_group'))
-                db.session.add(subject_group)
-                db.session.flush()
+            except Exception as rec_err:
+                 db.session.rollback()
+                 error_count += 1
+                 current_app.logger.error(f"Error processing standard import record {row.get('standard_code','?')}: {rec_err}", exc_info=True)
+                 continue
+        
+        db.session.commit() # Commit หลังจากจบ Batch
 
-            # 2. Get or Create LearningStrand
-            strand = LearningStrand.query.filter_by(name=row.get('strand'), subject_group_id=subject_group.id).first()
-            if not strand:
-                strand = LearningStrand(name=row.get('strand'), subject_group=subject_group)
-                db.session.add(strand)
-                db.session.flush()
-
-            # 3. Get or Create Standard
-            standard = Standard.query.filter_by(code=row.get('standard_code'), learning_strand_id=strand.id).first()
-            if not standard:
-                standard = Standard(code=row.get('standard_code'), description=row.get('standard_description'), learning_strand=strand)
-                db.session.add(standard)
-                db.session.flush()
-
-            # 4. Create Indicator
-            indicator = Indicator(standard_id=standard.id, code=row.get('indicator_code'), description=row.get('indicator_description'), creator_type='ADMIN')
-            db.session.add(indicator)
-            imported_count += 1
-
-        db.session.commit()
-        flash_message = f'นำเข้าข้อมูลสำเร็จ! (นำเข้า {imported_count} รายการ'
-        flash_message += f', ข้าม {skipped_count} รายการ)' if skipped_count > 0 else ')'
-        flash(flash_message, 'success')
+        # 5. ตัดสินใจขั้นตอนต่อไป
+        if batch >= total_batches:
+            _cleanup_file(json_filepath)
+            session.pop('import_temp_file', None)
+            flash(f'นำเข้าข้อมูลมาตรฐานสำเร็จ! (ใหม่: {imported_count}, ข้าม: {skipped_count}, ผิดพลาด: {error_count})', 'success')
+            return redirect(url_for('admin.manage_standards'))
+        else:
+            flash(f'กำลังประมวลผล... (ส่วนที่ {batch}/{total_batches} - {end_index}/{total_items} รายการ)', 'info')
+            next_url = url_for('admin.execute_import_standards', 
+                               batch=batch + 1, 
+                               new=imported_count, 
+                               skip=skipped_count, 
+                               err=error_count)
+            return redirect(next_url)
 
     except Exception as e:
         db.session.rollback()
-        flash(f'เกิดข้อผิดพลาดระหว่างการบันทึกข้อมูล: {e}', 'danger')
-    finally:
-        if os.path.exists(temp_filepath):
-            os.remove(temp_filepath)
-            
-    return redirect(url_for('admin.manage_standards'))
+        _cleanup_file(json_filepath)
+        session.pop('import_temp_file', None)
+        current_app.logger.error(f"Critical error during standard import batch {batch}: {e}", exc_info=True)
+        flash(f'เกิดข้อผิดพลาดร้ายแรงระหว่างประมวลผลส่วนที่ {batch}: {e}', 'danger')
+        return redirect(url_for('admin.import_standards'))
 
 @bp.route('/download-indicator-template')
 # @login_required

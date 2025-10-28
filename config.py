@@ -9,5 +9,6 @@ class Config:
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or \
         'sqlite:///' + os.path.join(basedir, 'app.db')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-    UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER') or \
-        os.path.join(basedir, 'app/static/uploads') # หรือ path เดิมที่คุณตั้งไว้
+    UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER') or os.path.join(basedir, 'app/static/uploads') # หรือ Path ที่ถูกต้อง
+    RQ_REDIS_URL = os.environ.get('REDIS_URL') or 'redis://localhost:6379/0' # ใช้ Redis บนเครื่องถ้าไม่ได้ Deploy
+    RQ_QUEUES = ['default'] # ชื่อคิวที่จะใช้
