@@ -618,9 +618,11 @@ def list_subjects():
         page=page, per_page=20, error_out=False
     )
     subjects = pagination.items
+    form = FlaskForm()
     return render_template('admin/subjects.html', 
                            subjects=subjects, 
                            pagination=pagination,  # Pass the pagination object to the template
+                           form=form,
                            title='จัดการรายวิชา')
                            
 # เส้นทางสำหรับเพิ่มรายวิชาใหม่

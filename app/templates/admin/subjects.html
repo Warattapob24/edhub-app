@@ -35,6 +35,7 @@
                             <td class="text-end">
                                 <a href="{{ url_for('admin.edit_subject', subject_id=subject.id, page=pagination.page) }}" class="btn btn-sm btn-warning"><i class="bi bi-pencil-fill"></i> แก้ไข</a>
                                 <form action="{{ url_for('admin.delete_subject', subject_id=subject.id) }}" method="POST" class="d-inline" onsubmit="return confirm('คุณแน่ใจหรือไม่ว่าต้องการลบรายการนี้?');">
+                                    {{ form.csrf_token }}
                                     <button type="submit" class="btn btn-sm btn-danger"><i class="bi bi-trash-fill"></i> ลบ</button>
                                 </form>
                             </td>
