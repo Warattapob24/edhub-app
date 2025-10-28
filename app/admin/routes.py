@@ -2243,11 +2243,13 @@ def manage_standards():
     return render_template('admin/manage_standards.html', subject_groups=subject_groups, form=form)
 
 @bp.route('/import-standards', methods=['GET', 'POST'])
-# @login_required
+@login_required # <-- เพิ่ม @login_required ถ้ายังไม่มี
 def import_standards():
-    form = UploadFileForm()
-    if form.validate_on_submit():
-        file = form.file.data
+    # *** สร้าง Form Instance "ครั้งเดียว" นอก if ***
+    form = UploadFileForm() 
+
+    if form.validate_on_submit(): # ใช้ form ตัวนี้ validate ตอน POST
+        file = form.file.data # เข้าถึงไฟล์ผ่าน form.file.data
         if not (file.filename.endswith('.csv') or file.filename.endswith('.xlsx')):
             flash('ประเภทไฟล์ไม่ถูกต้อง กรุณาอัปโหลดไฟล์ .csv หรือ .xlsx เท่านั้น', 'danger')
             return redirect(request.url)
@@ -2263,7 +2265,7 @@ def import_standards():
         required_columns = ['subject_group', 'strand', 'standard_code', 'standard_description', 'indicator_code', 'indicator_description']
         if not all(col in df.columns for col in required_columns):
             flash('ไฟล์ Excel ต้องมีคอลัมน์: ' + ', '.join(required_columns), 'danger')
-            return redirect(url_for('admin.import_standards'))
+            return redirect(url_for('admin.import_standards')) # ใช้ redirect(url_for(...))
 
         preview_data = []
         for index, row in df.iterrows():
@@ -2277,22 +2279,35 @@ def import_standards():
                 'indicator_description': str(row['indicator_description']),
                 'warnings': []
             }
-            # Simple check if standard code already exists (can be enhanced)
-            if Standard.query.filter_by(code=record['standard_code']).first():
-                record['warnings'].append(f"มาตรฐาน {record['standard_code']} มีอยู่แล้ว")
+            # *** ตรวจสอบ Standard ซ้ำ (Logic เดิม) ***
+            # (ตรวจสอบ Standard ซ้ำที่นี่...)
+            standard = Standard.query.filter_by(code=record['standard_code']).first()
+            if standard:
+                 # Check if the existing standard belongs to the *same* strand and group
+                 strand = LearningStrand.query.filter_by(name=record['strand']).join(SubjectGroup).filter(SubjectGroup.name==record['subject_group']).first()
+                 if strand and standard.learning_strand_id == strand.id:
+                      # Now check indicator
+                      indicator = Indicator.query.filter_by(standard_id=standard.id, code=record['indicator_code']).first()
+                      if indicator:
+                           record['warnings'].append(f"มาตรฐาน/ตัวชี้วัด {record['standard_code']}/{record['indicator_code']} มีอยู่แล้ว")
+                 # If strand doesn't match, it's potentially okay, but maybe add a different warning?
             
             preview_data.append(record)
 
         temp_filename = f"standards_import_{uuid.uuid4().hex}.json"
         temp_filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], temp_filename)
-        os.makedirs(current_app.config['UPLOAD_FOLDER'], exist_ok=True)
+        # *** ตรวจสอบและสร้างโฟลเดอร์ (Logic เดิม) ***
+        os.makedirs(current_app.config['UPLOAD_FOLDER'], exist_ok=True) 
         with open(temp_filepath, 'w', encoding='utf-8') as f:
             json.dump(preview_data, f)
         
         session['import_temp_file'] = temp_filename
-        return redirect(url_for('admin.import_standards_preview'))
+        return redirect(url_for('admin.import_standards_preview')) # Redirect หลัง POST สำเร็จ
             
-    return render_template('admin/import_standards.html', form=form, title='นำเข้าคลังมาตรฐานและตัวชี้วัด')
+    # *** ส่ง form ตัวเดียวกันนี้ไปให้ Template ตอน GET ***
+    return render_template('admin/import_standards.html', 
+                           form=form, 
+                           title='นำเข้าคลังมาตรฐานและตัวชี้วัด')
 
 @bp.route('/import-standards/preview', methods=['GET'])
 # @login_required
