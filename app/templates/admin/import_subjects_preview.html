@@ -39,22 +39,28 @@
                 <thead class="table-light">
                     <tr>
                         <th class="text-center">แถวที่</th>
-                        <th>กลุ่มสาระฯ</th>
-                        <th>สาระฯ</th>
-                        <th>มาตรฐาน</th>
-                        <th>ตัวชี้วัด</th>
+                        <th>รหัสวิชา</th> {# <-- Header ที่ถูกต้อง #}
+                        <th>ชื่อรายวิชา</th> {# <-- Header ที่ถูกต้อง #}
+                        <th>หน่วยกิต</th> {# <-- Header ที่ถูกต้อง #}
+                        <th>กลุ่มสาระฯ</th> {# <-- Header ที่ถูกต้อง #}
+                        <th>ประเภทวิชา</th> {# <-- Header ที่ถูกต้อง #}
+                        <th>ระดับชั้น</th> {# <-- Header ที่ถูกต้อง #}
                         <th>คำเตือน</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for row in data %}
-                    <tr {% if row.warnings %}class="table-warning"{% endif %}>
-                        <td class="text-center">{{ row.row_num }}</td>
-                        <td>{{ row.subject_group }}</td>
-                        <td>{{ row.strand }}</td>
-                        <td><strong>{{ row.standard_code }}</strong>: {{ row.standard_description }}</td>
-                        <td><strong>{{ row.indicator_code }}</strong>: {{ row.indicator_description }}</td>
-                        <td>
+                    {% for row in data %} {# <-- Loop เดิม ถูกต้อง #}
+                    <tr {% if row.warnings %}class="table-warning"{% endif %}> {# <-- เงื่อนไขเดิม ถูกต้อง #}
+                        <td class="text-center">{{ row.row_num }}</td> {# <-- ข้อมูลเดิม ถูกต้อง #}
+                        {# *** แก้ไขการเข้าถึงข้อมูล ใช้ row.data.ชื่อคอลัมน์ *** #}
+                        <td>{{ row.data.subject_code }}</td> 
+                        <td>{{ row.data.name }}</td>
+                        <td>{{ "%.1f"|format(row.data.credit|float) if row.data.credit is not none else '' }}</td> {# <-- Format หน่วยกิต #}
+                        <td>{{ row.data.subject_group }}</td> 
+                        <td>{{ row.data.subject_type }}</td>
+                        <td>{{ row.data.grade_levels }}</td>
+                        {# *** สิ้นสุดการแก้ไข *** #}
+                        <td> {# <-- ส่วน Warnings เดิม ถูกต้อง #}
                             {% for warning in row.warnings %}
                                 <span class="badge bg-warning-subtle text-warning-emphasis rounded-pill">{{ warning }}</span>
                             {% endfor %}
@@ -65,9 +71,10 @@
             </table>
         </div>
     </div>
+    {# --- [ ยืนยัน/แก้ไข ส่วน Footer นี้ ] --- #}
     <div class="card-footer text-end">
-        <a href="{{ url_for('admin.import_standards') }}" class="btn btn-secondary">ยกเลิก</a>
-        <form action="{{ url_for('admin.execute_import_standards') }}" method="POST" class="d-inline" onsubmit="return confirm('คุณยืนยันที่จะนำเข้าข้อมูลที่ไม่มีคำเตือนทั้งหมดใช่หรือไม่?');">
+        <a href="{{ url_for('admin.import_subjects') }}" class="btn btn-secondary">ยกเลิก</a> {# <-- ต้องเป็น import_subjects #}
+        <form action="{{ url_for('admin.execute_subject_import') }}" method="POST" class="d-inline" onsubmit="return confirm('คุณยืนยันที่จะนำเข้าข้อมูลที่ไม่มีคำเตือนทั้งหมดใช่หรือไม่?');"> {# <-- ต้องเป็น execute_subject_import #}
             {{ form.csrf_token }}
             <button type="submit" class="btn btn-primary"><i class="bi bi-check-circle-fill"></i> ยืนยันและนำเข้าข้อมูล</button>
         </form>
