@@ -99,42 +99,37 @@
     <nav aria-label="Page navigation">
         <ul class="pagination justify-content-center">
             
-            {# --- [ START MODIFICATION ] --- #}
-            {# (เพิ่ม query parameters (q, group_id, etc.) เข้าไปใน url_for) #}
-            {% set page_args = {
-                'page': pagination.prev_num, 
+            {# --- [ START V15.1 FIX ] --- #}
+            {# 1. สร้าง Dict พื้นฐานสำหรับ Filter (ไม่มี page) #}
+            {% set filter_args = {
                 'q': q, 
                 'group_id': selected_group_id, 
                 'type_id': selected_type_id, 
                 'grade_id': selected_grade_id
             } %}
-            {# --- [ END MODIFICATION ] --- #}
+            {# --- [ END V15.1 FIX ] --- #}
 
             {% if pagination.has_prev %}
-                <li class="page-item"><a class="page-link" href="{{ url_for('admin.list_subjects', **page_args) }}">ก่อนหน้า</a></li>
+                {# 2. รวม filter_args กับ page ที่ถูกต้อง #}
+                <li class="page-item"><a class="page-link" href="{{ url_for('admin.list_subjects', page=pagination.prev_num, **filter_args) }}">ก่อนหน้า</a></li>
             {% else %}
                 <li class="page-item disabled"><a class="page-link" href="#">ก่อนหน้า</a></li>
             {% endif %}
             
             {% for page_num in pagination.iter_pages() %}
                 {% if page_num %}
-                    {# --- [ START MODIFICATION ] --- #}
-                    {% set page_args['page'] = page_num %}
-                    {# --- [ END MODIFICATION ] --- #}
+                    {# 3. รวม filter_args กับ page_num ใน Loop #}
                     <li class="page-item {% if page_num == pagination.page %}active{% endif %}">
-                        <a class="page-link" href="{{ url_for('admin.list_subjects', **page_args) }}">{{ page_num }}</a>
+                        <a class="page-link" href="{{ url_for('admin.list_subjects', page=page_num, **filter_args) }}">{{ page_num }}</a>
                     </li>
                 {% else %}
                     <li class="page-item disabled"><span class="page-link">...</span></li>
                 {% endif %}
             {% endfor %}
 
-            {# --- [ START MODIFICATION ] --- #}
-            {% set page_args['page'] = pagination.next_num %}
-            {# --- [ END MODIFICATION ] --- #}
-
             {% if pagination.has_next %}
-                <li class="page-item"><a class="page-link" href="{{ url_for('admin.list_subjects', **page_args) }}">ถัดไป</a></li>
+                {# 4. รวม filter_args กับ page ที่ถูกต้อง #}
+                <li class="page-item"><a class="page-link" href="{{ url_for('admin.list_subjects', page=pagination.next_num, **filter_args) }}">ถัดไป</a></li>
             {% else %}
                 <li class="page-item disabled"><a class="page-link" href="#">ถัดไป</a></li>
             {% endif %}
