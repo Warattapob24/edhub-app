@@ -10,10 +10,10 @@
         <a href="{{ url_for('admin.add_subject') }}" class="btn btn-primary"><i class="bi bi-plus-lg"></i> เพิ่มรายวิชาใหม่</a>
         <a href="{{ url_for('admin.import_subjects') }}" class="btn btn-info"><i class="bi bi-upload"></i> นำเข้ารายวิชา</a>
     </div>
-
 <div class="card mb-3">
     <div class="card-body">
-        <form method="GET" action="{{ url_for('admin.list_subjects') }}">
+        {# 1. เพิ่ม id="filter-form" #}
+        <form method="GET" action="{{ url_for('admin.list_subjects') }}" id="filter-form">
             <div class="row g-3 align-items-end">
                 <div class="col-md-3">
                     <label for="q" class="form-label">ค้นหา (รหัส/ชื่อวิชา)</label>
@@ -28,7 +28,7 @@
                         {% endfor %}
                     </select>
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-3"> {# <-- ปรับขนาดเป็น col-md-3 #}
                     <label for="type_id" class="form-label">ประเภทวิชา</label>
                     <select class="form-select" id="type_id" name="type_id">
                         <option value="0">-- ทั้งหมด --</option>
@@ -37,7 +37,7 @@
                         {% endfor %}
                     </select>
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-3"> {# <-- ปรับขนาดเป็น col-md-3 #}
                     <label for="grade_id" class="form-label">ระดับชั้น</label>
                     <select class="form-select" id="grade_id" name="grade_id">
                         <option value="0">-- ทั้งหมด --</option>
@@ -46,14 +46,11 @@
                         {% endfor %}
                     </select>
                 </div>
-                <div class="col-md-2 d-flex">
-                    <button type="submit" class="btn btn-primary w-100 me-2"><i class="bi bi-search"></i> กรอง</button>
-                    <a href="{{ url_for('admin.list_subjects') }}" class="btn btn-outline-secondary" title="ล้างการกรอง"><i class="bi bi-x-lg"></i></a>
-                </div>
+                {# 2. ลบ div ของปุ่มทิ้งไป (คอลัมน์ col-md-2 d-flex) #}
             </div>
         </form>
     </div>
-</div>    
+</div>
     <div class="card">
         <div class="card-body">
             <div class="table-responsive">
@@ -77,7 +74,14 @@
                             <td>{{ subject.subject_group.name }}</td>
                             <td>{{ subject.subject_type.name }}</td>
                             <td class="text-end">
-                                <a href="{{ url_for('admin.edit_subject', subject_id=subject.id, page=pagination.page) }}" class="btn btn-sm btn-warning"><i class="bi bi-pencil-fill"></i> แก้ไข</a>
+                                <a href="{{ url_for('admin.edit_subject', 
+                                                        subject_id=subject.id, 
+                                                        page=pagination.page, 
+                                                        q=q, 
+                                                        group_id=selected_group_id, 
+                                                        type_id=selected_type_id, 
+                                                        grade_id=selected_grade_id) }}" 
+                                    class="btn btn-sm btn-warning me-1"><i class="bi bi-pencil-fill"></i> แก้ไข</a>
                                 <form action="{{ url_for('admin.delete_subject', subject_id=subject.id) }}" method="POST" class="d-inline" onsubmit="return confirm('คุณแน่ใจหรือไม่ว่าต้องการลบรายการนี้?');">
                                     {{ form.csrf_token }}
                                     <button type="submit" class="btn btn-sm btn-danger"><i class="bi bi-trash-fill"></i> ลบ</button>
@@ -136,4 +140,35 @@
         </ul>
     </nav>
 </div>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const filterForm = document.getElementById('filter-form');
+    
+    if (filterForm) {
+        const searchInput = filterForm.querySelector('input[type="text"]');
+        const selects = filterForm.querySelectorAll('select');
+        let searchTimer;
+
+        // 1. Submit ทันที เมื่อ Dropdown ถูกเปลี่ยน
+        selects.forEach(select => {
+            select.addEventListener('change', function() {
+                filterForm.submit();
+            });
+        });
+
+        // 2. Submit เมื่อ "หยุดพิมพ์" ในช่องค้นหา (รอ 500ms)
+        searchInput.addEventListener('keyup', function() {
+            clearTimeout(searchTimer); // ล้าง Timer เก่า
+            searchTimer = setTimeout(function() {
+                filterForm.submit();
+            }, 500); // ตั้งเวลาใหม่ 0.5 วินาที
+        });
+
+        // 3. ป้องกันการ Submit ซ้ำซ้อนหากกด Enter
+        filterForm.addEventListener('submit', function(e) {
+            clearTimeout(searchTimer); // ล้าง Timer ที่อาจจะค้างอยู่
+        });
+    }
+});
+</script>
 {% endblock %}

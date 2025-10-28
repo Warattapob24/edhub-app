@@ -55,7 +55,7 @@
                 </div>
                 <hr>
                 {{ form.submit(class="btn btn-success") }}
-                <a href="{{ url_for('admin.list_subjects') }}" class="btn btn-secondary">ยกเลิก</a>
+                <a href="{{ url_for('admin.list_subjects', **redirect_args) }}" class="btn btn-secondary">ยกเลิก</a>
             </form>
         </div>
     </div>

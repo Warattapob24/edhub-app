@@ -3,6 +3,7 @@
 from collections import defaultdict
 from datetime import datetime, time
 import shutil
+from urllib.parse import parse_qs, urlparse
 import zipfile
 from flask_wtf.file import FileAllowed
 import io
@@ -694,9 +695,23 @@ def edit_subject(subject_id):
     subject = Subject.query.get_or_404(subject_id)
     form = SubjectForm(obj=subject)
 
-    # ========= MODIFIED: GET request logic =========
-    # Get the page number from the URL's query arguments
-    page_from_url = request.args.get('page', 1, type=int)
+    # --- [ START V17 MODIFICATION ] ---
+    # รับค่า Filter และ Page จาก URL arguments
+    page = request.args.get('page', 1, type=int)
+    q = request.args.get('q', '', type=str)
+    group_id = request.args.get('group_id', 0, type=int)
+    type_id = request.args.get('type_id', 0, type=int)
+    grade_id = request.args.get('grade_id', 0, type=int)
+
+    # สร้าง Dictionary สำหรับส่งต่อ Parameters
+    redirect_args = {
+        'page': page, 
+        'q': q, 
+        'group_id': group_id, 
+        'type_id': type_id, 
+        'grade_id': grade_id
+    }
+    # --- [ END V17 MODIFICATION ] ---
 
     if form.validate_on_submit():
         subject.subject_code = form.subject_code.data
@@ -704,25 +719,60 @@ def edit_subject(subject_id):
         subject.credit = form.credit.data
         subject.subject_group = form.subject_group.data
         subject.subject_type = form.subject_type.data
-        subject.grade_levels = form.grade_levels.data # Assuming this is handled by the form
+        subject.grade_levels = form.grade_levels.data # <-- แก้ไข V14 แล้ว
         db.session.commit()
         flash('แก้ไขข้อมูลรายวิชาเรียบร้อยแล้ว', 'success')
-
-        # The redirect will be handled in the next step
-        # For now, this part is conceptually updated
-        return redirect(url_for('admin.list_subjects', page=page_from_url)) 
+        
+        # --- [ START V17 MODIFICATION ] ---
+        # ส่งต่อ Filter Parameters กลับไปที่ list_subjects
+        return redirect(url_for('admin.list_subjects', **redirect_args))
+        # --- [ END V17 MODIFICATION ] ---
     
-    # Pass the captured page number to the template
-    return render_template('admin/subject_form.html', form=form, title='แก้ไขรายวิชา', page=page_from_url)
+    # ส่งต่อ Filter Parameters ไปยัง Template (เผื่อใช้ในปุ่ม Cancel)
+    # และส่งค่า page ที่ถูกต้อง
+    return render_template('admin/subject_form.html', 
+                           form=form, 
+                           title='แก้ไขรายวิชา', 
+                           page=page, # <-- ส่ง page ที่ถูกต้อง
+                           redirect_args=redirect_args) # <-- ส่ง args สำหรับปุ่ม Cancel
 
 # เส้นทางสำหรับลบรายวิชา
 @bp.route('/subjects/delete/<int:subject_id>', methods=['POST'])
 def delete_subject(subject_id):
     subject = Subject.query.get_or_404(subject_id)
-    db.session.delete(subject)
-    db.session.commit()
-    flash('ลบรายวิชาเรียบร้อยแล้ว', 'info')
-    return redirect(url_for('admin.list_subjects'))
+    
+    # --- [ START V17 MODIFICATION ] ---
+    # ดึงค่า Filter และ Page จาก URL ที่ผู้ใช้เข้ามา (Referer)
+    redirect_args = {}
+    try:
+        referer_url = request.referrer
+        if referer_url:
+            parsed_url = urlparse(referer_url)
+            query_params = parse_qs(parsed_url.query)
+            # ดึงค่าที่ต้องการ ถ้ามีใน URL เดิม
+            redirect_args['page'] = int(query_params.get('page', ['1'])[0])
+            redirect_args['q'] = query_params.get('q', [''])[0]
+            redirect_args['group_id'] = int(query_params.get('group_id', ['0'])[0])
+            redirect_args['type_id'] = int(query_params.get('type_id', ['0'])[0])
+            redirect_args['grade_id'] = int(query_params.get('grade_id', ['0'])[0])
+    except Exception as e:
+        current_app.logger.warning(f"Could not parse referer URL for delete redirect: {e}")
+        redirect_args = {'page': 1} # Fallback to page 1 if parsing fails
+    # --- [ END V17 MODIFICATION ] ---
+
+    try:
+        db.session.delete(subject)
+        db.session.commit()
+        flash('ลบรายวิชาเรียบร้อยแล้ว', 'info')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'เกิดข้อผิดพลาดในการลบรายวิชา: {e}', 'danger')
+        current_app.logger.error(f"Error deleting subject {subject_id}: {e}", exc_info=True)
+
+    # --- [ START V17 MODIFICATION ] ---
+    # Redirect กลับไปหน้าเดิม พร้อม Filter เดิม
+    return redirect(url_for('admin.list_subjects', **redirect_args))
+    # --- [ END V17 MODIFICATION ] ---
 
 # --- ส่วนจัดการหลักสูตร (Curriculum Management) ---
 @bp.route('/api/curriculum/<int:semester_id>/<int:grade_id>')
