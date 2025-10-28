@@ -1,9 +1,14 @@
-{% extends "admin/layout.html" %}
-{% block title %}{{ title }}{% endblock %}
-{% block content %}
-    <h2>{{ title }}</h2>
-    <hr>
-    <div class="card">
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+{% block sidebar %}
+    {% include 'admin/_sidebar.html' %}
+{% endblock %}
+
+{% block main_content %}
+<div class="card">
+    <div class="card-header">
+        <h4 class="bi bi-plus-lg"> {{ title }}</h4>
+    </div>
         <div class="card-body">
             <form action="" method="post" novalidate>
                 {{ form.hidden_tag() }}
@@ -54,4 +59,5 @@
             </form>
         </div>
     </div>
+
 {% endblock %}
