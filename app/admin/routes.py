@@ -661,7 +661,7 @@ def edit_subject(subject_id):
         subject.credit = form.credit.data
         subject.subject_group = form.subject_group.data
         subject.subject_type = form.subject_type.data
-        # subject.grade_levels = form.grade_levels.data # Assuming this is handled by the form
+        subject.grade_levels = form.grade_levels.data # Assuming this is handled by the form
         db.session.commit()
         flash('แก้ไขข้อมูลรายวิชาเรียบร้อยแล้ว', 'success')
 
