@@ -612,18 +612,61 @@ def delete_semester(semester_id):
 # เส้นทางสำหรับแสดงรายการรายวิชา
 @bp.route('/subjects')
 def list_subjects():
+# 1. รับค่า Filter จาก URL
     page = request.args.get('page', 1, type=int)
-    # Change from .all() to .paginate()
-    pagination = Subject.query.order_by(Subject.subject_code).paginate(
-        page=page, per_page=20, error_out=False
-    )
+    q = request.args.get('q', '', type=str)
+    group_id = request.args.get('group_id', 0, type=int)
+    type_id = request.args.get('type_id', 0, type=int)
+    grade_id = request.args.get('grade_id', 0, type=int)
+
+    # 2. สร้าง Query พื้นฐาน
+    query = Subject.query.order_by(Subject.subject_code)
+
+    # 3. ใช้ Filter กับ Query (ถ้ามี)
+    if q:
+        query = query.filter(
+            or_(
+                Subject.name.ilike(f'%{q}%'),
+                Subject.subject_code.ilike(f'%{q}%')
+            )
+        )
+    if group_id:
+        query = query.filter(Subject.subject_group_id == group_id)
+    if type_id:
+        query = query.filter(Subject.subject_type_id == type_id)
+    if grade_id:
+        # กรองสำหรับ Many-to-Many relationship (grade_levels)
+        query = query.filter(Subject.grade_levels.any(id=grade_id))
+
+    # 4. ทำ Pagination กับ Query ที่กรองแล้ว
+    # (ท่านอาจต้องปรับ PER_PAGE ให้เหมาะสม)
+    PER_PAGE = 20 
+    pagination = query.paginate(page=page, per_page=PER_PAGE, error_out=False)
     subjects = pagination.items
-    form = FlaskForm()
+
+    # 5. ดึงข้อมูลสำหรับใส่ใน Dropdown ของ Filter
+    all_groups = SubjectGroup.query.order_by(SubjectGroup.name).all()
+    all_types = SubjectType.query.order_by(SubjectType.name).all()
+    all_grades = GradeLevel.query.order_by(GradeLevel.id).all()
+    
+    # 6. สร้าง Form เปล่าสำหรับ CSRF (ใช้ในปุ่มลบ)
+    form = FlaskForm() 
+
     return render_template('admin/subjects.html', 
                            subjects=subjects, 
-                           pagination=pagination,  # Pass the pagination object to the template
+                           pagination=pagination,
                            form=form,
-                           title='จัดการรายวิชา')
+                           title='จัดการรายวิชา',
+                           # ส่งค่า Filter กลับไปที่ Template
+                           q=q,
+                           selected_group_id=group_id,
+                           selected_type_id=type_id,
+                           selected_grade_id=grade_id,
+                           # ส่งรายการสำหรับ Dropdown
+                           all_groups=all_groups,
+                           all_types=all_types,
+                           all_grades=all_grades
+                           )
                            
 # เส้นทางสำหรับเพิ่มรายวิชาใหม่
 @bp.route('/subjects/add', methods=['GET', 'POST'])
