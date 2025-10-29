@@ -49,7 +49,7 @@
             <li class="nav-item"><a class="nav-link" href="{{ url_for('admin.list_classrooms') }}"><i class="bi bi-grid-3x3-gap me-2"></i> <span>ห้องเรียน</span></a></li>
             <li class="nav-item">
                 <a class="nav-link {% if request.endpoint.startswith('admin.list_program') or request.endpoint.startswith('admin.add_program') or request.endpoint.startswith('admin.edit_program') %}active{% endif %}" href="{{ url_for('admin.list_programs') }}">
-                    <i class="bi bi-diagram-3 me-2"></i>จัดการสายการเรียน
+                    <i class="bi bi-diagram-3 me-2"></i> <span>จัดการสายการเรียน</span>
                 </a>
             </li>
             <li class="nav-item"><a class="nav-link" href="{{ url_for('admin.manage_rooms') }}"><i class="bi bi-building me-2"></i> <span>ห้องสอน (สถานที่)</span></a></li>            

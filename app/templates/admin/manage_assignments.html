@@ -49,411 +49,489 @@
 <script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        const yearSelect = document.getElementById('yearSelect');
-        const semesterSelect = document.getElementById('semesterSelect');
-        const contentDiv = document.getElementById('assignment-content');
-        const statusIndicator = document.getElementById('statusIndicator');
-        const loadingOverlay = document.getElementById('loading-overlay');
-        const summaryDiv = document.getElementById('workload-summary');
+    // --- Global variables & Element References ---
+    let saveTimer = null;
+    let loadedData = {}; // Store data fetched from API
+    const semestersByYear = JSON.parse('{{ semesters_by_year_json|safe }}');
+    const currentSemesterId = {{ current_semester.id if current_semester else 'null' }};
+    const csrfTokenInput = document.querySelector('input[name="csrf_token"]');
+    const csrfToken = csrfTokenInput ? csrfTokenInput.value : null;
 
-        let assignmentsData = {};
-        let tomSelectInstances = {};
-        
-        const semestersByYear = JSON.parse('{{ semesters_by_year_json|safe }}');
-        const currentSemesterId = {{ current_semester.id if current_semester else 'null' }};
+    const yearSelect = document.getElementById('yearSelect');
+    const semesterSelect = document.getElementById('semesterSelect');
+    const contentDiv = document.getElementById('assignment-content');
+    const statusIndicator = document.getElementById('statusIndicator');
+    const loadingOverlay = document.getElementById('loading-overlay');
+    const summaryDiv = document.getElementById('workload-summary');
 
-        function showLoading(show) {
-            loadingOverlay.classList.toggle('d-none', !show);
-            loadingOverlay.classList.toggle('d-flex', show);
+    // --- Core Functions (Defined Before Use) ---
+
+    function showLoading(show) {
+        loadingOverlay.classList.toggle('d-none', !show);
+        loadingOverlay.classList.toggle('d-flex', show);
+    }
+
+    function updateStatus(text, level = 'primary', duration = 3000) {
+        statusIndicator.innerHTML = `<span class="text-${level}">${text}</span>`;
+        // Auto-clear success/info messages
+        if (level === 'success' || level === 'info') {
+            setTimeout(() => {
+                // Only clear if the message hasn't changed (e.g., to an error)
+                if (statusIndicator.innerHTML.includes(text)) {
+                    statusIndicator.innerHTML = '';
+                }
+            }, duration);
         }
+    }
 
-        function updateStatus(text, level = 'primary', duration = 2000) {
-            statusIndicator.innerHTML = `<span class="text-${level}">${text}</span>`;
-            if (level === 'success' || level === 'info') {
-                setTimeout(() => statusIndicator.innerHTML = '', duration);
-            }
+    async function scheduleSaveAssignment(subjectId, classroomId, selectedTeacherIds) {
+        if (!csrfToken) {
+             console.error("CSRF Token missing, cannot save.");
+             updateStatus('ข้อผิดพลาด: ไม่พบ CSRF Token', 'danger');
+             return; // Stop saving if no token
         }
-
-        function populateSemesters(yearId) {
-            const semesters = semestersByYear[yearId] || [];
-            semesterSelect.innerHTML = '';
-            semesters.forEach(sem => {
-                const option = new Option(`ภาคเรียนที่ ${sem.term}`, sem.id);
-                semesterSelect.add(option);
-            });
-            // Set selection
-            if (semesters.some(s => s.id === currentSemesterId)) {
-                semesterSelect.value = currentSemesterId;
-            }
-            loadAssignmentData();
+        // Clear previous timer if exists (debouncing)
+        if (saveTimer) {
+            clearTimeout(saveTimer);
         }
-        
-        async function loadAssignmentData() {
-            clearTimeout(saveTimer); // Clear pending saves if semester changes
-            showLoading(true);
-            updateStatus('กำลังโหลดข้อมูล...', 'info');
-            contentDiv.innerHTML = ''; // Clear previous tables
-            const selectedSemesterId = semesterSelect.value;
-            const csrfTokenInput = document.querySelector('input[name="csrf_token"]');
-            if (!csrfTokenInput){
-                console.error("CSRF Token not found for load data");
-                updateStatus('ข้อผิดพลาด: ไม่พบ CSRF Token', 'danger');
-                showLoading(false);
-                return;
-            }
-            const csrfToken = csrfTokenInput.value;
+        updateStatus('กำลังบันทึก...', 'primary', 60000); // Show saving status longer
 
-
-            if (!selectedSemesterId) {
+        // Set a new timer to delay saving slightly
+        saveTimer = setTimeout(async () => {
+            const semesterId = semesterSelect.value; // Get current semester ID from select
+            if (!semesterId) {
+                console.error("Semester ID not selected!");
                 updateStatus('กรุณาเลือกภาคเรียน', 'warning');
-                showLoading(false);
                 return;
             }
 
+            console.log(`Saving: Sem=${semesterId}, Subj=${subjectId}, Class=${classroomId}, Teachers=${selectedTeacherIds}`); // Debug log
+
             try {
-                const response = await fetch(`/admin/api/assignments-data?semester_id=${selectedSemesterId}`);
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                const data = await response.json();
-
-                if (data && data.grades && data.teachers_by_group) {
-                    loadedData = data; // Store globally FOR TEACHER LIST ACCESS ONLY
-                    contentDiv.innerHTML = ''; // Clear previous content again just in case
-
-                    if (data.grades.length === 0) {
-                        contentDiv.innerHTML = '<p class="text-muted text-center mt-5">ไม่พบข้อมูลห้องเรียนหรือหลักสูตรสำหรับภาคเรียนนี้</p>';
-                    } else {
-                        // Render each grade level section
-                        data.grades.forEach(grade => {
-                            const gradeElement = renderGradeTable(grade); // Render table HTML
-                            contentDiv.appendChild(gradeElement);
-                            renderTomSelects(grade); // Initialize TomSelects for this grade AFTER table is in DOM
-                        });
-                    }
-                    showLoading(false);
-                    updateStatus('', 'info'); // Clear status
-                } else {
-                    throw new Error("Invalid data structure received from API.");
-                }
-            } catch (error) {
-                console.error('Error loading assignment data:', error);
-                contentDiv.innerHTML = `<p class="text-danger text-center mt-5">เกิดข้อผิดพลาดในการโหลดข้อมูล: ${error.message}</p>`;
-                updateStatus('โหลดข้อมูลล้มเหลว', 'danger');
-                showLoading(false);
-            }
-        }
-
-        function renderUI() {
-            if (!assignmentsData.grades || assignmentsData.grades.length === 0) {
-                contentDiv.innerHTML = '<div class="alert alert-info mt-3">ไม่พบข้อมูลระดับชั้นในระบบ</div>';
-                return;
-            }
-
-            let tabsHtml = '<ul class="nav nav-tabs" id="gradeTabs" role="tablist">';
-            let tabContentHtml = '<div class="tab-content" id="gradeTabsContent">';
-
-            assignmentsData.grades.forEach((grade, index) => {
-                const isActive = index === 0;
-                tabsHtml += `
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link ${isActive ? 'active' : ''}" id="tab-${grade.id}" data-bs-toggle="tab" data-bs-target="#content-${grade.id}" type="button" role="tab">${grade.name}</button>
-                    </li>`;
-                
-                tabContentHtml += `
-                    <div class="tab-pane fade ${isActive ? 'show active' : ''}" id="content-${grade.id}" role="tabpanel">
-                        <div class="card card-body border-top-0 rounded-bottom">
-                            ${renderGradeTable(grade)}
-                        </div>
-                    </div>`;
-            });
-
-            tabsHtml += '</ul>';
-            tabContentHtml += '</div>';
-            contentDiv.innerHTML = tabsHtml + tabContentHtml;
-            initializeTomSelects();
-        }
-
-        function renderGradeTable(grade) {
-            const tableContainer = document.createElement('div');
-            tableContainer.className = 'table-responsive mb-4'; // Add margin bottom
-
-            let tableHtml = `<h4 class="mt-4 mb-3">ระดับชั้น ${grade.name}</h4>`;
-            tableHtml += `<table class="table table-bordered table-hover align-middle assignment-table" id="gradeTable-${grade.id}">`;
-
-            // Header Row: Subject + Classrooms with Program & Credits
-            tableHtml += '<thead><tr class="table-light text-center">';
-            tableHtml += '<th class="sticky-col">รายวิชา (หน่วยกิต)</th>'; // Make first column sticky
-            grade.classrooms.forEach(c => {
-                tableHtml += `<th>${c.name}<br><small class="text-muted fw-normal">${c.program_name} (${c.total_credits.toFixed(1)} นก.)</small></th>`;
-            });
-            tableHtml += '</tr></thead>';
-
-            // Body Rows: One row per unique subject in this grade level
-            tableHtml += '<tbody>';
-            // 1. Get a unique, sorted list of all subjects across all programs for this grade
-            const allSubjectsInGrade = {};
-            if (grade.subjects_by_program) { // Check if subjects_by_program exists
-                Object.values(grade.subjects_by_program).forEach(programSubjects => {
-                    if(programSubjects){ // Check if programSubjects array exists
-                        programSubjects.forEach(s => {
-                            if (!allSubjectsInGrade[s.id]) {
-                                allSubjectsInGrade[s.id] = s;
-                            }
-                        });
-                    }
-                });
-            }
-            const sortedSubjects = Object.values(allSubjectsInGrade).sort((a, b) => a.code.localeCompare(b.code));
-
-            // 2. Iterate through the unique subjects to create rows
-            sortedSubjects.forEach(subject => {
-                tableHtml += `<tr><td class="sticky-col align-middle">${subject.code} - ${subject.name} (${subject.credit.toFixed(1)})</td>`; // Make first column sticky
-
-                // 3. For each classroom column, check if this subject applies
-                grade.classrooms.forEach(classroom => {
-                    const classroomProgramId = classroom.program_id;
-                    // Subject applies if the classroom has a program AND the subject is in that program's list for this grade
-                    const subjectApplies = classroomProgramId &&
-                                        grade.subjects_by_program && // Check existence
-                                        grade.subjects_by_program[classroomProgramId] && // Check existence
-                                        grade.subjects_by_program[classroomProgramId].some(s => s.id === subject.id);
-
-                    if (subjectApplies) {
-                        const selectId = `teacherSelect-${subject.id}-${classroom.id}`;
-                        // Render the select, TomSelect will populate options and selected items later
-                        tableHtml += `<td class="text-center align-middle">
-                                        <select id="${selectId}" class="teacher-select"
-                                                data-subject-id="${subject.id}"
-                                                data-classroom-id="${classroom.id}"
-                                                data-group-id="${subject.group_id}"
-                                                multiple>
-                                            </select>
-                                    </td>`;
-                    } else {
-                        // Subject does not apply to this classroom's program, or classroom has no program
-                        tableHtml += '<td class="text-center align-middle text-muted bg-light">-</td>';
-                    }
-                });
-                tableHtml += '</tr>';
-            });
-            tableHtml += '</tbody>';
-
-            tableHtml += '</table>';
-            tableContainer.innerHTML = tableHtml;
-            return tableContainer;
-        }
-
-        function renderTomSelects(gradeData) {
-            if (!loadedData || !loadedData.teachers_by_group) return; // Ensure global teacher data is loaded
-
-            const teacherOptions = {}; // Prepare options by group
-            for (const groupId in loadedData.teachers_by_group) {
-                teacherOptions[groupId] = loadedData.teachers_by_group[groupId].map(t => ({ value: t.id, text: t.name }));
-            }
-
-            gradeData.classrooms.forEach(classroom => {
-                const classroomProgramId = classroom.program_id;
-                // Skip classrooms without an assigned program, as they won't have applicable subjects based on V26 logic
-                if (!classroomProgramId) return;
-
-                // Get subjects specifically for this classroom's program and grade
-                const subjectsForProgram = (gradeData.subjects_by_program && gradeData.subjects_by_program[classroomProgramId]) ? gradeData.subjects_by_program[classroomProgramId] : [];
-
-
-                subjectsForProgram.forEach(subject => {
-                    const selectId = `teacherSelect-${subject.id}-${classroom.id}`;
-                    const selectElement = document.getElementById(selectId);
-                    // If the element doesn't exist (e.g., table structure changed or subject didn't apply), skip
-                    if (!selectElement) return;
-
-                    const groupId = subject.group_id;
-                    const options = teacherOptions[groupId] || []; // Get teachers for this subject's group
-                    const assignmentKey = `${subject.id}-${classroom.id}`;
-                    // Get selected teachers from the assignments specific to this grade
-                    const selectedItems = (gradeData.assignments && gradeData.assignments[assignmentKey]) ? gradeData.assignments[assignmentKey] : [];
-
-
-                    // Ensure previous TomSelect instance is destroyed before creating a new one
-                    if (selectElement.tomselect) {
-                        selectElement.tomselect.destroy();
-                    }
-
-                    // Initialize TomSelect for this specific subject-classroom cell
-                    try {
-                        new TomSelect(selectElement, {
-                            options: options,
-                            items: selectedItems,
-                            placeholder: 'เลือกครูผู้สอน',
-                            plugins: ['remove_button'],
-                            create: false, // Don't allow creating new teachers here
-                            maxItems: null, // Allow multiple teachers
-                            onChange: function(value) { // Use regular function for 'this' context if needed
-                                // 'this.items' contains the array of selected teacher IDs (strings)
-                                scheduleSaveAssignment(subject.id, classroom.id, this.items.map(id => parseInt(id))); // Ensure IDs are numbers
-                            }
-                        });
-                    } catch (e) {
-                        console.error(`Failed to initialize TomSelect for ${selectId}:`, e);
-                        // Optionally display an error message in the cell
-                        selectElement.outerHTML = '<span class="text-danger small">Error loading teachers</span>';
-                    }
-                });
-            });
-        }
-
-        function getTeacherOptions(groupId, selectedIds = []) {
-            const teachers = assignmentsData.teachers_by_group[groupId] || [];
-            if (teachers.length === 0) return '<option disabled>ไม่พบครูในกลุ่มสาระฯ</option>';
-            return teachers.map(t => 
-                `<option value="${t.id}" ${selectedIds.includes(t.id) ? 'selected' : ''}>${t.name}</option>`
-            ).join('');
-        }
-
-        function initializeTomSelects() {
-            Object.values(tomSelectInstances).forEach(ts => ts.destroy());
-            tomSelectInstances = {};
-
-            document.querySelectorAll('.teacher-select').forEach(el => {
-                const instance = new TomSelect(el, {
-                    plugins: ['remove_button'],
-                    create: false,
-                    placeholder: 'เลือกครูผู้สอน...',
-                    onChange: (value) => {
-                        const teacherIds = Array.isArray(value) ? value.map(v => parseInt(v)) : (value ? [parseInt(value)] : []);
-                        saveAssignment(
-                            el.dataset.subjectId,
-                            el.dataset.classroomId,
-                            teacherIds
-                        );
-                    }
-                });
-                tomSelectInstances[el.id] = instance;
-            });
-        }
-        
-        async function saveAssignment(subjectId, classroomId, teacherIds) {
-            updateStatus('กำลังบันทึก...', 'primary');
-            try {
-                const csrfToken = document.querySelector('input[name="csrf_token"]').value;
-                // --- ส่วนที่แก้ไข: เปลี่ยนมาใช้ url_for เพื่อสร้าง URL ที่ถูกต้อง ---
-                const saveUrl = "{{ url_for('admin.update_assignment') }}";
-                const response = await fetch(saveUrl, {
-                // -----------------------------------------------------------------
+                const response = await fetch("{{ url_for('admin.update_assignment') }}", { // Use url_for
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
                     body: JSON.stringify({
-                        semester_id: semesterSelect.value,
+                        semester_id: parseInt(semesterId), // Ensure IDs are numbers
                         subject_id: parseInt(subjectId),
                         classroom_id: parseInt(classroomId),
-                        teacher_ids: teacherIds
+                        teacher_ids: selectedTeacherIds // Should already be numbers
                     })
                 });
-                if (!response.ok) throw new Error('Save failed');
+
                 const result = await response.json();
-                
-                // Update local data model to prevent full reload
-                const gradeId = document.querySelector('.tab-pane.active').id.replace('content-', '');
-                const grade = assignmentsData.grades.find(g => g.id == gradeId);
-                const assignmentKey = `${subjectId}-${classroomId}`;
-                if (result.status === 'deleted') {
-                    delete grade.assignments[assignmentKey];
-                } else {
-                    grade.assignments[assignmentKey] = result.teacher_ids;
+
+                if (!response.ok) {
+                    throw new Error(result.message || `HTTP error! status: ${response.status}`);
                 }
-                updateWorkloadSummary();
-                updateStatus('บันทึกเรียบร้อย', 'success');
+
+                console.log('Save successful:', result);
+                updateStatus('✔ บันทึกเรียบร้อย', 'success');
+
+                // --- Update local data model to reflect change ---
+                const assignmentKey = `${subjectId}-${classroomId}`;
+                let gradeData = loadedData.grades.find(g =>
+                    g.classrooms.some(c => c.id == classroomId)
+                );
+
+                if (gradeData) {
+                     // Ensure assignments object exists for the grade
+                     if (!gradeData.assignments) {
+                         gradeData.assignments = {};
+                     }
+                    if (result.status === 'deleted') {
+                        delete gradeData.assignments[assignmentKey];
+                    } else if (result.teacher_ids !== undefined) { // Check if teacher_ids exist in response
+                        gradeData.assignments[assignmentKey] = result.teacher_ids;
+                    }
+                }
+                updateWorkloadSummary(); // Update summary after successful save
+
             } catch (error) {
-                console.error('Save error:', error);
-                updateStatus('บันทึกไม่สำเร็จ', 'danger');
+                console.error('Error saving assignment:', error);
+                updateStatus(`❌ บันทึกล้มเหลว: ${error.message}`, 'danger');
+            } finally {
+                 saveTimer = null; // Reset timer status
             }
+        }, 500); // Delay saving by 500ms
+    }
+
+    async function saveAssignmentNow(subjectId, classroomId, teacherIds) {
+        // --- Same saving logic as scheduleSaveAssignment, BUT WITHOUT setTimeout ---
+        const semesterId = semesterSelect.value;
+        if (!semesterId || !csrfToken) {
+            const errorMsg = !csrfToken ? "CSRF Token missing" : "Semester ID not selected";
+            console.error(errorMsg + ", cannot save immediately.");
+            // Return a rejected promise or throw an error to make Promise.all fail
+            throw new Error("Missing required data for immediate save.");
         }
 
-        function updateWorkloadSummary() {
-            const workload = {}; 
-            const allTeachers = Object.values(assignmentsData.teachers_by_group).flat();
-            const allSubjects = assignmentsData.grades.flatMap(g => g.subjects);
+        console.log(`Saving NOW: Sem=${semesterId}, Subj=${subjectId}, Class=${classroomId}, Teachers=${teacherIds}`);
 
-            // Step 1: Iterate through all assignments to gather raw data
-            assignmentsData.grades.forEach(grade => {
-                grade.subjects.forEach(subject => {
-                    grade.classrooms.forEach(classroom => {
-                        const key = `${subject.id}-${classroom.id}`;
-                        const teacherIds = grade.assignments[key] || [];
-                        
-                        teacherIds.forEach(teacherId => {
-                            if (!workload[teacherId]) {
-                                const teacher = allTeachers.find(t => t.id == teacherId);
-                                workload[teacherId] = {
-                                    name: teacher ? teacher.name : `Teacher ID: ${teacherId}`,
-                                    uniqueSubjectIds: new Set(),
-                                    rooms: 0,
-                                    periods: 0
-                                };
-                            }
-                            workload[teacherId].uniqueSubjectIds.add(subject.id);
-                            workload[teacherId].rooms += 1;
-                            workload[teacherId].periods += (subject.credit * 2); 
-                        });
-                    });
-                });
+        try {
+            const response = await fetch("{{ url_for('admin.update_assignment') }}", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify({
+                    semester_id: parseInt(semesterId),
+                    subject_id: parseInt(subjectId),
+                    classroom_id: parseInt(classroomId),
+                    teacher_ids: teacherIds
+                })
             });
 
-            // Step 2: Calculate total credits based on unique subjects
-            Object.values(workload).forEach(teacherData => {
-                let totalCredits = 0;
-                teacherData.uniqueSubjectIds.forEach(subjectId => {
-                    const subject = allSubjects.find(s => s.id === subjectId);
-                    if (subject) {
-                        totalCredits += subject.credit;
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.message || `HTTP error! status: ${response.status}`);
+            }
+
+             // --- Update local data model directly after *each* successful save ---
+             const assignmentKey = `${subjectId}-${classroomId}`;
+             let gradeData = loadedData.grades.find(g =>
+                 g.classrooms.some(c => c.id == classroomId)
+             );
+             if (gradeData) {
+                  if (!gradeData.assignments) gradeData.assignments = {}; // Ensure exists
+                 if (result.status === 'deleted') { // Should not happen in quick assign, but good practice
+                     delete gradeData.assignments[assignmentKey];
+                 } else if (result.teacher_ids !== undefined) {
+                     gradeData.assignments[assignmentKey] = result.teacher_ids;
+                 }
+             }
+             // We don't update summary here, do it once after Promise.all
+
+            return result; // Return result for Promise.all
+
+        } catch (error) {
+            console.error(`Error saving assignment NOW for ${subjectId}-${classroomId}:`, error);
+            // Re-throw the error so Promise.all knows this one failed
+            throw error;
+        }
+    }
+
+    function renderGradeTable(grade) {
+        const tableContainer = document.createElement('div');
+        tableContainer.className = 'table-responsive mb-4';
+
+        let tableHtml = `<h4 class="mt-4 mb-3">ระดับชั้น ${grade.name}</h4>`;
+        tableHtml += `<table class="table table-bordered table-hover align-middle assignment-table" id="gradeTable-${grade.id}">`;
+
+        // Header Row
+        tableHtml += '<thead><tr class="table-light text-center">';
+        tableHtml += '<th class="sticky-col">รายวิชา (หน่วยกิต)</th>';
+        grade.classrooms.forEach(c => {
+            tableHtml += `<th>${c.name}<br><small class="text-muted fw-normal">${c.program_name || 'N/A'} (${(c.total_credits || 0).toFixed(1)} นก.)</small></th>`;
+        });
+        tableHtml += '</tr></thead>';
+
+        // Body Rows
+        tableHtml += '<tbody>';
+        const allSubjectsInGrade = {};
+        if (grade.subjects_by_program) {
+            Object.values(grade.subjects_by_program).forEach(programSubjects => {
+                if (programSubjects) {
+                    programSubjects.forEach(s => {
+                        if (s && s.id && !allSubjectsInGrade[s.id]) {
+                            allSubjectsInGrade[s.id] = s;
+                        }
+                    });
+                }
+            });
+        }
+        const sortedSubjects = Object.values(allSubjectsInGrade).sort((a, b) => (a.code || '').localeCompare(b.code || ''));
+
+        sortedSubjects.forEach(subject => {
+            // --- Add Quick Assign Button ---
+            const quickAssignBtnHtml = `<button class="btn btn-sm btn-outline-primary quick-assign-btn ms-2"
+                                                data-subject-id="${subject.id}"
+                                                data-group-id="${subject.group_id}"
+                                                data-grade-id="${grade.id}"
+                                                title="มอบหมายครูสำหรับวิชานี้ทุกห้อง">
+                                            <i class="bi bi-people-fill"></i> ทั้งหมด
+                                        </button>`;
+            tableHtml += `<tr><td class="sticky-col align-middle">${subject.code} - ${subject.name} (${(subject.credit || 0).toFixed(1)}) ${quickAssignBtnHtml}</td>`;
+             // --- End Add Quick Assign Button ---
+
+            grade.classrooms.forEach(classroom => {
+                const classroomProgramId = classroom.program_id;
+                const subjectApplies = classroomProgramId &&
+                                       grade.subjects_by_program &&
+                                       grade.subjects_by_program[classroomProgramId] &&
+                                       grade.subjects_by_program[classroomProgramId].some(s => s && s.id === subject.id);
+
+                if (subjectApplies) {
+                    const selectId = `teacherSelect-${subject.id}-${classroom.id}`;
+                    tableHtml += `<td class="text-center align-middle">
+                                    <select id="${selectId}" class="teacher-select"
+                                            data-subject-id="${subject.id}"
+                                            data-classroom-id="${classroom.id}"
+                                            data-group-id="${subject.group_id}"
+                                            multiple>
+                                    </select>
+                                  </td>`;
+                } else {
+                    tableHtml += '<td class="text-center align-middle text-muted bg-light">-</td>';
+                }
+            });
+            tableHtml += '</tr>';
+        });
+        tableHtml += '</tbody></table>';
+        tableContainer.innerHTML = tableHtml;
+        return tableContainer;
+    }
+
+    function initializeTomSelectsForGrade(gradeData) {
+         // Destroy existing instances for this grade to prevent duplicates if re-rendering
+         gradeData.classrooms.forEach(classroom => {
+             const subjectsForProgram = (classroom.program_id && gradeData.subjects_by_program && gradeData.subjects_by_program[classroom.program_id]) ? gradeData.subjects_by_program[classroom.program_id] : [];
+             subjectsForProgram.forEach(subject => {
+                 const selectId = `teacherSelect-${subject.id}-${classroom.id}`;
+                 const selectElement = document.getElementById(selectId);
+                 if (selectElement && selectElement.tomselect) {
+                     selectElement.tomselect.destroy();
+                 }
+             });
+         });
+
+        if (!loadedData || !loadedData.teachers_by_group) return;
+
+        const teacherOptions = {};
+        for (const groupId in loadedData.teachers_by_group) {
+            teacherOptions[groupId] = loadedData.teachers_by_group[groupId].map(t => ({ value: t.id, text: t.name }));
+        }
+
+        gradeData.classrooms.forEach(classroom => {
+            const classroomProgramId = classroom.program_id;
+            if (!classroomProgramId) return;
+
+            const subjectsForProgram = (gradeData.subjects_by_program && gradeData.subjects_by_program[classroomProgramId]) ? gradeData.subjects_by_program[classroomProgramId] : [];
+
+            subjectsForProgram.forEach(subject => {
+                const selectId = `teacherSelect-${subject.id}-${classroom.id}`;
+                const selectElement = document.getElementById(selectId);
+                if (!selectElement) return;
+
+                const groupId = subject.group_id;
+                const options = teacherOptions[groupId] || [];
+                const assignmentKey = `${subject.id}-${classroom.id}`;
+                // Get selected teachers from the assignments specific to this grade
+                const selectedItems = (gradeData.assignments && gradeData.assignments[assignmentKey]) ? gradeData.assignments[assignmentKey] : [];
+
+                try {
+                     new TomSelect(selectElement, {
+                        options: options,
+                        items: selectedItems.map(String), // TomSelect expects string IDs for items
+                        placeholder: 'เลือกครูผู้สอน',
+                        plugins: ['remove_button'],
+                        create: false,
+                        maxItems: null,
+                        onChange: function(value) {
+                             // Value is an array of strings. Convert to numbers.
+                            const selectedIds = value.map(id => parseInt(id, 10));
+                            // Use the globally defined save function
+                            scheduleSaveAssignment(subject.id, classroom.id, selectedIds);
+                        }
+                    });
+                } catch (e) {
+                    console.error(`Failed to initialize TomSelect for ${selectId}:`, e);
+                    selectElement.outerHTML = '<span class="text-danger small">Error loading teachers</span>';
+                }
+            });
+        });
+    }
+
+    function renderWorkloadSummary(workload) {
+        if (Object.keys(workload).length === 0) {
+            summaryDiv.innerHTML = ''; // Clear if no workload
+            return;
+        }
+        let html = `<div class="card"><div class="card-header"><h5><i class="bi bi-bar-chart-line-fill"></i> สรุปภาระงานสอน</h5></div><div class="card-body"><div class="row row-cols-1 row-cols-md-2 row-cols-lg-4 g-3">`;
+        const sortedTeachers = Object.values(workload).sort((a, b) => a.name.localeCompare(b.name));
+        sortedTeachers.forEach(teacher => {
+            html += `<div class="col"><div class="card bg-light h-100"><div class="card-body">
+                     <h6 class="card-title">${teacher.name}</h6>
+                     <ul class="list-unstyled mb-0 small">
+                       <li><strong>หน่วยกิต:</strong> ${(teacher.credits || 0).toFixed(1)}</li>
+                       <li><strong>จำนวนห้อง:</strong> ${teacher.rooms || 0}</li>
+                       <li><strong>ภาระงาน:</strong> ${(teacher.periods || 0).toFixed(1)} คาบ/สัปดาห์</li>
+                     </ul></div></div></div>`;
+        });
+        html += `</div></div></div>`;
+        summaryDiv.innerHTML = html;
+    }
+
+     function updateWorkloadSummary() {
+         const workload = {};
+         // Ensure loadedData is available
+         if (!loadedData || !loadedData.grades || !loadedData.teachers_by_group) {
+             renderWorkloadSummary(workload); // Render empty summary
+             return;
+         }
+
+        const allTeachers = Object.values(loadedData.teachers_by_group).flat();
+         // Create a map of all subjects for quick lookup
+        const allSubjectsMap = {};
+         loadedData.grades.forEach(g => {
+             if (g.subjects_by_program) {
+                 Object.values(g.subjects_by_program).flat().forEach(s => {
+                      // Ensure 's' and 's.id' are valid before adding to the map
+                     if (s && s.id && !allSubjectsMap[s.id]) {
+                         allSubjectsMap[s.id] = s;
+                     }
+                 });
+             }
+         });
+
+
+        // Iterate through grades, classrooms, and their assignments
+        loadedData.grades.forEach(grade => {
+             // Skip if assignments are missing for the grade
+             if (!grade.assignments) return;
+
+            // Iterate through the assignment keys for this grade
+             for (const assignmentKey in grade.assignments) {
+                 const [subjectIdStr, classroomIdStr] = assignmentKey.split('-');
+                 const subjectId = parseInt(subjectIdStr);
+                 //const classroomId = parseInt(classroomIdStr); // classroomId not needed here
+                 const teacherIds = grade.assignments[assignmentKey] || [];
+                 const subject = allSubjectsMap[subjectId]; // Find subject details
+
+                if (!subject) continue; // Skip if subject info not found
+
+                teacherIds.forEach(teacherId => {
+                    if (!workload[teacherId]) {
+                        const teacher = allTeachers.find(t => t.id == teacherId);
+                        workload[teacherId] = {
+                            name: teacher ? teacher.name : `Teacher ID: ${teacherId}`,
+                            uniqueSubjectIds: new Set(),
+                            rooms: 0,
+                            periods: 0
+                        };
+                    }
+                    workload[teacherId].uniqueSubjectIds.add(subjectId);
+                    workload[teacherId].rooms += 1;
+                    // Calculate periods (assuming 1 credit = 2 periods, adjust if needed)
+                    if (subject.credit) {
+                         workload[teacherId].periods += (subject.credit * 2);
                     }
                 });
-                teacherData.credits = totalCredits;
+             }
+         });
+
+
+        // Calculate total credits for each teacher
+        Object.values(workload).forEach(teacherData => {
+            let totalCredits = 0;
+            teacherData.uniqueSubjectIds.forEach(subjectId => {
+                const subject = allSubjectsMap[subjectId];
+                if (subject && subject.credit) {
+                    totalCredits += subject.credit;
+                }
             });
-            
-            renderWorkloadSummary(workload);
+            teacherData.credits = totalCredits;
+             // Ensure periods is a number
+             teacherData.periods = teacherData.periods || 0;
+        });
+
+        renderWorkloadSummary(workload);
+    }
+
+    async function loadAssignmentData() {
+        clearTimeout(saveTimer);
+        showLoading(true);
+        updateStatus('⏳ กำลังโหลดข้อมูล...', 'info', 60000); // Longer timeout
+        contentDiv.innerHTML = ''; // Clear previous tables
+        summaryDiv.innerHTML = ''; // Clear previous summary
+        loadedData = {}; // Clear previous data
+
+        const selectedSemesterId = semesterSelect.value;
+
+        if (!selectedSemesterId) {
+            updateStatus('⚠️ กรุณาเลือกภาคเรียน', 'warning');
+            showLoading(false);
+            return;
         }
 
-        function renderWorkloadSummary(workload) {
-            if (Object.keys(workload).length === 0) {
-                summaryDiv.innerHTML = '';
-                return;
+        try {
+            const response = await fetch(`/admin/api/assignments-data?semester_id=${selectedSemesterId}`);
+            if (!response.ok) {
+                 const errorData = await response.json().catch(() => ({})); // Try to get error message
+                throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
             }
+            const data = await response.json();
 
-            let html = `
-                <div class="card">
-                    <div class="card-header">
-                        <h5><i class="bi bi-bar-chart-line-fill"></i> สรุปภาระงานสอน</h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="row row-cols-1 row-cols-md-2 row-cols-lg-4 g-3">`;
+            if (data && data.grades && data.teachers_by_group) {
+                loadedData = data; // Store data globally
 
-            // Sort teachers by name
-            const sortedTeachers = Object.values(workload).sort((a, b) => a.name.localeCompare(b.name));
-
-            sortedTeachers.forEach(teacher => {
-                html += `
-                    <div class="col">
-                        <div class="card bg-light h-100">
-                            <div class="card-body">
-                                <h6 class="card-title">${teacher.name}</h6>
-                                <ul class="list-unstyled mb-0 small">
-                                    <li><strong>หน่วยกิต:</strong> ${teacher.credits.toFixed(1)}</li>
-                                    <li><strong>จำนวนห้อง:</strong> ${teacher.rooms}</li>
-                                    <li><strong>ภาระงาน:</strong> ${teacher.periods.toFixed(1)} คาบ/สัปดาห์</li>
-                                </ul>
-                            </div>
-                        </div>
-                    </div>`;
-            });
-            
-            html += `   </div>
-                    </div>
-                </div>`;
-            summaryDiv.innerHTML = html;
+                if (data.grades.length === 0) {
+                    contentDiv.innerHTML = '<p class="text-muted text-center mt-5">ℹ️ ไม่พบข้อมูลห้องเรียนหรือหลักสูตรสำหรับภาคเรียนนี้</p>';
+                } else {
+                    // Render each grade level section
+                    data.grades.forEach(grade => {
+                        const gradeElement = renderGradeTable(grade); // Render table HTML
+                        contentDiv.appendChild(gradeElement);
+                        initializeTomSelectsForGrade(grade); // Initialize TomSelects AFTER table is in DOM
+                    });
+                }
+                updateWorkloadSummary(); // Calculate and display summary
+                updateStatus('', 'info'); // Clear loading status
+            } else {
+                throw new Error("โครงสร้างข้อมูลที่ได้รับจาก API ไม่ถูกต้อง");
+            }
+        } catch (error) {
+            console.error('Error loading assignment data:', error);
+            contentDiv.innerHTML = `<p class="text-danger text-center mt-5">❌ เกิดข้อผิดพลาดในการโหลดข้อมูล: ${error.message}</p>`;
+            updateStatus('❌ โหลดข้อมูลล้มเหลว', 'danger');
+        } finally {
+            showLoading(false);
         }
-                
+    }
+
+    function populateSemesters(yearId) {
+        const semesters = semestersByYear[yearId] || [];
+        semesterSelect.innerHTML = ''; // Clear existing options
+        let foundCurrent = false;
+        semesters.forEach(sem => {
+            const option = new Option(`ภาคเรียนที่ ${sem.term}`, sem.id);
+            semesterSelect.add(option);
+            if (sem.id === currentSemesterId) {
+                 option.selected = true; // Select current semester if available for this year
+                 foundCurrent = true;
+            }
+        });
+        // If current semester wasn't for this year, select the first option if available
+         if (!foundCurrent && semesterSelect.options.length > 0) {
+             semesterSelect.options[0].selected = true;
+         } else if (semesterSelect.options.length === 0) {
+              // Add a disabled option if no semesters exist for the selected year
+             const option = new Option('ไม่พบภาคเรียน', '', true, true);
+             option.disabled = true;
+             semesterSelect.add(option);
+         }
+        loadAssignmentData(); // Load data for the (newly) selected semester
+    }
+
+    // --- Event Listeners & Initial Load ---
+    if (!csrfToken) {
+        console.error("CSRF Token not found on page load!");
+        updateStatus('❌ ข้อผิดพลาด: ไม่พบ CSRF Token', 'danger');
+        showLoading(false); // Hide loading as nothing will work
+    } else {
+        // Initial population of semesters based on default selected year
+        populateSemesters(yearSelect.value);
+
+        // Add event listeners
+        yearSelect.addEventListener('change', () => populateSemesters(yearSelect.value));
+        semesterSelect.addEventListener('change', loadAssignmentData);
+
+        // Quick Assign Button Listener
         contentDiv.addEventListener('click', async function(e) {
             const btn = e.target.closest('.quick-assign-btn');
             if (!btn) return;
@@ -461,16 +539,24 @@
             const subjectId = btn.dataset.subjectId;
             const groupId = btn.dataset.groupId;
             const gradeId = btn.dataset.gradeId;
-            
-            const grade = assignmentsData.grades.find(g => g.id == gradeId);
-            const teachers = assignmentsData.teachers_by_group[groupId] || [];
+
+             // Find grade data within loadedData
+             const grade = loadedData.grades ? loadedData.grades.find(g => g.id == gradeId) : null;
+             // Find teachers within loadedData
+             const teachers = (loadedData.teachers_by_group && loadedData.teachers_by_group[groupId]) ? loadedData.teachers_by_group[groupId] : [];
+
+
+            if (!grade) {
+                 console.error("Grade data not found for quick assign.");
+                 return; // Should not happen if button rendered correctly
+            }
+
             if (teachers.length === 0) {
                 Swal.fire('ไม่พบครู', 'ไม่พบครูที่สังกัดในกลุ่มสาระฯ นี้', 'warning');
                 return;
             }
             const inputOptions = teachers.reduce((acc, t) => { acc[t.id] = t.name; return acc; }, {});
 
-            // เปลี่ยนชื่อตัวแปรให้ชัดเจนขึ้นว่าเป็น ID ของครูคนเดียว
             const { value: selectedTeacherId } = await Swal.fire({
                 title: 'เลือกครูผู้สอนสำหรับทุกห้อง',
                 input: 'select',
@@ -478,34 +564,49 @@
                 inputPlaceholder: 'เลือกครู',
                 showCancelButton: true,
                 confirmButtonText: 'มอบหมาย',
-                footer: 'การดำเนินการนี้จะเขียนทับข้อมูลเดิมทั้งหมดของวิชานี้'
+                cancelButtonText: 'ยกเลิก',
+                footer: 'การดำเนินการนี้จะเขียนทับข้อมูลเดิมทั้งหมดของวิชานี้ในระดับชั้นนี้'
             });
 
-            // --- จุดแก้ไขสำคัญ: ตรวจสอบว่า selectedTeacherId มีค่าและไม่ใช่สตริงว่าง ---
             if (selectedTeacherId && selectedTeacherId !== '') {
                 showLoading(true);
-                updateStatus('กำลังดำเนินการ...', 'primary');
+                updateStatus('⏳ กำลังมอบหมายด่วน...', 'primary', 60000);
+                const teacherIdArray = [parseInt(selectedTeacherId)]; // Array with single selected teacher
 
-                // แปลง ID ที่เป็น string ให้เป็น number แล้วใส่ใน array
-                const teacherIdArray = [parseInt(selectedTeacherId)];
+                // Filter classrooms where the subject applies BEFORE mapping promises
+                const applicableClassrooms = grade.classrooms.filter(c => {
+                     const classroomProgramId = c.program_id;
+                     return classroomProgramId &&
+                            grade.subjects_by_program &&
+                            grade.subjects_by_program[classroomProgramId] &&
+                            grade.subjects_by_program[classroomProgramId].some(s => s && s.id == subjectId);
+                });
 
-                const promises = grade.classrooms.map(c => saveAssignment(subjectId, c.id, teacherIdArray));
-                
+                // Create save promises ONLY for applicable classrooms
+                const promises = applicableClassrooms.map(c =>
+                    saveAssignmentNow(subjectId, c.id, teacherIdArray) // <-- Use the direct save function
+                );
+
                 try {
-                    await Promise.all(promises);
-                    updateStatus('มอบหมายด่วนสำเร็จ', 'info');
-                    loadAssignmentData(); // Reload UI to reflect widespread changes
+                    await Promise.all(promises); // Wait for all direct saves
+                    updateStatus('✅ มอบหมายด่วนสำเร็จ', 'success');
+                    // --- Refresh UI AFTER all promises are resolved ---
+                    updateWorkloadSummary(); // Update summary based on updated loadedData
+                    // Re-initialize TomSelects for the affected grade to show changes
+                    initializeTomSelectsForGrade(grade);
+                    // No need for full loadAssignmentData() which flickers
+                    
                 } catch (error) {
-                    updateStatus('เกิดข้อผิดพลาด', 'danger');
+                    // Error is already logged inside saveAssignmentNow
+                    updateStatus('❌ เกิดข้อผิดพลาดบางส่วนระหว่างมอบหมายด่วน', 'danger');
+                } finally {
+                    // Hide loading regardless of success or partial failure
                     showLoading(false);
                 }
+                 // No finally needed here, loadAssignmentData handles showLoading(false) on success/error
             }
         });
-        // Initial Load
-        populateSemesters(yearSelect.value);
-        
-        yearSelect.addEventListener('change', () => populateSemesters(yearSelect.value));
-        semesterSelect.addEventListener('change', loadAssignmentData);
-    });
+    }
+
 </script>
 {% endblock %}
