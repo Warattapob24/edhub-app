@@ -19,8 +19,8 @@ from sqlalchemy import func, or_
 import json, os, uuid
 import pandas as pd
 from sqlalchemy.orm import joinedload, selectinload
-from app.models import AcademicYear, AdministrativeDepartment, AssessmentDimension, AssessmentTemplate, AssessmentTopic, AttendanceRecord, AttendanceWarning, AuditLog, Classroom, Course, Curriculum, Enrollment, GradeLevel, GradedItem, Indicator, LearningStrand, LearningUnit, LessonPlan, Notification, Role, Room, RubricLevel, Score, Semester, Setting, Standard, Student, Subject, SubjectGroup, SubjectType, TimeSlot, User, WeeklyScheduleSlot
-from app.admin.forms import AcademicYearForm, AddUserForm, AssessmentDimensionForm, AssessmentTemplateForm, AssessmentTopicForm, AssessmentTopicForm, AssignAdvisorsForm, AssignHeadsForm, ClassroomForm, CurriculumForm, EditUserForm, EnrollmentForm, GradeLevelForm, RoleForm, RubricLevelForm, SemesterForm, StudentForm, SubjectForm, SubjectForm, SubjectGroupForm, SubjectTypeForm, get_all_academic_years, get_all_semesters, get_all_grade_levels
+from app.models import AcademicYear, AdministrativeDepartment, AssessmentDimension, AssessmentTemplate, AssessmentTopic, AttendanceRecord, AttendanceWarning, AuditLog, Classroom, Course, Curriculum, Enrollment, GradeLevel, GradedItem, Indicator, LearningStrand, LearningUnit, LessonPlan, Notification, Program, Role, Room, RubricLevel, Score, Semester, Setting, Standard, Student, Subject, SubjectGroup, SubjectType, TimeSlot, User, WeeklyScheduleSlot
+from app.admin.forms import AcademicYearForm, AddUserForm, AssessmentDimensionForm, AssessmentTemplateForm, AssessmentTopicForm, AssessmentTopicForm, AssignAdvisorsForm, AssignHeadsForm, ClassroomForm, CurriculumForm, EditUserForm, EnrollmentForm, GradeLevelForm, ProgramForm, RoleForm, RubricLevelForm, SemesterForm, StudentForm, SubjectForm, SubjectForm, SubjectGroupForm, SubjectTypeForm, get_all_academic_years, get_all_semesters, get_all_grade_levels
 from flask_login import current_user, login_required
 from werkzeug.utils import secure_filename
 
@@ -781,91 +781,276 @@ def get_curriculum_for_selection(semester_id, grade_id):
     existing_subject_ids = [c.subject_id for c in existing_subjects]
     return jsonify(existing_subject_ids)
 
-# app/admin/routes.py
-
 @bp.route('/curriculum', methods=['GET', 'POST'])
 def manage_curriculum():
     if request.method == 'POST':
+        # --- POST Logic (ปรับปรุงให้รับ program_id) ---
         data = request.get_json()
-        if not data: 
+        if not data:
             return jsonify({'status': 'error', 'message': 'Invalid data'}), 400
-        
+
         semester_id = data.get('semester_id')
         grade_id = data.get('grade_level_id')
+        program_id = data.get('program_id') # <-- รับ program_id
         selected_subject_ids = data.get('subject_ids', [])
+
+        # --- [START V26 VALIDATION] ---
+        # Basic validation
+        if not all([semester_id, grade_id, program_id]):
+             return jsonify({'status': 'error', 'message': 'Missing semester, grade, or program ID'}), 400
+        # --- [END V26 VALIDATION] ---
+
         try:
-            Curriculum.query.filter_by(semester_id=semester_id, grade_level_id=grade_id).delete()
-            for sub_id in selected_subject_ids:
-                new_entry = Curriculum(semester_id=semester_id, grade_level_id=grade_id, subject_id=int(sub_id))
-                db.session.add(new_entry)
+            # --- [ START REVISED LOGIC ] ---
+
+            # --- 1. รับ ID และแปลงเป็น Integer แต่เนิ่นๆ ---
+            semester_id_str = data.get('semester_id')
+            grade_id_str = data.get('grade_level_id')
+            program_id_str = data.get('program_id')
+            selected_subject_ids_str = data.get('subject_ids', [])
+
+            try:
+                semester_id = int(semester_id_str)
+                grade_id = int(grade_id_str)
+                program_id = int(program_id_str)
+                # ใช้ set เพื่อให้แน่ใจว่า ID ไม่ซ้ำ และแปลงเป็น integer
+                selected_subject_ids = set(map(int, selected_subject_ids_str))
+            except (ValueError, TypeError, AttributeError):
+                 return jsonify({'status': 'error', 'message': 'รูปแบบ ID ที่ส่งมาไม่ถูกต้อง'}), 400
+
+            # --- [START V26 VALIDATION] --- (เหมือนเดิม)
+            if not all([semester_id, grade_id, program_id]):
+                return jsonify({'status': 'error', 'message': 'Missing semester, grade, or program ID'}), 400
+            # --- [END V26 VALIDATION] ---
+
+            # --- 2. ค้นหา Subject ID ที่มีอยู่ *เดิม* สำหรับบริบทนี้ ---
+            existing_curriculum_items = Curriculum.query.filter_by(
+                semester_id=semester_id,
+                grade_level_id=grade_id,
+                program_id=program_id
+            ).all()
+            existing_subject_ids = {c.subject_id for c in existing_curriculum_items}
+
+            # --- 3. คำนวณหา ID ที่ต้อง ลบ และ เพิ่ม ---
+            ids_to_delete = existing_subject_ids - selected_subject_ids
+            ids_to_add = selected_subject_ids - existing_subject_ids
+
+            # --- 4. Log การเปลี่ยนแปลง (ถ้ามี) ---
+            if ids_to_delete or ids_to_add:
+                log_action(
+                    action="Update Curriculum",
+                    model=Curriculum,
+                    record_id=f"S{semester_id}-G{grade_id}-P{program_id}",
+                    old_value={'subject_ids': sorted(list(existing_subject_ids))},
+                    new_value={'subject_ids': sorted(list(selected_subject_ids))}
+                )
+
+            # --- 5. ทำการลบ *เฉพาะ* ID ที่ต้องลบ ---
+            if ids_to_delete:
+                # หา object Curriculum ที่จะลบจริงๆ
+                items_to_delete = [item for item in existing_curriculum_items if item.subject_id in ids_to_delete]
+                for item in items_to_delete:
+                    db.session.delete(item)
+                # หรือใช้วิธี Query Delete ที่เร็วกว่า (แต่ต้องระวังเรื่อง session synchronization)
+                # Curriculum.query.filter(
+                #     Curriculum.semester_id == semester_id,
+                #     Curriculum.grade_level_id == grade_id,
+                #     Curriculum.program_id == program_id,
+                #     Curriculum.subject_id.in_(ids_to_delete)
+                # ).delete(synchronize_session=False)
+
+            # --- 6. ทำการเพิ่ม *เฉพาะ* ID ที่ต้องเพิ่ม ---
+            if ids_to_add:
+                db.session.bulk_insert_mappings(
+                    Curriculum,
+                    [{'semester_id': semester_id,
+                      'grade_level_id': grade_id,
+                      'program_id': program_id,
+                      'subject_id': sub_id}
+                     for sub_id in ids_to_add]
+                )
+
+            # --- 7. Commit การเปลี่ยนแปลงทั้งหมด ---
             db.session.commit()
             return jsonify({'status': 'success', 'message': 'บันทึกเรียบร้อยแล้ว'})
+
+            # --- [ END REVISED LOGIC ] ---
+
         except Exception as e:
             db.session.rollback()
+            # --- [START LOGGING FAILURE - เหมือนเดิม] ---
+            # ใช้ f-string หรือ .format() ในการสร้าง record_id
+            log_record_id = f"S{semester_id_str or '?'}-G{grade_id_str or '?'}-P{program_id_str or '?'}"
+            log_action(f"Update Curriculum Failed: {type(e).__name__}", model=Curriculum, record_id=log_record_id)
+            try: db.session.commit()
+            except: db.session.rollback()
+            # --- [END LOGGING FAILURE] ---
+            current_app.logger.error(f"Error updating curriculum {log_record_id}: {e}", exc_info=True)
+            # Check specifically for UniqueViolation to give a clearer message
+            if isinstance(e, IntegrityError) and 'UniqueViolation' in str(e.orig):
+                 return jsonify({'status': 'error', 'message': f'เกิดข้อผิดพลาด: ข้อมูลซ้ำซ้อน ({e.orig})'}), 409 # 409 Conflict
             return jsonify({'status': 'error', 'message': str(e)}), 500
 
-    # --- GET Request Logic (เวอร์ชันใหม่) ---
+    # --- GET Request Logic (ปรับปรุงให้รองรับ program_id) ---
     form = CurriculumForm() # ใช้สำหรับสร้าง Dropdown
-    
+
     all_semesters = get_all_semesters()
     all_grades = get_all_grade_levels()
+    all_programs = Program.query.order_by(Program.name).all() # <-- Query Programs
+
     form.semester.choices = [(s.id, f"{s.term}/{s.academic_year.year}") for s in all_semesters]
     form.grade_level.choices = [(g.id, g.name) for g in all_grades]
-    
-    # <<< เพิ่มส่วนนี้: ตรวจจับค่าจาก URL หรือตั้งค่าเริ่มต้น >>>
-    # 1. หาค่าที่ถูกเลือกจาก URL query string
+    form.program.choices = [(p.id, p.name) for p in all_programs] # <-- เพิ่ม Program choices
+
+    # ดึงค่าที่เลือกจาก URL หรือตั้งค่าเริ่มต้น
     selected_semester_id = request.args.get('semester', type=int)
     selected_grade_id = request.args.get('grade_level', type=int)
+    selected_program_id = request.args.get('program', type=int) # <-- รับ program จาก URL
 
-    # 2. ถ้าไม่มีใน URL, ให้ใช้ค่าแรกสุดเป็นค่าเริ่มต้น
     if not selected_semester_id and all_semesters:
         selected_semester_id = all_semesters[0].id
     if not selected_grade_id and all_grades:
         selected_grade_id = all_grades[0].id
+    if not selected_program_id and all_programs:
+        # ใช้ Program แรก (อาจจะเป็น 'ทั่วไป') เป็นค่าเริ่มต้น
+        selected_program_id = all_programs[0].id # <-- ตั้งค่า program เริ่มต้น
 
-    # 3. กำหนดค่าที่เลือกได้ให้กับฟอร์ม
     form.semester.data = selected_semester_id
     form.grade_level.data = selected_grade_id
-    # <<< สิ้นสุดส่วนที่เพิ่ม >>>
+    form.program.data = selected_program_id # <-- กำหนดค่า program ให้ฟอร์ม
 
-    # สร้าง Master Data ของรายวิชาทั้งหมด ส่งให้ JavaScript
-    master_curriculum = {grade.id: [{"id": s.id, "code": s.subject_code, "name": s.name, "type": s.subject_type.name} 
-                           for s in grade.subjects.order_by(Subject.subject_code).all()] 
-                           for grade in all_grades}
+    # Master Data รายวิชา (เหมือนเดิม - ดึงทุกวิชาของ Grade)
+    master_curriculum = {}
+    for grade in all_grades:
+        subjects_for_grade = grade.subjects.options(joinedload(Subject.subject_type)).order_by(Subject.subject_code).all()
+        master_curriculum[grade.id] = [
+            {"id": s.id, "code": s.subject_code, "name": s.name, "type": s.subject_type.name, "credit": s.credit}
+            for s in subjects_for_grade
+        ]
 
-    # สร้าง Master Data ของหลักสูตรที่มีอยู่แล้วทั้งหมด ส่งให้ JavaScript
+    # --- [START V26 MODIFICATION] ปรับ Key ของ Existing Curriculum ---
+    # Master Data หลักสูตรที่มีอยู่ (ปรับ Key ให้รวม program_id)
     all_existing_curriculum_items = Curriculum.query.all()
     all_existing_curriculum = {}
     for item in all_existing_curriculum_items:
-        key = f"{item.semester_id}-{item.grade_level_id}"
+        key = f"{item.semester_id}-{item.grade_level_id}-{item.program_id}" # <-- Key ใหม่
         if key not in all_existing_curriculum:
             all_existing_curriculum[key] = []
         all_existing_curriculum[key].append(item.subject_id)
+    # --- [END V26 MODIFICATION] ---
 
     return render_template(
         'admin/manage_curriculum_ajax.html',
-        form=form, 
+        form=form,
         title='จัดการหลักสูตร',
         master_curriculum_json=json.dumps(master_curriculum),
         all_existing_curriculum_json=json.dumps(all_existing_curriculum)
+        # ไม่ต้องส่ง selected_ids แยก เพราะ JavaScript จะดึงจาก all_existing_curriculum_json เอง
     )
 
 # เส้นทางสำหรับแสดงรายการห้องเรียน
 @bp.route('/classrooms')
+@login_required
+#@admin_required
 def list_classrooms():
-    page = request.args.get('page', 1, type=int)
-    # ใช้ joinedload เพื่อดึงข้อมูล AcademicYear และ GradeLevel มาพร้อมกันใน query เดียว
-    query = Classroom.query.join(AcademicYear).options(
-        joinedload(Classroom.academic_year),
-        joinedload(Classroom.grade_level)
-    ).order_by(AcademicYear.year.desc(), Classroom.name)
+    # --- [ START V25 MODIFICATION ] ---
+    all_programs = Program.query.order_by(Program.name).all()
+    # --- [ END V25 MODIFICATION ] ---
+
+    current_semester = Semester.query.filter_by(is_current=True).options(joinedload(Semester.academic_year)).first()
+    if current_semester:
+        current_academic_year = current_semester.academic_year
+    else:
+        current_academic_year = None
+    if not current_academic_year:
+        flash('กรุณากำหนดปีการศึกษาปัจจุบันก่อน', 'warning')
+        classrooms_by_grade = {}
+        # +++ 1. เพิ่ม pagination_object เปล่า กรณีไม่มีข้อมูล +++
+        pagination_object = None 
+    else:
+        # +++ 2. เพิ่มการดึงค่า page จาก URL +++
+        page = request.args.get('page', 1, type=int)
+
+        # +++ 3. เปลี่ยนจาก .all() เป็น .paginate() +++
+        pagination_object = GradeLevel.query.options(
+            selectinload(GradeLevel.classrooms).joinedload(Classroom.program), 
+            selectinload(GradeLevel.classrooms).joinedload(Classroom.advisors),
+            selectinload(GradeLevel.classrooms).joinedload(Classroom.room) 
+        ).order_by(GradeLevel.id).paginate(
+            page=page, per_page=10, error_out=False  # (ปรับ per_page 10 หน้า หรือตามต้องการ)
+        )
+
+        # +++ 4. ดึง .items จาก pagination_object มาใช้ +++
+        grade_levels_items = pagination_object.items 
+
+        classrooms_by_grade = {
+            grade.name: sorted(
+                [c for c in grade.classrooms if c.academic_year_id == current_academic_year.id],
+                key=lambda x: x.name
+            )
+            for grade in grade_levels_items # <--- 5. วนลูปจาก .items
+        }
+
+    form = ClassroomForm() 
+    csrf_form = FlaskForm() 
+
+    return render_template('admin/classrooms.html',
+                           title='จัดการห้องเรียน',
+                           classrooms_by_grade=classrooms_by_grade,
+                           form=form, 
+                           csrf_form=csrf_form,
+                           all_programs=all_programs,
+                           current_academic_year=current_academic_year,
+                           # +++ 6. ส่ง pagination object ทั้งก้อนไปด้วย +++
+                           pagination=pagination_object
+                           )
+
+@bp.route('/api/classroom/<int:classroom_id>/set-program', methods=['POST'])
+@login_required
+#@admin_required
+def set_classroom_program(classroom_id):
+    classroom = Classroom.query.get_or_404(classroom_id)
+    data = request.get_json()
     
-    pagination = query.paginate(page=page, per_page=20, error_out=False)
-    classrooms = pagination.items
-    return render_template('admin/classrooms.html', 
-                           classrooms=classrooms, 
-                           pagination=pagination, 
-                           title='จัดการห้องเรียน')
+    if data is None:
+         return jsonify({'status': 'error', 'message': 'Invalid request data'}), 400
+
+    new_program_id = data.get('program_id') # Expecting {'program_id': ID_or_null}
+
+    # Convert empty string or 0 from dropdown to None (NULL in DB)
+    if isinstance(new_program_id, str) and not new_program_id.strip():
+        new_program_id = None
+    elif isinstance(new_program_id, int) and new_program_id == 0:
+         new_program_id = None
+    elif new_program_id is not None:
+         try:
+             new_program_id = int(new_program_id)
+             # Optional: Check if the program ID actually exists
+             if not Program.query.get(new_program_id):
+                 return jsonify({'status': 'error', 'message': 'Invalid Program ID'}), 400
+         except (ValueError, TypeError):
+              return jsonify({'status': 'error', 'message': 'Invalid Program ID format'}), 400
+
+    if classroom.program_id != new_program_id:
+        old_program_name = classroom.program.name if classroom.program else None
+        classroom.program_id = new_program_id
+        try:
+            db.session.commit()
+            new_program_name = classroom.program.name if classroom.program else None
+            log_action("Update Classroom Program", model=Classroom, record_id=classroom.id,
+                       old_value={'program': old_program_name}, new_value={'program': new_program_name})
+            db.session.commit() # Commit log
+            return jsonify({'status': 'success', 'message': 'บันทึกสายการเรียนสำเร็จ'})
+        except Exception as e:
+            db.session.rollback()
+            log_action(f"Update Classroom Program Failed: {type(e).__name__}", model=Classroom, record_id=classroom.id)
+            try: db.session.commit()
+            except: db.session.rollback()
+            current_app.logger.error(f"Error setting program for classroom {classroom_id}: {e}", exc_info=True)
+            return jsonify({'status': 'error', 'message': f'เกิดข้อผิดพลาด: {e}'}), 500
+    else:
+        # No change needed
+        return jsonify({'status': 'success', 'message': 'ไม่มีการเปลี่ยนแปลง'})                           
 
 # เส้นทางสำหรับเพิ่มห้องเรียนใหม่
 @bp.route('/classrooms/add', methods=['GET', 'POST'])
@@ -1975,57 +2160,116 @@ def get_assignments_data():
     if not semester_id:
         return jsonify({'error': 'Missing semester_id'}), 400
 
-    # <<< จุดแก้ไขที่ 1: ดึงข้อมูล Semester และ Academic Year ให้ถูกต้อง >>>
-    semester = Semester.query.get(semester_id)
+    semester = db.session.get(Semester, semester_id)
     if not semester:
         return jsonify({'error': 'Invalid semester_id'}), 404
     academic_year_id = semester.academic_year_id
 
-    # 1. ดึงข้อมูลที่จำเป็นทั้งหมด
-    grade_levels = GradeLevel.query.order_by(GradeLevel.id).all()
-    
-    # 2. เตรียมโครงสร้างข้อมูลที่จะส่งกลับไป
-    response_data = {
-        'grades': [],
-        'teachers_by_group': {}
+    # 1. Fetch all relevant classrooms WITH their program_id and grade_level info
+    classrooms_query = Classroom.query.filter_by(
+        academic_year_id=academic_year_id
+    ).options(
+        joinedload(Classroom.grade_level), # Need grade_level info
+        joinedload(Classroom.program)     # Need program info
+    ).order_by(Classroom.grade_level_id, Classroom.name).all()
+
+    # Group classrooms by grade_level_id
+    classrooms_by_grade = defaultdict(list)
+    for c in classrooms_query:
+        classrooms_by_grade[c.grade_level_id].append(c)
+
+    # 2. Fetch all curriculum entries for the semester + subject credits/group
+    curriculum_query = db.session.query(
+        Curriculum.grade_level_id,
+        Curriculum.program_id,
+        Subject.id,
+        Subject.subject_code,
+        Subject.name,
+        Subject.credit,
+        Subject.subject_group_id # Need group for teacher dropdown later
+    ).join(Subject, Curriculum.subject_id == Subject.id).filter(
+        Curriculum.semester_id == semester_id
+    ).order_by(Subject.subject_code).all()
+
+    # Organize curriculum by grade and program
+    curriculum_by_grade_program = defaultdict(lambda: defaultdict(list))
+    credits_by_grade_program = defaultdict(lambda: defaultdict(float))
+    for gl_id, p_id, s_id, s_code, s_name, s_credit, sg_id in curriculum_query:
+        subject_data = {'id': s_id, 'code': s_code, 'name': s_name, 'credit': (s_credit or 0), 'group_id': sg_id}
+        curriculum_by_grade_program[gl_id][p_id].append(subject_data)
+        credits_by_grade_program[gl_id][p_id] += (s_credit or 0)
+
+    # 3. Fetch existing assignments (Courses) for the relevant classrooms
+    classroom_ids = [c.id for c in classrooms_query]
+    if not classroom_ids: # Handle case with no classrooms
+         existing_courses = []
+    else:
+        existing_courses = Course.query.options(
+            joinedload(Course.teachers) # Eager load teachers for assignment info
+        ).filter(
+            Course.semester_id == semester_id,
+            Course.classroom_id.in_(classroom_ids)
+        ).all()
+    assignments = {f"{c.subject_id}-{c.classroom_id}": [t.id for t in c.teachers] for c in existing_courses}
+
+    # 4. Fetch teacher data (grouped by subject group)
+    all_subject_groups = SubjectGroup.query.options(joinedload(SubjectGroup.members)).all()
+    teachers_by_group = {
+         group.id: [{'id': m.id, 'name': m.full_name} for m in group.members]
+         for group in all_subject_groups
     }
 
-    # 3. สร้างข้อมูลสำหรับแต่ละระดับชั้น
-    for grade in grade_levels:
-        curriculum_subjects = Subject.query.join(Curriculum).filter(
-            Curriculum.grade_level_id == grade.id,
-            Curriculum.semester_id == semester_id
-        ).order_by(Subject.subject_code).all()
 
-        # <<< จุดแก้ไขที่ 2: ใช้ academic_year_id ที่ถูกต้องในการค้นหาห้องเรียน >>>
-        classrooms = grade.classrooms.filter_by(
-            academic_year_id=academic_year_id
-        ).order_by(Classroom.name).all()
+    # 5. Build response structure
+    response_data = {'grades': [], 'teachers_by_group': teachers_by_group}
 
-        # ดึงข้อมูล Course ที่มีอยู่แล้วทั้งหมดสำหรับเทอมและระดับชั้นนี้
-        existing_courses = Course.query.options(joinedload(Course.teachers)).filter(
-            Course.semester_id == semester_id,
-            Course.classroom_id.in_([c.id for c in classrooms])
-        ).all()
-        
-        assignments = {f"{c.subject_id}-{c.classroom_id}": [t.id for t in c.teachers] for c in existing_courses}
+    # Get all grade levels involved and sort them
+    grade_ids = sorted(classrooms_by_grade.keys())
+    # Fetch GradeLevel objects efficiently
+    grade_levels_map = {g.id: g for g in GradeLevel.query.filter(GradeLevel.id.in_(grade_ids)).order_by(GradeLevel.id).all()}
 
-        response_data['grades'].append({
+
+    for grade_id in grade_ids:
+        grade = grade_levels_map.get(grade_id)
+        if not grade: continue # Skip if grade level somehow doesn't exist
+
+        grade_data = {
             'id': grade.id,
             'name': grade.name,
-            'subjects': [{'id': s.id, 'code': s.subject_code, 'name': s.name, 'group_id': s.subject_group_id, 'credit': s.credit} for s in curriculum_subjects],
-            'classrooms': [{'id': c.id, 'name': c.name} for c in classrooms],
-            'assignments': assignments
-        })
+            'classrooms': [],
+            'subjects_by_program': defaultdict(list), # Restructured subjects
+            'assignments': {} # Filtered assignments for this grade
+        }
 
-    # 4. สร้างข้อมูลครู แยกตามกลุ่มสาระฯ
-    all_subject_groups = SubjectGroup.query.options(joinedload(SubjectGroup.members)).all()
-    for group in all_subject_groups:
-        # <<< จุดแก้ไขที่ 3: จัดการชื่อครูให้ปลอดภัย ป้องกันกรณี name_prefix เป็น None >>>
-        response_data['teachers_by_group'][group.id] = [
-            {'id': m.id, 'name': f"{(m.name_prefix or '')}{m.first_name} {m.last_name}"} for m in group.members
-        ]
-        # <<< สิ้นสุดส่วนแก้ไข >>>
+        # Populate classrooms data and calculate their specific total credits
+        for classroom in classrooms_by_grade[grade_id]:
+            program_id = classroom.program_id
+            # Credits for this specific program/grade, or 0.0 if no program assigned
+            total_credits = credits_by_grade_program.get(grade_id, {}).get(program_id, 0.0) if program_id else 0.0
+            grade_data['classrooms'].append({
+                'id': classroom.id,
+                'name': classroom.name,
+                'program_id': program_id, # Send program_id for frontend logic
+                'program_name': classroom.program.name if classroom.program else "ไม่ได้กำหนด", # Send program name for display
+                'total_credits': total_credits
+            })
+
+        # Populate subjects, grouped by program_id for this grade from pre-fetched curriculum
+        grade_data['subjects_by_program'] = curriculum_by_grade_program.get(grade_id, {})
+
+        # Filter assignments relevant ONLY to this grade's classrooms and subjects
+        # Find all subject IDs relevant to any program within this grade level
+        subjects_in_grade = {s['id'] for prog_id in grade_data['subjects_by_program']
+                                   for s in grade_data['subjects_by_program'][prog_id]}
+        classrooms_in_grade_ids = {c['id'] for c in grade_data['classrooms']}
+
+        grade_data['assignments'] = {
+             key: value for key, value in assignments.items()
+             # Ensure both subject and classroom IDs from the key belong to the current grade
+             if int(key.split('-')[0]) in subjects_in_grade and int(key.split('-')[1]) in classrooms_in_grade_ids
+        }
+
+        response_data['grades'].append(grade_data)
 
     return jsonify(response_data)
 
@@ -3727,3 +3971,115 @@ def get_semesters_list_api():
            current_app.logger.error(f"Error fetching semester list: {e}")
            return jsonify({"status": "error", "message": "ไม่สามารถดึงข้อมูลภาคเรียนได้"}), 500
 # --- [END ADDITION] ---
+
+# Route 1: List Programs
+@bp.route('/programs')
+@login_required
+#@admin_required # <-- เปิดใช้ decorator ที่เหมาะสม
+def list_programs():
+    programs = Program.query.order_by(Program.name).all()
+    form = FlaskForm() # For delete CSRF
+    return render_template('admin/programs.html', title='จัดการสายการเรียน', programs=programs, form=form)
+
+# Route 2: Add Program (GET)
+@bp.route('/programs/add', methods=['GET'])
+@login_required
+#@admin_required
+def add_program_get():
+    form = ProgramForm()
+    return render_template('admin/program_form.html', title='เพิ่มสายการเรียนใหม่', form=form)
+
+# Route 3: Add Program (POST)
+@bp.route('/programs/add', methods=['POST'])
+@login_required
+#@admin_required
+def add_program_post():
+    form = ProgramForm()
+    if form.validate_on_submit():
+        program = Program(name=form.name.data, description=form.description.data)
+        db.session.add(program)
+        try:
+            db.session.commit()
+            log_action("Create Program", model=Program, record_id=program.id, new_value={'name': program.name})
+            db.session.commit() # Commit log
+            flash('เพิ่มสายการเรียนใหม่สำเร็จ', 'success')
+            return redirect(url_for('admin.list_programs'))
+        except IntegrityError:
+            db.session.rollback()
+            flash('ชื่อสายการเรียนนี้มีอยู่แล้ว กรุณาใช้ชื่ออื่น', 'danger')
+        except Exception as e:
+            db.session.rollback()
+            log_action(f"Create Program Failed: {type(e).__name__}", model=Program)
+            try: db.session.commit()
+            except: db.session.rollback()
+            flash(f'เกิดข้อผิดพลาดในการบันทึก: {e}', 'danger')
+            current_app.logger.error(f"Error adding program: {e}", exc_info=True)
+            
+    return render_template('admin/program_form.html', title='เพิ่มสายการเรียนใหม่', form=form)
+
+# Route 4: Edit Program (GET, POST)
+@bp.route('/programs/edit/<int:program_id>', methods=['GET', 'POST'])
+@login_required
+#@admin_required
+def edit_program(program_id):
+    program = Program.query.get_or_404(program_id)
+    form = ProgramForm(obj=program)
+    
+    if form.validate_on_submit():
+        old_values = {'name': program.name, 'description': program.description}
+        program.name = form.name.data
+        program.description = form.description.data
+        try:
+            db.session.commit()
+            new_values = {'name': program.name, 'description': program.description}
+            log_action("Update Program", model=Program, record_id=program.id, old_value=old_values, new_value=new_values)
+            db.session.commit() # Commit log
+            flash('แก้ไขข้อมูลสายการเรียนสำเร็จ', 'success')
+            return redirect(url_for('admin.list_programs'))
+        except IntegrityError:
+            db.session.rollback()
+            flash('ชื่อสายการเรียนนี้มีอยู่แล้ว กรุณาใช้ชื่ออื่น', 'danger')
+        except Exception as e:
+            db.session.rollback()
+            log_action(f"Update Program Failed: {type(e).__name__}", model=Program, record_id=program.id)
+            try: db.session.commit()
+            except: db.session.rollback()
+            flash(f'เกิดข้อผิดพลาดในการบันทึก: {e}', 'danger')
+            current_app.logger.error(f"Error editing program {program_id}: {e}", exc_info=True)
+
+    return render_template('admin/program_form.html', title='แก้ไขสายการเรียน', form=form, program=program)
+
+# Route 5: Delete Program (POST)
+@bp.route('/programs/delete/<int:program_id>', methods=['POST'])
+@login_required
+#@admin_required
+def delete_program(program_id):
+    # ใช้ FlaskForm เปล่าสำหรับ CSRF check เท่านั้น
+    form = FlaskForm() 
+    if not form.validate_on_submit():
+         flash('CSRF Token ไม่ถูกต้อง', 'danger')
+         return redirect(url_for('admin.list_programs'))
+         
+    program = Program.query.get_or_404(program_id)
+    
+    # ตรวจสอบว่ามี Classroom หรือ Curriculum ผูกอยู่หรือไม่
+    if program.classrooms.first() or Curriculum.query.filter_by(program_id=program.id).first():
+        flash('ไม่สามารถลบสายการเรียนนี้ได้ เนื่องจากมีห้องเรียนหรือหลักสูตรผูกอยู่', 'danger')
+        return redirect(url_for('admin.list_programs'))
+        
+    try:
+        old_values = {'name': program.name} # Log name before delete
+        db.session.delete(program)
+        db.session.commit()
+        log_action("Delete Program", model=Program, record_id=program_id, old_value=old_values)
+        db.session.commit() # Commit log
+        flash('ลบสายการเรียนสำเร็จ', 'info')
+    except Exception as e:
+        db.session.rollback()
+        log_action(f"Delete Program Failed: {type(e).__name__}", model=Program, record_id=program_id)
+        try: db.session.commit()
+        except: db.session.rollback()
+        flash(f'เกิดข้อผิดพลาดในการลบ: {e}', 'danger')
+        current_app.logger.error(f"Error deleting program {program_id}: {e}", exc_info=True)
+        
+    return redirect(url_for('admin.list_programs'))

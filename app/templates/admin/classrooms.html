@@ -4,6 +4,7 @@
     {% include 'admin/_sidebar.html' %}
 {% endblock %}
 {% block main_content %}
+    {{ csrf_form.hidden_tag() }}
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h2 class="bi bi-grid-3x3-gap"> {{ title }}</h2>
         <a href="{{ url_for('admin.add_classroom') }}" class="btn btn-primary"><i class="bi bi-plus-lg"></i> เพิ่มห้องเรียนใหม่</a>
@@ -15,31 +16,63 @@
                     <thead class="table-light">
                         <tr>
                             <th>ชื่อห้องเรียน</th>
-                            <th>ระดับชั้น</th>
+                            <th style="width: 25%;">สายการเรียน</th>
                             <th>ปีการศึกษา</th>
                             <th class="text-end">การกระทำ</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {% for classroom in classrooms %}
-                        <tr>
-                            <td>{{ classroom.name }}</td>
-                            <td>{{ classroom.grade_level.name }}</td>
-                            <td>{{ classroom.academic_year.year }}</td>
-                            <td class="text-end">
-                                <a href="{{ url_for('admin.assign_advisors', classroom_id=classroom.id) }}" class="btn btn-sm btn-info"><i class="bi bi-person-check-fill"></i> มอบหมายครูที่ปรึกษา</a>
-                                <a href="{{ url_for('admin.manage_enrollment', classroom_id=classroom.id) }}" class="btn btn-sm btn-secondary"><i class="bi bi-people-fill"></i> จัดการนักเรียน</a>
-                                <a href="{{ url_for('admin.edit_classroom', classroom_id=classroom.id) }}" class="btn btn-sm btn-warning"><i class="bi bi-pencil-fill"></i> แก้ไข</a>
-                                <form action="{{ url_for('admin.delete_classroom', classroom_id=classroom.id) }}" method="POST" class="d-inline" onsubmit="return confirm('คุณแน่ใจหรือไม่ว่าต้องการลบรายการนี้?');">
-                                    <button type="submit" class="btn btn-sm btn-danger"><i class="bi bi-trash-fill"></i> ลบ</button>
-                                </form>
-                            </td>
-                        </tr>
+                        {# 1. วนลูปผ่าน Dictionary (key=ชื่อระดับชั้น, value=list ของห้องเรียน) #}
+                        {% for grade_name, classrooms_in_grade in classrooms_by_grade.items() %}
+
+                            {# 2. ตรวจสอบว่ามีห้องเรียนในระดับชั้นนี้หรือไม่ #}
+                            {% if classrooms_in_grade %}
+
+                                {# 3. แสดงแถว Header สำหรับระดับชั้น #}
+                                <tr>
+                                    {# ใช้ colspan=5 ให้ตรงกับจำนวนคอลัมน์จริง #}
+                                    <td colspan="5" class="table-group-header bg-light fw-bold"><strong>{{ grade_name }}</strong></td>
+                                </tr>
+
+                                {# 4. วนลูปแสดงข้อมูลห้องเรียนแต่ละห้องในระดับชั้นนั้น #}
+                                {% for classroom in classrooms_in_grade %}
+                                <tr>
+                                    <td>{{ classroom.name }}</td>
+                                    <td>
+                                        <select class="form-select form-select-sm program-select" data-classroom-id="{{ classroom.id }}">
+                                            <option value="0" {% if not classroom.program_id %}selected{% endif %}>-- ยังไม่ได้กำหนด --</option>
+                                            {% for program in all_programs %}
+                                            <option value="{{ program.id }}" {% if classroom.program_id == program.id %}selected{% endif %}>
+                                                {{ program.name }}
+                                            </option>
+                                            {% endfor %}
+                                        </select>
+                                        <span class="save-status small text-muted ms-2" id="status-{{ classroom.id }}"></span>
+                                    </td>
+                                    {# ลบ classroom.grade_level.name ออก เพราะเราแสดงเป็น Header ไปแล้ว #}
+                                    {# <td>{{ classroom.grade_level.name }}</td> #}
+                                    <td>{{ classroom.academic_year.year }}</td>
+                                    <td class="text-end">
+                                        <a href="{{ url_for('admin.assign_advisors', classroom_id=classroom.id) }}" class="btn btn-sm btn-info" title="มอบหมายครูที่ปรึกษา"><i class="bi bi-person-check-fill"></i></a>
+                                        <a href="{{ url_for('admin.manage_enrollment', classroom_id=classroom.id) }}" class="btn btn-sm btn-secondary" title="จัดการนักเรียน"><i class="bi bi-people-fill"></i></a>
+                                        <a href="{{ url_for('admin.edit_classroom', classroom_id=classroom.id) }}" class="btn btn-sm btn-warning" title="แก้ไข"><i class="bi bi-pencil-fill"></i></a>
+                                        <form action="{{ url_for('admin.delete_classroom', classroom_id=classroom.id) }}" method="POST" class="d-inline" onsubmit="return confirm('คุณแน่ใจหรือไม่ว่าต้องการลบรายการนี้?');">
+                                            {{ csrf_form.hidden_tag() }} {# เพิ่ม CSRF Token สำหรับฟอร์มลบ #}
+                                            <button type="submit" class="btn btn-sm btn-danger" title="ลบ"><i class="bi bi-trash-fill"></i></button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                {% endfor %} {# สิ้นสุด loop ของ classroom #}
+
+                            {% endif %} {# สิ้นสุด if classrooms_in_grade #}
+
+                        {# 5. จัดการกรณีที่ classrooms_by_grade ว่างเปล่า (ไม่มีข้อมูลเลย) #}
                         {% else %}
                         <tr>
-                            <td colspan="4" class="text-center">ยังไม่มีข้อมูลห้องเรียนในระบบ</td>
+                            {# ใช้ colspan=5 ให้ตรงกับจำนวนคอลัมน์จริง #}
+                            <td colspan="5" class="text-center">ยังไม่มีข้อมูลห้องเรียนในระบบสำหรับปีการศึกษาปัจจุบัน</td>
                         </tr>
-                        {% endfor %}
+                        {% endfor %} {# สิ้นสุด loop ของ classrooms_by_grade #}
                     </tbody>
                 </table>
             </div>
@@ -71,4 +104,55 @@
             </ul>
         </nav>
     </div>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const selects = document.querySelectorAll('.program-select');
+    const csrfToken = document.querySelector('input[name="csrf_token"]').value; // Assuming you have a CSRF token from FlaskForm
+
+    selects.forEach(select => {
+        select.addEventListener('change', async function() {
+            const classroomId = this.dataset.classroomId;
+            const selectedProgramId = this.value;
+            const statusSpan = document.getElementById(`status-${classroomId}`);
+
+            if (!statusSpan) return;
+
+            statusSpan.textContent = 'กำลังบันทึก...';
+            statusSpan.className = 'save-status small text-warning ms-2'; // Show saving state
+
+            try {
+                const response = await fetch(`/admin/api/classroom/${classroomId}/set-program`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken // Send CSRF token in header
+                    },
+                    body: JSON.stringify({ program_id: selectedProgramId })
+                });
+
+                const result = await response.json();
+
+                if (response.ok && result.status === 'success') {
+                    statusSpan.textContent = '✔ บันทึกแล้ว';
+                    statusSpan.className = 'save-status small text-success ms-2';
+                    // Optional: Fade out success message after a few seconds
+                    setTimeout(() => { 
+                        if (statusSpan.textContent === '✔ บันทึกแล้ว') { // Check if still success
+                           statusSpan.textContent = ''; 
+                        }
+                    }, 3000); 
+                } else {
+                    throw new Error(result.message || 'เกิดข้อผิดพลาด');
+                }
+            } catch (error) {
+                console.error('Error saving program:', error);
+                statusSpan.textContent = '❌ บันทึกล้มเหลว';
+                statusSpan.className = 'save-status small text-danger ms-2';
+                 // Optional: Show more detailed error via alert or tooltip
+                 // alert(`Error: ${error.message}`); 
+            }
+        });
+    });
+});
+</script>    
 {% endblock %}

@@ -90,37 +90,57 @@
         }
         
         async function loadAssignmentData() {
-            const activeTabEl = document.querySelector('#gradeTabs .nav-link.active');
-            const activeTabId = activeTabEl ? activeTabEl.id : null;
-
-            const semesterId = semesterSelect.value;
-            if (!semesterId) {
-                contentDiv.innerHTML = '<div class="alert alert-warning">กรุณาเลือกปีการศึกษาและภาคเรียน</div>';
+            clearTimeout(saveTimer); // Clear pending saves if semester changes
+            showLoading(true);
+            updateStatus('กำลังโหลดข้อมูล...', 'info');
+            contentDiv.innerHTML = ''; // Clear previous tables
+            const selectedSemesterId = semesterSelect.value;
+            const csrfTokenInput = document.querySelector('input[name="csrf_token"]');
+            if (!csrfTokenInput){
+                console.error("CSRF Token not found for load data");
+                updateStatus('ข้อผิดพลาด: ไม่พบ CSRF Token', 'danger');
+                showLoading(false);
                 return;
             }
-            showLoading(true);
-            updateStatus('กำลังโหลดข้อมูล...', 'primary');
+            const csrfToken = csrfTokenInput.value;
+
+
+            if (!selectedSemesterId) {
+                updateStatus('กรุณาเลือกภาคเรียน', 'warning');
+                showLoading(false);
+                return;
+            }
+
             try {
-                const apiUrl = "{{ url_for('admin.get_assignments_data') }}";
-                const response = await fetch(`${apiUrl}?semester_id=${semesterId}`);
-                if (!response.ok) throw new Error(`Network response was not ok (${response.status})`);
-                assignmentsData = await response.json();
-                renderUI();
-                updateWorkloadSummary();
-                updateStatus('โหลดข้อมูลสำเร็จ', 'success');
-
-                if (activeTabId) {
-                    const tabToActivate = document.getElementById(activeTabId);
-                    if (tabToActivate) {
-                        new bootstrap.Tab(tabToActivate).show();
-                    }
+                const response = await fetch(`/admin/api/assignments-data?semester_id=${selectedSemesterId}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
                 }
+                const data = await response.json();
 
+                if (data && data.grades && data.teachers_by_group) {
+                    loadedData = data; // Store globally FOR TEACHER LIST ACCESS ONLY
+                    contentDiv.innerHTML = ''; // Clear previous content again just in case
+
+                    if (data.grades.length === 0) {
+                        contentDiv.innerHTML = '<p class="text-muted text-center mt-5">ไม่พบข้อมูลห้องเรียนหรือหลักสูตรสำหรับภาคเรียนนี้</p>';
+                    } else {
+                        // Render each grade level section
+                        data.grades.forEach(grade => {
+                            const gradeElement = renderGradeTable(grade); // Render table HTML
+                            contentDiv.appendChild(gradeElement);
+                            renderTomSelects(grade); // Initialize TomSelects for this grade AFTER table is in DOM
+                        });
+                    }
+                    showLoading(false);
+                    updateStatus('', 'info'); // Clear status
+                } else {
+                    throw new Error("Invalid data structure received from API.");
+                }
             } catch (error) {
-                console.error('Failed to load assignment data:', error);
-                contentDiv.innerHTML = `<div class="alert alert-danger">เกิดข้อผิดพลาดในการโหลดข้อมูล: ${error.message}</div>`;
-                updateStatus('เกิดข้อผิดพลาด', 'danger');
-            } finally {
+                console.error('Error loading assignment data:', error);
+                contentDiv.innerHTML = `<p class="text-danger text-center mt-5">เกิดข้อผิดพลาดในการโหลดข้อมูล: ${error.message}</p>`;
+                updateStatus('โหลดข้อมูลล้มเหลว', 'danger');
                 showLoading(false);
             }
         }
@@ -156,43 +176,131 @@
         }
 
         function renderGradeTable(grade) {
-            if (grade.subjects.length === 0) {
-                return '<p class="text-muted text-center py-5">ไม่พบรายวิชาที่จัดไว้สำหรับระดับชั้นนี้ในภาคเรียนที่เลือก</p>';
-            }
-            if (grade.classrooms.length === 0) {
-                return '<p class="text-muted text-center py-5">ไม่พบห้องเรียนสำหรับระดับชั้นนี้ในปีการศึกษาที่เลือก</p>';
-            }
-            let tableHtml = '<div class="table-responsive"><table class="table table-bordered table-hover align-middle assignment-table">';
-            tableHtml += '<thead><tr class="table-light text-center"><th>รายวิชา (หน่วยกิต)</th>'; // <<< แก้ไข: เพิ่ม (หน่วยกิต) ที่หัวตาราง
-            grade.classrooms.forEach(c => { tableHtml += `<th>${c.name}</th>`; });
+            const tableContainer = document.createElement('div');
+            tableContainer.className = 'table-responsive mb-4'; // Add margin bottom
+
+            let tableHtml = `<h4 class="mt-4 mb-3">ระดับชั้น ${grade.name}</h4>`;
+            tableHtml += `<table class="table table-bordered table-hover align-middle assignment-table" id="gradeTable-${grade.id}">`;
+
+            // Header Row: Subject + Classrooms with Program & Credits
+            tableHtml += '<thead><tr class="table-light text-center">';
+            tableHtml += '<th class="sticky-col">รายวิชา (หน่วยกิต)</th>'; // Make first column sticky
+            grade.classrooms.forEach(c => {
+                tableHtml += `<th>${c.name}<br><small class="text-muted fw-normal">${c.program_name} (${c.total_credits.toFixed(1)} นก.)</small></th>`;
+            });
             tableHtml += '</tr></thead>';
+
+            // Body Rows: One row per unique subject in this grade level
             tableHtml += '<tbody>';
-            grade.subjects.forEach(s => {
-                tableHtml += `<tr>`;
-                tableHtml += `<td class="text-nowrap">
-                                <div class="d-flex justify-content-between align-items-center">
-                                    
-                                    <span><b>${s.code}</b> - ${s.name} (${s.credit.toFixed(1)})</span>
-                                    <button class="btn btn-sm btn-outline-primary ms-2 flex-shrink-0 quick-assign-btn" title="มอบหมายด่วนทุกห้อง"
-                                            data-subject-id="${s.id}" data-group-id="${s.group_id}" data-grade-id="${grade.id}">
-                                        <i class="bi bi-people-fill"></i>
-                                    </button>
-                                </div>
-                            </td>`;
-                grade.classrooms.forEach(c => {
-                    const assignmentKey = `${s.id}-${c.id}`;
-                    const assignedTeacherIds = grade.assignments[assignmentKey] || [];
-                    tableHtml += `<td>
-                                    <select class="teacher-select" multiple
-                                            data-subject-id="${s.id}" data-classroom-id="${c.id}" data-group-id="${s.group_id}">
-                                        ${getTeacherOptions(s.group_id, assignedTeacherIds)}
-                                    </select>
-                                </td>`;
+            // 1. Get a unique, sorted list of all subjects across all programs for this grade
+            const allSubjectsInGrade = {};
+            if (grade.subjects_by_program) { // Check if subjects_by_program exists
+                Object.values(grade.subjects_by_program).forEach(programSubjects => {
+                    if(programSubjects){ // Check if programSubjects array exists
+                        programSubjects.forEach(s => {
+                            if (!allSubjectsInGrade[s.id]) {
+                                allSubjectsInGrade[s.id] = s;
+                            }
+                        });
+                    }
+                });
+            }
+            const sortedSubjects = Object.values(allSubjectsInGrade).sort((a, b) => a.code.localeCompare(b.code));
+
+            // 2. Iterate through the unique subjects to create rows
+            sortedSubjects.forEach(subject => {
+                tableHtml += `<tr><td class="sticky-col align-middle">${subject.code} - ${subject.name} (${subject.credit.toFixed(1)})</td>`; // Make first column sticky
+
+                // 3. For each classroom column, check if this subject applies
+                grade.classrooms.forEach(classroom => {
+                    const classroomProgramId = classroom.program_id;
+                    // Subject applies if the classroom has a program AND the subject is in that program's list for this grade
+                    const subjectApplies = classroomProgramId &&
+                                        grade.subjects_by_program && // Check existence
+                                        grade.subjects_by_program[classroomProgramId] && // Check existence
+                                        grade.subjects_by_program[classroomProgramId].some(s => s.id === subject.id);
+
+                    if (subjectApplies) {
+                        const selectId = `teacherSelect-${subject.id}-${classroom.id}`;
+                        // Render the select, TomSelect will populate options and selected items later
+                        tableHtml += `<td class="text-center align-middle">
+                                        <select id="${selectId}" class="teacher-select"
+                                                data-subject-id="${subject.id}"
+                                                data-classroom-id="${classroom.id}"
+                                                data-group-id="${subject.group_id}"
+                                                multiple>
+                                            </select>
+                                    </td>`;
+                    } else {
+                        // Subject does not apply to this classroom's program, or classroom has no program
+                        tableHtml += '<td class="text-center align-middle text-muted bg-light">-</td>';
+                    }
                 });
                 tableHtml += '</tr>';
             });
-            tableHtml += '</tbody></table></div>';
-            return tableHtml;
+            tableHtml += '</tbody>';
+
+            tableHtml += '</table>';
+            tableContainer.innerHTML = tableHtml;
+            return tableContainer;
+        }
+
+        function renderTomSelects(gradeData) {
+            if (!loadedData || !loadedData.teachers_by_group) return; // Ensure global teacher data is loaded
+
+            const teacherOptions = {}; // Prepare options by group
+            for (const groupId in loadedData.teachers_by_group) {
+                teacherOptions[groupId] = loadedData.teachers_by_group[groupId].map(t => ({ value: t.id, text: t.name }));
+            }
+
+            gradeData.classrooms.forEach(classroom => {
+                const classroomProgramId = classroom.program_id;
+                // Skip classrooms without an assigned program, as they won't have applicable subjects based on V26 logic
+                if (!classroomProgramId) return;
+
+                // Get subjects specifically for this classroom's program and grade
+                const subjectsForProgram = (gradeData.subjects_by_program && gradeData.subjects_by_program[classroomProgramId]) ? gradeData.subjects_by_program[classroomProgramId] : [];
+
+
+                subjectsForProgram.forEach(subject => {
+                    const selectId = `teacherSelect-${subject.id}-${classroom.id}`;
+                    const selectElement = document.getElementById(selectId);
+                    // If the element doesn't exist (e.g., table structure changed or subject didn't apply), skip
+                    if (!selectElement) return;
+
+                    const groupId = subject.group_id;
+                    const options = teacherOptions[groupId] || []; // Get teachers for this subject's group
+                    const assignmentKey = `${subject.id}-${classroom.id}`;
+                    // Get selected teachers from the assignments specific to this grade
+                    const selectedItems = (gradeData.assignments && gradeData.assignments[assignmentKey]) ? gradeData.assignments[assignmentKey] : [];
+
+
+                    // Ensure previous TomSelect instance is destroyed before creating a new one
+                    if (selectElement.tomselect) {
+                        selectElement.tomselect.destroy();
+                    }
+
+                    // Initialize TomSelect for this specific subject-classroom cell
+                    try {
+                        new TomSelect(selectElement, {
+                            options: options,
+                            items: selectedItems,
+                            placeholder: 'เลือกครูผู้สอน',
+                            plugins: ['remove_button'],
+                            create: false, // Don't allow creating new teachers here
+                            maxItems: null, // Allow multiple teachers
+                            onChange: function(value) { // Use regular function for 'this' context if needed
+                                // 'this.items' contains the array of selected teacher IDs (strings)
+                                scheduleSaveAssignment(subject.id, classroom.id, this.items.map(id => parseInt(id))); // Ensure IDs are numbers
+                            }
+                        });
+                    } catch (e) {
+                        console.error(`Failed to initialize TomSelect for ${selectId}:`, e);
+                        // Optionally display an error message in the cell
+                        selectElement.outerHTML = '<span class="text-danger small">Error loading teachers</span>';
+                    }
+                });
+            });
         }
 
         function getTeacherOptions(groupId, selectedIds = []) {

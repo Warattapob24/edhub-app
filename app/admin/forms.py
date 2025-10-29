@@ -115,6 +115,7 @@ class SubjectForm(FlaskForm):
 class CurriculumForm(FlaskForm):
     semester = SelectField('ภาคเรียน', coerce=int)
     grade_level = SelectField('ระดับชั้น', coerce=int)
+    program = SelectField('สายการเรียน', coerce=int, validators=[DataRequired()]) # <-- เพิ่ม Field นี้
 
 class ClassroomForm(FlaskForm):
     name = StringField('ชื่อห้องเรียน (เช่น ม.1/1)', validators=[DataRequired(), Length(max=50)])
@@ -177,4 +178,9 @@ class RubricLevelForm(FlaskForm):
 
 class AssessmentTopicForm(FlaskForm):
     name = StringField('ชื่อหัวข้อ', validators=[DataRequired(), Length(max=255)])
+    submit = SubmitField('บันทึก')
+
+class ProgramForm(FlaskForm):
+    name = StringField('ชื่อสายการเรียน', validators=[DataRequired(), Length(max=100)])
+    description = TextAreaField('คำอธิบาย (Optional)', validators=[Optional(), Length(max=255)])
     submit = SubmitField('บันทึก')

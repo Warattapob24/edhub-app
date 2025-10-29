@@ -138,6 +138,7 @@ class GradeLevel(db.Model):
     head = db.relationship('User', backref=db.backref('led_grade_level', uselist=False))
     weekly_schedule_slots = db.relationship('WeeklyScheduleSlot', backref='grade_level', lazy='dynamic')
     school_events = db.relationship('SchoolEvent', secondary=school_event_grades, back_populates='grade_levels')
+    classrooms = db.relationship('Classroom', back_populates='grade_level')
     
     def __repr__(self): return self.name
 
@@ -150,6 +151,19 @@ class SubjectGroup(db.Model):
     learning_strands = db.relationship('LearningStrand', back_populates='subject_group', cascade="all, delete-orphan")
     def __repr__(self): return self.name
 
+class Program(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False, unique=True, index=True)
+    description = db.Column(db.String(255), nullable=True)
+    
+    # Relationship back to Classrooms
+    classrooms = db.relationship('Classroom', back_populates='program', lazy='dynamic')
+    # Relationship back to Curriculum entries (optional, if needed)
+    # curriculum_entries = db.relationship('Curriculum', backref='program', lazy='dynamic')
+
+    def __repr__(self):
+        return f'<Program {self.name}>'
+    
 class SubjectType(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False, unique=True)
@@ -159,6 +173,7 @@ class AcademicYear(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     year = db.Column(db.Integer, unique=True, nullable=False)
     semesters = db.relationship('Semester', back_populates='academic_year', lazy='dynamic', cascade="all, delete-orphan")
+    classrooms = db.relationship('Classroom', back_populates='academic_year', lazy='dynamic')
     def __repr__(self): return str(self.year)
 
 class Semester(db.Model):
@@ -193,20 +208,34 @@ class Curriculum(db.Model):
     semester_id = db.Column(db.Integer, db.ForeignKey('semester.id'), nullable=False)
     grade_level_id = db.Column(db.Integer, db.ForeignKey('grade_level.id'), nullable=False)
     subject_id = db.Column(db.Integer, db.ForeignKey('subject.id'), nullable=False)
+    program_id = db.Column(db.Integer, db.ForeignKey('program.id'), nullable=False, index=True) # <-- เพิ่ม ForeignKey (Require Program)
     semester = db.relationship('Semester', back_populates='curriculums')
     grade_level = db.relationship('GradeLevel', backref=db.backref('curriculum_items'))
     subject = db.relationship('Subject', backref=db.backref('curriculum_items'))
-    __table_args__ = (db.UniqueConstraint('semester_id', 'grade_level_id', 'subject_id', name='_semester_grade_subject_uc'),)
+    program = db.relationship('Program')
+    __table_args__ = (UniqueConstraint('semester_id', 'grade_level_id', 'program_id', 'subject_id', name='_semester_grade_program_subject_uc'),)
 
+    def __repr__(self):
+        # Optional: Update repr if needed
+        return f'<Curriculum Sem:{self.semester_id} Grade:{self.grade_level_id} Prog:{self.program_id} Subj:{self.subject_id}>'
+    
 class Classroom(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(50), nullable=False)
     grade_level_id = db.Column(db.Integer, db.ForeignKey('grade_level.id'), nullable=False)
     academic_year_id = db.Column(db.Integer, db.ForeignKey('academic_year.id'), nullable=False)
-    grade_level = db.relationship('GradeLevel', backref=db.backref('classrooms', lazy='dynamic'))
-    academic_year = db.relationship('AcademicYear', backref=db.backref('classrooms', lazy='dynamic'))
+    program_id = db.Column(db.Integer, db.ForeignKey('program.id'), nullable=True, index=True) # <-- เพิ่ม ForeignKey (Allow NULL initially)
+    room_id = db.Column(db.Integer, db.ForeignKey('room.id'), nullable=True)
+    grade_level = db.relationship('GradeLevel', back_populates='classrooms')
+    academic_year = db.relationship('AcademicYear', back_populates='classrooms')
     enrollments = db.relationship('Enrollment', back_populates='classroom', lazy='dynamic', cascade="all, delete-orphan")
     advisors = db.relationship('User', secondary=classroom_advisors, back_populates='advised_classrooms')
+    room = db.relationship('Room',
+                           back_populates='classrooms',
+                           primaryjoin="Classroom.room_id == Room.id")
+    program = db.relationship('Program', back_populates='classrooms')
+    courses = db.relationship('Course', back_populates='classroom', lazy='dynamic', cascade="all, delete-orphan")
+
     def __repr__(self): return f'{self.name} ({self.academic_year.year})'
 
 class Student(db.Model):
@@ -249,12 +278,12 @@ class Course(db.Model):
 
     # Relationships
     subject = db.relationship('Subject', backref=db.backref('courses', lazy='dynamic'))
-    classroom = db.relationship('Classroom', backref=db.backref('courses', lazy='dynamic'))
+    classroom = db.relationship('Classroom', back_populates='courses')
     semester = db.relationship('Semester', backref=db.backref('courses', lazy='dynamic'))
     teachers = db.relationship('User', secondary=course_teachers, back_populates='courses', lazy='select')
     lesson_plan = db.relationship('LessonPlan', back_populates='courses')
     timetable_entries = db.relationship('TimetableEntry', back_populates='course', cascade="all, delete-orphan")
-    room = db.relationship('Room', backref=db.backref('courses', lazy='dynamic')) # <-- ADD THIS LINE
+    room = db.relationship('Room', back_populates='courses')
     student_groups = db.relationship('StudentGroup', back_populates='course', lazy='dynamic')
     submitted_by = db.relationship('User', foreign_keys=[submitted_by_id])
     qualitative_scores = db.relationship('QualitativeScore', back_populates='course', cascade="all, delete-orphan")
@@ -468,7 +497,7 @@ class AuditLog(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     action = db.Column(db.String(255), nullable=False)
     model_name = db.Column(db.String(50), nullable=True)
-    record_id = db.Column(db.Integer, nullable=True)
+    record_id = db.Column(db.String(50), nullable=True) # <-- เปลี่ยนจาก db.Integer
     old_value = db.Column(db.Text, nullable=True)
     new_value = db.Column(db.Text, nullable=True)
     timestamp = db.Column(db.DateTime, server_default=db.func.now())
@@ -672,11 +701,17 @@ class TimeSlot(db.Model):
         return f'<TimeSlot {self.period_number} for Semester {self.semester_id}>'
 
 class Room(db.Model):
+    __tablename__ = 'room'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), unique=True, nullable=False)
     capacity = db.Column(db.Integer, nullable=True)
     room_type = db.Column(db.String(100), nullable=True)
     notes = db.Column(db.Text, nullable=True)
+    classrooms = db.relationship('Classroom',
+                                 back_populates='room', # <-- ต้องตรงกับชื่อใน Classroom
+                                 lazy='dynamic',
+                                 primaryjoin="Room.id == Classroom.room_id")
+    courses = db.relationship('Course', back_populates='room', lazy='dynamic')
 
     def __repr__(self):
         return f'<Room {self.name}>'
