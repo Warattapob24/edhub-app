@@ -7,7 +7,6 @@
 
         <h6 class="sidebar-heading px-3 mt-2 mb-1 text-muted"><span>แดชบอร์ดหลัก</span></h6>
         <ul class="nav flex-column">
-            {# --- Links for user's main roles --- #}
             {% if current_user.has_role('Teacher') %}<li class="nav-item"><a class="nav-link" href="{{ url_for('teacher.dashboard') }}"><i class="bi bi-person-video3 me-2"></i> <span>หน้าหลักครู</span></a></li>{% endif %}
             {% if current_user.has_role('Advisor') %}<li class="nav-item"><a class="nav-link" href="{{ url_for('advisor.dashboard') }}"><i class="bi bi-person-video2 me-2"></i> <span>ครูที่ปรึกษา</span></a></li>{% endif %}
             {% if current_user.led_subject_group %}<li class="nav-item"><a class="nav-link" href="{{ url_for('department.dashboard') }}"><i class="bi bi-diagram-3-fill me-2"></i> <span>หัวหน้ากลุ่มสาระฯ</span></a></li>{% endif %}

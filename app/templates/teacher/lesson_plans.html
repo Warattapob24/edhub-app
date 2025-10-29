@@ -34,7 +34,7 @@
                                     <div class="mb-3">
                                         <small class="text-muted">ห้องเรียนที่สอน:</small>
                                         <div>
-                                        {% for course in courses %}
+                                        {% for course in courses %} {# <--- Loop displays classrooms from the data sent #}
                                             <span class="badge bg-light text-dark me-1">{{ course.classroom.name }}</span>
                                         {% endfor %}
                                         </div>

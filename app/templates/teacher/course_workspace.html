@@ -795,10 +795,32 @@ document.addEventListener('DOMContentLoaded', function() {
             try {
                 const courseId = classroomSelector.options[classroomSelector.selectedIndex].dataset.courseId;
                 const response = await fetch(`/teacher/api/course/${courseId}/attendance-data?classroom_id=${newClassroomId}`);
-                if (!response.ok) throw new Error('ไม่สามารถโหลดข้อมูลการเข้าเรียนได้');
+                
+                // --- START OF RECOMMENDED CHANGE ---
+                if (!response.ok) {
+                    // ถ้า response ไม่ใช่ 200 OK ให้ลองอ่าน JSON error
+                    let errorData = null;
+                    try {
+                        errorData = await response.json();
+                    } catch (e) {
+                        // ไม่ใช่ JSON error
+                    }
+                    
+                    if (errorData && errorData.message) {
+                        // ถ้ามีข้อความ error จาก API (เช่น "ยังไม่ได้ตั้งค่าวันเริ่มภาคเรียน")
+                        throw new Error(errorData.message);
+                    } else {
+                        // Error ทั่วไป
+                        throw new Error(`ไม่สามารถโหลดข้อมูลได้ (Status: ${response.status})`);
+                    }
+                }
+                // --- END OF RECOMMENDED CHANGE ---
+
                 const data = await response.json();
                 renderAttendanceTable(data, container);
+
             } catch (error) {
+                // ตอนนี้ 'error.message' จะแสดงข้อความที่ส่งมาจาก Flask
                 if(container) container.innerHTML = `<div class="alert alert-danger">${error.message}</div>`;
             }
         };

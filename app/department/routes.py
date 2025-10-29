@@ -252,62 +252,95 @@ def get_department_assignments_data():
     if not semester:
         return jsonify({'error': 'Invalid semester_id'}), 404
 
-    # 1. ดึงข้อมูลหลักสูตรทั้งหมดที่เกี่ยวข้อง
-    curriculum_items = Curriculum.query.join(Subject).filter(
-        Subject.subject_group_id == subject_group.id,
-        Curriculum.semester_id == semester_id
-    ).options(
-        joinedload(Curriculum.subject),
-        joinedload(Curriculum.grade_level)
-    ).all()
-
-    # 2. จัดกลุ่มข้อมูลทั้งหมดตามระดับชั้น
-    data_by_grade = defaultdict(lambda: {'grade_name': '', 'subjects': set(), 'classrooms': set()})
-    for item in curriculum_items:
-        grade_id = item.grade_level.id
-        data_by_grade[grade_id]['grade_name'] = item.grade_level.name
-        data_by_grade[grade_id]['subjects'].add(item.subject)
-
-    # 3. ดึงห้องเรียนสำหรับแต่ละระดับชั้นที่พบ
-    grade_level_ids = list(data_by_grade.keys())
-    all_classrooms = Classroom.query.filter(
-        Classroom.grade_level_id.in_(grade_level_ids),
-        Classroom.academic_year_id == semester.academic_year_id
-    ).all()
-    for room in all_classrooms:
-        data_by_grade[room.grade_level_id]['classrooms'].add(room)
-
-    # 4. แปลงข้อมูลให้อยู่ในรูปแบบที่ส่งออกได้
-    grades_list = []
-    for grade_id, data in data_by_grade.items():
-        sorted_subjects = sorted(list(data['subjects']), key=lambda s: s.subject_code)
-        sorted_classrooms = sorted(list(data['classrooms']), key=lambda c: c.name)
-        grades_list.append({
-            'grade_id': grade_id,
-            'grade_name': data['grade_name'],
-            'subjects': [{'id': s.id, 'code': s.subject_code, 'name': s.name, 'credit': s.credit, 'group_id': s.subject_group_id} for s in sorted_subjects],
-            'classrooms': [{'id': c.id, 'name': c.name} for c in sorted_classrooms]
-        })
-    grades_list.sort(key=lambda g: g['grade_id'])
-
-    # 5. คำนวณภาระงานสอนของครูแต่ละคน
+    # 1. ดึงครูในกลุ่มสาระฯ (เหมือนเดิม)
     teachers_in_group = User.query.filter(User.member_of_groups.any(id=subject_group.id)).order_by(User.first_name).distinct().all()
-    
-    existing_courses = Course.query.filter(Course.semester_id == semester_id).all()
+    teachers_by_group_dict = {
+        subject_group.id: [{'id': t.id, 'name': f"{(t.name_prefix or '')}{t.first_name}"} for t in teachers_in_group]
+    }
+
+    # 2. ดึงการมอบหมายที่มีอยู่ (เหมือนเดิม)
+    existing_courses = Course.query.filter(Course.semester_id == semester_id).options(selectinload(Course.teachers)).all()
     assignments = {f"{c.subject_id}-{c.classroom_id}": [t.id for t in c.teachers] for c in existing_courses}
 
-    teacher_loads = {}
-    for teacher in teachers_in_group:
-        courses_taught = Course.query.filter(Course.semester_id == semester_id, Course.teachers.any(id=teacher.id)).join(Course.subject).distinct().all()
-        total_credits = sum(c.subject.credit for c in courses_taught)
-        teacher_loads[teacher.id] = total_credits
+    # 3. --- โลจิกใหม่: ดึงข้อมูลแบบมีโครงสร้าง ---
 
-    # ส่งข้อมูลทั้งหมดที่จำเป็นสำหรับ Frontend กลับไป
+    # 3.1 ดึง GradeLevels ที่เกี่ยวข้อง
+    grade_level_ids_q = db.session.query(Curriculum.grade_level_id).join(Subject).filter(
+        Curriculum.semester_id == semester_id,
+        Subject.subject_group_id == subject_group.id
+    ).distinct()
+    grade_level_ids = [gl[0] for gl in grade_level_ids_q.all()]
+    grade_levels = GradeLevel.query.filter(GradeLevel.id.in_(grade_level_ids)).order_by(GradeLevel.id).all()
+
+    # 3.2 ดึงห้องเรียนทั้งหมดที่เกี่ยวข้อง (Eager load 'program')
+    all_classrooms_in_grades = Classroom.query.filter(
+        Classroom.grade_level_id.in_(grade_level_ids),
+        Classroom.academic_year_id == semester.academic_year_id
+    ).options(joinedload(Classroom.program)).all()
+
+    classrooms_by_grade = defaultdict(list)
+    for room in all_classrooms_in_grades:
+        classrooms_by_grade[room.grade_level_id].append(room)
+
+    # 3.3 ดึงหลักสูตร (Curriculum) เพื่อเชื่อม Subject กับ Program
+    curriculum_items = Curriculum.query.join(Subject).filter(
+        Curriculum.semester_id == semester_id,
+        Subject.subject_group_id == subject_group.id
+    ).options(joinedload(Curriculum.subject)).all()
+
+    subjects_by_grade_program = defaultdict(lambda: defaultdict(set))
+    for item in curriculum_items:
+        subjects_by_grade_program[item.grade_level_id][item.program_id].add(item.subject)
+
+    # 4. สร้างโครงสร้างข้อมูลสุดท้าย
+    grades_list = []
+    for gl in grade_levels:
+        grade_id = gl.id
+        
+        # 4.1 Serialize Classrooms
+        classrooms_list = []
+        for c in sorted(classrooms_by_grade[grade_id], key=lambda c: c.name):
+            classrooms_list.append({
+                'id': c.id,
+                'name': c.name,
+                'program_id': c.program_id,
+                'program_name': c.program.name if c.program else 'N/A'
+            })
+        
+        # 4.2 Serialize Subjects by Program
+        subjects_by_program_dict = {}
+        for program_id, subjects_set in subjects_by_grade_program[grade_id].items():
+            subjects_by_program_dict[program_id] = [
+                {'id': s.id, 'code': s.subject_code, 'name': s.name, 'credit': s.credit, 'group_id': s.subject_group_id}
+                for s in sorted(list(subjects_set), key=lambda s: s.subject_code)
+            ]
+            
+        # 4.3 สร้าง List วิชารวมทั้งหมดในระดับชั้นนี้ (สำหรับสร้างแถว)
+        all_subjects_in_grade = {}
+        for subjects_list in subjects_by_program_dict.values():
+            for s_dict in subjects_list:
+                if s_dict['id'] not in all_subjects_in_grade:
+                    all_subjects_in_grade[s_dict['id']] = s_dict
+        
+        all_subjects_list = sorted(all_subjects_in_grade.values(), key=lambda s: s['code'])
+
+        # 4.4 เพิ่มเฉพาะเมื่อมีข้อมูล
+        if classrooms_list and all_subjects_list:
+            grades_list.append({
+                'id': grade_id,
+                'name': gl.name,
+                'classrooms': classrooms_list,
+                'subjects_by_program': subjects_by_program_dict,
+                'all_subjects': all_subjects_list # <-- ใช้ข้อมูลนี้สร้างแถว
+            })
+
+    # 5. คำนวณภาระงานสอนของครู (ย้ายไปทำที่ Frontend)
+    # เราจะส่ง teacher list ไปแบบ th_teachers_by_group (เหมือนเดิม)
+    # และ Frontend จะคำนวณเองแบบ Real-time
+    
     return jsonify({
-        'data_by_grade': grades_list,
-        'teachers_by_group': {
-            subject_group.id: [{'id': t.id, 'name': f"{(t.name_prefix or '')}{t.first_name}", 'load': teacher_loads.get(t.id, 0)} for t in teachers_in_group]
-        },
+        'grades': grades_list, # <--- เปลี่ยนชื่อ Key
+        'teachers_by_group': teachers_by_group_dict,
         'assignments': assignments
     })
 

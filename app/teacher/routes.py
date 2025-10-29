@@ -123,31 +123,51 @@ def dashboard():
 
 @bp.route('/lesson-plans')
 @login_required
-@initial_setup_required
+# @initial_setup_required
 def lesson_plans():
-    current_semester = Semester.query.filter_by(is_current=True).first()
-    
+    current_semester = Semester.query.filter_by(is_current=True).options(
+        joinedload(Semester.academic_year)
+    ).first()
+
     grouped_plans = defaultdict(lambda: {'plan': None, 'courses': []})
 
-    if current_semester:
-        # --- VVV แก้ไข Logic การค้นหาทั้งหมด VVV ---
-        # 1. ค้นหา "แผนการสอนหลัก" ทั้งหมดที่เกี่ยวข้องกับครูคนนี้ในเทอมปัจจุบัน
-        # โดยใช้วิธี Join ที่ตรงไปตรงมาและแม่นยำกว่าเดิม
-        teacher_lesson_plans = LessonPlan.query.join(
-            Course, LessonPlan.courses
-        ).join(
-            Course.teachers
-        ).filter(
-            User.id == current_user.id,
-            Course.semester_id == current_semester.id
-        ).distinct().all()
+    teacher_courses = [] # Initialize teacher_courses outside the if block
 
-        # 2. สำหรับแต่ละแผนการสอน, ให้ดึง Course ทั้งหมดที่ครูคนนี้สอน
-        # (Logic ส่วนนี้ยังคงเดิม เพราะทำงานถูกต้องอยู่แล้ว)
-        for plan in teacher_lesson_plans:
-            grouped_plans[plan.id]['plan'] = plan
-            courses_for_this_plan = [c for c in plan.courses if c.semester_id == current_semester.id and current_user in c.teachers]
-            grouped_plans[plan.id]['courses'] = courses_for_this_plan
+    if current_semester:
+        # --- START REVISED QUERY ---
+        teacher_courses = Course.query.options(
+            joinedload(Course.lesson_plan).joinedload(LessonPlan.subject).joinedload(Subject.subject_group),
+            joinedload(Course.classroom)
+        ).filter(
+            Course.semester_id == current_semester.id,
+            Course.teachers.any(id=current_user.id)
+        ).all()
+
+        for course in teacher_courses:
+            if course.lesson_plan:
+                plan_id = course.lesson_plan.id
+                if not grouped_plans[plan_id]['plan']:
+                    grouped_plans[plan_id]['plan'] = course.lesson_plan
+                grouped_plans[plan_id]['courses'].append(course)
+        # --- END REVISED QUERY ---
+
+    # +++++++++++++ START DEBUGGING +++++++++++++
+    print("-" * 30)
+    print(f"[DEBUG] Teacher Dashboard - User ID: {current_user.id}")
+    print(f"[DEBUG] Current Semester ID: {current_semester.id if current_semester else 'None'}")
+    print(f"[DEBUG] Found {len(teacher_courses)} courses assigned to teacher:")
+    # Print details of each course found
+    for c in teacher_courses:
+         print(f"  - Course ID: {c.id}, Subject: {c.subject.subject_code if c.subject else 'N/A'}, Classroom: {c.classroom.name if c.classroom else 'N/A'}, Plan ID: {c.lesson_plan_id}")
+
+    print("[DEBUG] Grouped Plans Structure sent to template:")
+    for plan_id, data in grouped_plans.items():
+        subject_name = data['plan'].subject.name if data.get('plan') and data['plan'].subject else "N/A"
+        # Print only the classroom names for clarity
+        classroom_names = sorted([c.classroom.name for c in data.get('courses', []) if c.classroom])
+        print(f"  - Plan ID {plan_id} ({subject_name}): Classrooms = {classroom_names}")
+    print("-" * 30)
+    # +++++++++++++ END DEBUGGING +++++++++++++
 
     return render_template('teacher/lesson_plans.html',
                             title='แผนการสอน',
@@ -2296,7 +2316,9 @@ def get_attendance_data(course_id):
     if not classroom_id:
         abort(400, 'Missing classroom_id parameter')
 
-    course = Course.query.get_or_404(course_id)
+    course = Course.query.options(
+        joinedload(Course.semester) # <-- FIX 1: Eager load semester
+    ).get_or_404(course_id)
     if current_user not in course.teachers:
         abort(403)
 
@@ -2311,11 +2333,25 @@ def get_attendance_data(course_id):
     student_ids = [s['id'] for s in students_data]
 
     # 2. สร้างรายการคาบเรียนทั้งหมดในเทอม (20 สัปดาห์)
+    
+    # --- START OF FIX 2: เปลี่ยนการจัดการ Error ---
+    if not course.semester or not course.semester.start_date:
+        # เปลี่ยนจาก 500 เป็น 400 (Bad Request)
+        # นี่คือปัญหาการตั้งค่า ไม่ใช่เซิร์ฟเวอร์ล่ม
+        return jsonify({
+            'error': 'ยังไม่ได้ตั้งค่าวันเริ่มภาคเรียน',
+            'message': 'ไม่สามารถสร้างตารางเวลาได้เนื่องจาก "วันเริ่มต้นภาคเรียน" ยังไม่ได้ถูกตั้งค่าในระบบ'
+        }), 400
+    
     semester_start_date = course.semester.start_date
-    if not semester_start_date:
-        return jsonify({'error': 'ยังไม่ได้ตั้งค่าวันเริ่มภาคเรียน'}), 500
+    # --- END OF FIX 2 ---
 
-    entries_in_course = TimetableEntry.query.filter_by(course_id=course_id).join(
+    # --- FIX 3: Eager load 'slot'
+    entries_in_course = TimetableEntry.query.options(
+        joinedload(TimetableEntry.slot) 
+    ).filter_by(
+        course_id=course_id
+    ).join(
         WeeklyScheduleSlot
     ).order_by(WeeklyScheduleSlot.day_of_week, WeeklyScheduleSlot.period_number).all()
 
@@ -2323,6 +2359,10 @@ def get_attendance_data(course_id):
     thai_days = ["จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส.", "อา."]
     for week in range(20):
         for entry in entries_in_course:
+            # FIX 4: เพิ่มการตรวจสอบเผื่อข้อมูล slot มีปัญหา
+            if not entry.slot:
+                continue # ข้าม entry นี้ไปถ้าไม่มีข้อมูล slot
+
             # Calculate the specific date for this session
             day_offset = (entry.slot.day_of_week - 1) - semester_start_date.isoweekday() + 1
             session_date = semester_start_date + timedelta(days=week * 7 + day_offset)

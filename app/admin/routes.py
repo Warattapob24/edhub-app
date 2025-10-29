@@ -2293,10 +2293,22 @@ def update_assignment():
     ).first()
 
     if not teacher_ids:
+        print(f"DEBUG: Attempting to remove teachers from course {course.id if course else 'N/A'} (Subject: {subject_id}, Classroom: {classroom_id})") # DEBUG PRINT
         if course:
-            db.session.delete(course)
-            db.session.commit()
-        return jsonify({'status': 'deleted'})
+            print(f"DEBUG: Found course {course.id}. Current teachers: {[t.id for t in course.teachers]}") # DEBUG PRINT
+            try:
+                course.teachers = [] # ล้างรายชื่อ
+                db.session.commit() # ลอง commit ทันที
+                print(f"DEBUG: Successfully cleared teachers and committed for course {course.id}.") # DEBUG PRINT
+                return jsonify({'status': 'success', 'message': 'นำครูผู้สอนออกแล้ว', 'teacher_ids': []})
+            except Exception as e:
+                db.session.rollback()
+                print(f"ERROR: Failed to commit teacher removal for course {course.id}: {e}") # DEBUG PRINT
+                return jsonify({'status': 'error', 'message': f'Database error on removal: {e}'}), 500
+        else:
+             print(f"DEBUG: Course not found for removal. Subject: {subject_id}, Classroom: {classroom_id}") # DEBUG PRINT
+             # Course doesn't exist, which is fine if removing teachers
+             return jsonify({'status': 'success', 'message': 'Course does not exist, no teachers to remove.', 'teacher_ids': []})
         
     if not course:
         # Before creating, ensure a lesson plan exists for this subject/year
