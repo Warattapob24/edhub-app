@@ -41,7 +41,7 @@ def dashboard():
         abort(403)
     
     semester = Semester.query.filter_by(is_current=True).first_or_404()
-    today = date(2025, 9, 5) 
+    today = date(2025, 10, 3) 
     # today = date.today()  # <-- 1. กำหนดค่าให้ today ก่อน
     today_weekday = today.isoweekday() # <-- 2. จากนั้นจึงนำ today ไปใช้งาน
 
@@ -1914,12 +1914,27 @@ def get_plan_constraints(plan_id):
     if not any(current_user in c.teachers for c in plan.courses):
         abort(403)
 
-    # ดึงข้อมูล constraints ที่บันทึกไว้
+    # 1. ดึงข้อมูล constraints ที่บันทึกไว้ (เหมือนเดิม)
     constraints_obj = LessonPlanConstraint.query.filter_by(lesson_plan_id=plan_id).all()
     constraints_dict = {c.constraint_type: c.value for c in constraints_obj}
     
-    # เพิ่มข้อมูลบันทึกส่วนตัว
+    # 2. เพิ่มข้อมูลบันทึกส่วนตัว (เหมือนเดิม)
     constraints_dict['manual_notes'] = plan.manual_scheduling_notes
+    
+    # --- [START] ส่วนที่เพิ่มเข้ามาเพื่อแก้ไข BUG ---
+    # 3. ค้นหา room_id ที่บันทึกไว้ใน Course 
+    #    (ใช้ตรรกะเดียวกับ search_rooms ที่เราแก้ไป)
+    course_with_room = Course.query.filter(
+        Course.lesson_plan_id == plan_id,
+        Course.teachers.any(id=current_user.id),
+        Course.room_id.isnot(None)
+    ).first()
+    
+    if course_with_room:
+        constraints_dict['room_id'] = course_with_room.room_id
+    else:
+        constraints_dict['room_id'] = None
+    # --- [END] ส่วนที่เพิ่มเข้ามาเพื่อแก้ไข BUG ---
     
     return jsonify(constraints_dict)
 
@@ -2196,11 +2211,19 @@ def save_attendance_bulk():
 @login_required
 def search_rooms():
     """API for Tom-Select to search for rooms."""
+    
+    # --- DEBUGGING PRINT ---
+    print("\n--- DEBUG: search_rooms (FIXED VERSION) IS RUNNING ---") 
+    # --- END DEBUGGING ---
+
     query = request.args.get('q', '').strip()
     
     # ดึงข้อมูลห้องเรียนที่ถูกเลือกในปัจจุบันสำหรับแผนการสอนนี้ (เพื่อแสดงผลเริ่มต้น)
     plan_id = request.args.get('plan_id', type=int)
     current_room_id = None
+    
+    print(f"--- DEBUG: Searching for plan_id: {plan_id} ---") # DEBUG
+    
     if plan_id:
         course_with_room = Course.query.filter(
             Course.lesson_plan_id == plan_id,
@@ -2210,6 +2233,9 @@ def search_rooms():
         
         if course_with_room:
             current_room_id = course_with_room.room_id
+            print(f"--- DEBUG: Found saved room_id: {current_room_id} ---") # DEBUG
+        else:
+            print("--- DEBUG: No course with a saved room_id was found. ---") # DEBUG
 
     # สร้าง Query เริ่มต้น
     room_query = Room.query
@@ -2229,7 +2255,9 @@ def search_rooms():
         current_room = Room.query.get(current_room_id)
         if current_room:
             results.insert(0, {'id': current_room.id, 'name': current_room.name, 'capacity': current_room.capacity})
+            print(f"--- DEBUG: Manually added current_room {current_room_id} to results. ---") # DEBUG
 
+    print(f"--- DEBUG: Returning {len(results)} results. ---\n") # DEBUG
     return jsonify(results)
 
 @bp.route('/api/rooms/create', methods=['POST'])

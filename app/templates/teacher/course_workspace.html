@@ -3575,6 +3575,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 document.getElementById('constraint_preference').value = data.time_preference || 'any';
                 // นำข้อมูลบันทึกมาใส่ใน textarea
                 document.getElementById('manual-notes').value = data.manual_notes || '';
+                
+                if (data.room_id && roomTomSelect) {
+                    console.log(`Setting roomTomSelect value to: ${data.room_id}`); // Optional debug log
+                    roomTomSelect.setValue(data.room_id, true); // Use setValue with 'true' to prevent triggering 'change' event
+                } else {
+                    console.log("No room_id found in data or roomTomSelect not ready."); // Optional debug log
+                    if(roomTomSelect) {
+                        roomTomSelect.clear(); // Clear selection if no room_id is returned
+                    }
+                }
             });
     });
     // อัปเดต Event Listener ของปุ่ม Save
