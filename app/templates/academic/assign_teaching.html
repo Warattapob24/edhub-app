@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}EdHub {{ title }}{% endblock %}
 {% block sidebar %}
-    {% include 'department/_sidebar.html' %}
+    {% include 'academic/_sidebar.html' %}
 {% endblock %}
 
 {% block styles %}
@@ -154,7 +154,7 @@ document.addEventListener('DOMContentLoaded', function() {
         assignmentsData = {}; // ล้าง State เก่า
 
         try {
-            const response = await fetch(`/department/api/assignments-data?semester_id=${semesterId}`);
+            const response = await fetch(`/academic/api/assignments-data?semester_id=${semesterId}`); // <-- ✅ แก้ไขเป็น 'academic'
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
                 throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);

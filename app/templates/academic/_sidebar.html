@@ -21,6 +21,13 @@
         <ul class="nav flex-column mb-2">
             <li class="nav-item"><a class="nav-link" href="{{ url_for('academic.dashboard') }}"><i class="bi bi-journals me-2"></i> <span>หน้าหลักวิชาการ</span></a></li>
             <li class="nav-item"><a class="nav-link" href="{{ url_for('academic.grade_dashboard') }}"><i class="bi bi-graph-up me-2"></i> <span>ภาพรวมผลการเรียน</span></a></li>
+            <li class="nav-item">
+                <a class="nav-link {% if request.endpoint == 'academic.assign_teaching' %}active{% endif %}" 
+                href="{{ url_for('academic.assign_teaching') }}">
+                    <i class="bi bi-person-check-fill me-2"></i>
+                    <span>มอบหมายการสอน (ภาพรวม)</span>
+                </a>
+            </li>            
             {% if g_current_semester %}
             <li class="nav-item"><a class="nav-link" href="{{ url_for('academic.manage_timetable', semester_id=g_current_semester.id) }}"><i class="bi bi-grid-3x3-gap-fill me-2"></i> <span>จัดตารางสอนหลัก</span></a></li>
             {% endif %}

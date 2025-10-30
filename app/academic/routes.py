@@ -12,7 +12,7 @@ from sqlalchemy.orm import joinedload, selectinload
 from sqlalchemy import and_, func, inspect, or_
 from app.academic import bp
 from app import db
-from app.models import (AcademicYear, AdvisorAssessmentRecord, AdvisorAssessmentScore, AssessmentItem, AssessmentTemplate, AssessmentTopic, Classroom, Course, CourseGrade, Enrollment, GradeLevel, GradedItem, Indicator, Notification, RepeatCandidate, Role,
+from app.models import (AcademicYear, AdvisorAssessmentRecord, AdvisorAssessmentScore, AssessmentItem, AssessmentTemplate, AssessmentTopic, Classroom, Course, CourseGrade, Curriculum, Enrollment, GradeLevel, GradedItem, Indicator, Notification, RepeatCandidate, Role,
                         LessonPlan, LearningUnit, Room, Semester, Student, TimeSlot, Standard, 
                         Subject, TimetableEntry, User, SubjectGroup, WeeklyScheduleSlot, QualitativeScore)
 from app.services import calculate_final_grades_for_course, calculate_grade_statistics, check_graduation_readiness, log_action
@@ -2163,3 +2163,148 @@ def api_enroll_repeater():
         except: db.session.rollback()
         # --- End Log ---
         return jsonify({'status': 'error', 'message': f'Database error: {e}'}), 500
+    
+# --- หน้าหลักสำหรับแสดงตารางมอบหมาย ---
+@bp.route('/assignments')
+@login_required
+# @academic_required # <-- (ถ้าคุณมี Decorator)
+def assign_teaching():
+    # ตรวจสอบสิทธิ์ (ตัวอย่าง)
+    if not current_user.has_role('Academic'):
+        abort(403)
+
+    # ดึงข้อมูล Semester เหมือนเดิม
+    current_semester = Semester.query.filter_by(is_current=True).first()
+    all_semesters = Semester.query.join(Semester.academic_year).order_by(Semester.academic_year.has().desc(), Semester.term.desc()).all()
+
+    return render_template(
+        'academic/assign_teaching.html', # <-- ชี้ไปที่ Template ของ Academic
+        title='ภาพรวมการมอบหมายการสอน (วิชาการ)', # <-- เปลี่ยน Title
+        all_semesters=all_semesters,
+        current_semester=current_semester
+    )
+
+# --- API สำหรับดึงข้อมูลมาแสดงในตาราง (เวอร์ชัน Academic) ---
+@bp.route('/api/assignments-data')
+@login_required
+# @academic_required
+def get_academic_assignments_data():
+    # ตรวจสอบสิทธิ์ (ตัวอย่าง)
+    if not current_user.has_role('Academic'):
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    semester_id = request.args.get('semester_id', type=int)
+    if not semester_id:
+        return jsonify({'error': 'Missing semester_id'}), 400
+    
+    semester = db.session.get(Semester, semester_id)
+    if not semester:
+        return jsonify({'error': 'Invalid semester_id'}), 404
+
+    # --- [แตกต่าง] 1. ดึงครูทั้งหมด (ทุกกลุ่มสาระฯ) ---
+    all_teachers = User.query.options(selectinload(User.member_of_groups)).filter(
+        User.roles.any(Role.name.in_(['Teacher', 'DepartmentHead']))
+    ).order_by(User.first_name).all()
+    
+    all_subject_group_ids = {g.id for g in SubjectGroup.query.all()} # ดึง ID กลุ่มสาระฯ ที่ถูกต้องทั้งหมด
+    
+    teachers_by_group_dict = defaultdict(list)
+    
+    # เพิ่มครูเข้า Dictionary ตามกลุ่มสาระฯ
+    for t in all_teachers:
+        teacher_name = f"{(t.name_prefix or '')}{t.first_name}"
+        added_to_group = False
+        for group in t.member_of_groups:
+            if group.id in all_subject_group_ids: # ตรวจสอบว่าเป็นกลุ่มสาระฯ
+                teachers_by_group_dict[group.id].append({'id': t.id, 'name': teacher_name})
+                added_to_group = True
+        if not added_to_group:
+             teachers_by_group_dict[0].append({'id': t.id, 'name': teacher_name}) # กลุ่ม 0 สำหรับครูที่ไม่มีกลุ่มสาระฯ
+    
+    # Sort รายชื่อครูในแต่ละกลุ่ม
+    for group_id in teachers_by_group_dict:
+        teachers_by_group_dict[group_id] = sorted(teachers_by_group_dict[group_id], key=lambda t: t['name'])
+
+    # --- 2. ดึงการมอบหมายที่มีอยู่ (เหมือนเดิม) ---
+    existing_courses = Course.query.filter(Course.semester_id == semester_id).options(selectinload(Course.teachers)).all()
+    assignments = {f"{c.subject_id}-{c.classroom_id}": [t.id for t in c.teachers] for c in existing_courses}
+
+    # --- 3. ดึงโครงสร้างข้อมูล (คล้ายเดิม แต่ไม่กรอง Subject Group) ---
+
+    # 3.1 ดึง GradeLevels ทั้งหมดที่เกี่ยวข้องกับหลักสูตรในเทอมนี้
+    grade_level_ids_q = db.session.query(Curriculum.grade_level_id).filter(
+        Curriculum.semester_id == semester_id
+        # --- [ลบ] บรรทัดที่กรอง SubjectGroup ออก ---
+    ).distinct()
+    grade_level_ids = [gl[0] for gl in grade_level_ids_q.all()]
+    grade_levels = GradeLevel.query.filter(GradeLevel.id.in_(grade_level_ids)).order_by(GradeLevel.id).all()
+
+    # 3.2 ดึงห้องเรียนทั้งหมดที่เกี่ยวข้อง
+    all_classrooms_in_grades = Classroom.query.filter(
+        Classroom.grade_level_id.in_(grade_level_ids),
+        Classroom.academic_year_id == semester.academic_year_id
+    ).options(joinedload(Classroom.program)).all()
+
+    classrooms_by_grade = defaultdict(list)
+    for room in all_classrooms_in_grades:
+        classrooms_by_grade[room.grade_level_id].append(room)
+
+    # 3.3 ดึงหลักสูตร (Curriculum) ทั้งหมดในเทอมนี้ (ไม่กรอง Subject Group)
+    curriculum_items = Curriculum.query.join(Subject).filter( # Join Subject เพื่อให้มีข้อมูล s.subject_group_id
+        Curriculum.semester_id == semester_id
+        # --- [ลบ] บรรทัดที่กรอง SubjectGroup ออก ---
+    ).options(joinedload(Curriculum.subject)).all() # Eager load Subject
+
+    subjects_by_grade_program = defaultdict(lambda: defaultdict(set))
+    for item in curriculum_items:
+        if item.subject: # ตรวจสอบว่า subject โหลดมาหรือไม่
+             subjects_by_grade_program[item.grade_level_id][item.program_id].add(item.subject)
+
+    # --- 4. สร้างโครงสร้างข้อมูลสุดท้าย (เหมือนเดิม) ---
+    grades_list = []
+    for gl in grade_levels:
+        grade_id = gl.id
+        
+        # 4.1 Serialize Classrooms
+        classrooms_list = []
+        for c in sorted(classrooms_by_grade[grade_id], key=lambda c: c.name):
+            classrooms_list.append({
+                'id': c.id,
+                'name': c.name,
+                'program_id': c.program_id,
+                'program_name': c.program.name if c.program else 'N/A'
+            })
+        
+        # 4.2 Serialize Subjects by Program
+        subjects_by_program_dict = {}
+        for program_id, subjects_set in subjects_by_grade_program[grade_id].items():
+            subjects_by_program_dict[program_id] = [
+                {'id': s.id, 'code': s.subject_code, 'name': s.name, 'credit': s.credit, 'group_id': s.subject_group_id} # <-- สำคัญ: ต้องมี group_id ที่ถูกต้อง
+                for s in sorted(list(subjects_set), key=lambda s: s.subject_code) if s # เพิ่ม if s เพื่อป้องกัน None
+            ]
+            
+        # 4.3 สร้าง List วิชารวมทั้งหมดในระดับชั้นนี้
+        all_subjects_in_grade = {}
+        for subjects_list in subjects_by_program_dict.values():
+            for s_dict in subjects_list:
+                if s_dict['id'] not in all_subjects_in_grade:
+                    all_subjects_in_grade[s_dict['id']] = s_dict
+        
+        all_subjects_list = sorted(all_subjects_in_grade.values(), key=lambda s: s['code'])
+
+        # 4.4 เพิ่มเฉพาะเมื่อมีข้อมูล
+        if classrooms_list and all_subjects_list:
+            grades_list.append({
+                'id': grade_id,
+                'name': gl.name,
+                'classrooms': classrooms_list,
+                'subjects_by_program': subjects_by_program_dict,
+                'all_subjects': all_subjects_list
+            })
+
+    # 5. ส่งข้อมูลกลับ
+    return jsonify({
+        'grades': grades_list,
+        'teachers_by_group': teachers_by_group_dict, # <-- ส่งครูทั้งหมดที่จัดกลุ่มแล้ว
+        'assignments': assignments
+    })
