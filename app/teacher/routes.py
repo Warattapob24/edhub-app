@@ -2202,12 +2202,14 @@ def search_rooms():
     plan_id = request.args.get('plan_id', type=int)
     current_room_id = None
     if plan_id:
-        course = Course.query.filter(
+        course_with_room = Course.query.filter(
             Course.lesson_plan_id == plan_id,
-            Course.teachers.any(id=current_user.id)
+            Course.teachers.any(id=current_user.id),
+            Course.room_id.isnot(None) # <-- เพิ่มเงื่อนไข: ต้องมี room_id
         ).first()
-        if course:
-            current_room_id = course.room_id
+        
+        if course_with_room:
+            current_room_id = course_with_room.room_id
 
     # สร้าง Query เริ่มต้น
     room_query = Room.query
