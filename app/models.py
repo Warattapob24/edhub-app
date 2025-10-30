@@ -625,13 +625,24 @@ class AdministrativeDepartment(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(150), unique=True, nullable=False)
     
+    # เรายังเก็บ ID ของ User ที่ดำรงตำแหน่งไว้เหมือนเดิม
     head_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
     vice_director_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
-
+    
     # Relationships
     head = db.relationship('User', foreign_keys=[head_id])
     vice_director = db.relationship('User', foreign_keys=[vice_director_id])
     members = db.relationship('User', secondary=admin_department_members, back_populates='member_of_admin_depts')
+    
+    # --- [ใหม่] เพิ่มคอลัมน์สำหรับ "ผูก" กับ Role ที่มีอยู่ ---
+    head_role_id = db.Column(db.Integer, db.ForeignKey('role.id'), nullable=True)
+    vice_role_id = db.Column(db.Integer, db.ForeignKey('role.id'), nullable=True)
+    member_role_id = db.Column(db.Integer, db.ForeignKey('role.id'), nullable=True) # Role มาตรฐานสำหรับสมาชิก
+
+    # --- [ใหม่] สร้าง Relationship ไปยัง Role ---
+    head_role = db.relationship('Role', foreign_keys=[head_role_id])
+    vice_role = db.relationship('Role', foreign_keys=[vice_role_id])
+    member_role = db.relationship('Role', foreign_keys=[member_role_id])
 
     def __repr__(self):
         return f'<AdministrativeDepartment {self.name}>'

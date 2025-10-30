@@ -47,12 +47,30 @@
             </button>
         </div>
         <div class="row g-3">
-            {# ******** START: แก้ไขส่วนนี้ ******** #}
             {% for dept in departments %}
             <div class="col-md-6">
-                <div class="card position-card" data-bs-toggle="modal" data-bs-target="#positionModal" data-type="department" data-id="{{ dept.id }}">
-                    <div class="card-body">
-                        <h5 class="card-title">{{ dept.name }}</h5>
+                <div class="card"> <div class="card-header d-flex justify-content-between align-items-center bg-light py-2">
+                        <h5 class="mb-0">{{ dept.name }}</h5>
+                        <div>
+                            <button class="btn btn-sm btn-outline-warning edit-dept-btn"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#editDepartmentModal"
+                                    data-dept-id="{{ dept.id }}"
+                                    data-dept-name="{{ dept.name }}"
+                                    title="แก้ไขชื่อฝ่ายงาน">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <form action="{{ url_for('admin.delete_department', dept_id=dept.id) }}" method="POST" class="d-inline" onsubmit="return confirm('คุณแน่ใจหรือไม่ว่าต้องการลบฝ่ายงาน \`{{ dept.name }}\`? การกระทำนี้จะลบ Role ที่เกี่ยวข้องทั้งหมดและไม่สามารถย้อนกลับได้');">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn btn-sm btn-outline-danger" title="ลบฝ่ายงาน">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                    <div class="card-body position-card" 
+                         data-bs-toggle="modal" data-bs-target="#positionModal" 
+                         data-type="department" data-id="{{ dept.id }}">
                         <p class="card-text mb-1"><strong>รองผู้อำนวยการฝ่าย:</strong> {{ dept.vice_director.full_name if dept.vice_director else '-' }}</p>
                         <p class="card-text mb-1"><strong>หัวหน้าฝ่าย:</strong> {{ dept.head.full_name if dept.head else '-' }}</p>
                         <small class="text-muted">สมาชิก {{ dept.members | length }} คน</small>
@@ -66,7 +84,6 @@
                 </div>
             </div>
             {% endfor %}
-            {# ******** END: แก้ไขส่วนนี้ ******** #}
         </div>
     </div>
 
@@ -132,19 +149,70 @@
 <div class="modal fade" id="addDepartmentModal" tabindex="-1">
   <div class="modal-dialog">
     <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title">เพิ่มฝ่ายงานบริหารใหม่</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
       <form id="addDepartmentForm" action="{{ url_for('admin.add_department') }}" method="POST">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-header">
+          <h5 class="modal-title">เพิ่มฝ่ายงานบริหารใหม่</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
         <div class="modal-body">
-          <label for="department_name" class="form-label">ชื่อฝ่ายงาน (เช่น ฝ่ายวิชาการ, ฝ่ายปกครอง)</label>
-          <input type="text" class="form-control" id="department_name" name="name" required>
+          <div class="mb-3">
+            <label for="department_name" class="form-label">ชื่อฝ่ายงาน (เช่น ฝ่ายวิชาการ)</label>
+            <input type="text" class="form-control" id="department_name" name="name" required>
+          </div>
+          <hr>
+          <p class="text-muted small">เลือก Role ที่มีอยู่เพื่อผูกกับตำแหน่งในฝ่ายนี้ (ไม่บังคับ)</p>
+          <div class="mb-3">
+            <label for="head_role_select" class="form-label">Role สำหรับ "หัวหน้าฝ่าย"</label>
+            <select class="form-select" id="head_role_select" name="head_role_id">
+              <option value="">-- ไม่ผูก Role --</option>
+              {% for role in all_roles %}
+              <option value="{{ role.id }}">{{ role.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-3">
+            <label for="vice_role_select" class="form-label">Role สำหรับ "รองผู้อำนวยการฝ่าย"</label>
+            <select class="form-select" id="vice_role_select" name="vice_role_id">
+              <option value="">-- ไม่ผูก Role --</option>
+              {% for role in all_roles %}
+              <option value="{{ role.id }}">{{ role.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-3">
+            <label for="member_role_select" class="form-label">Role สำหรับ "สมาชิก"</label>
+            <select class="form-select" id="member_role_select" name="member_role_id">
+              <option value="">-- ไม่ผูก Role --</option>
+              {% for role in all_roles %}
+              <option value="{{ role.id }}">{{ role.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
           <button type="submit" class="btn btn-primary">สร้างฝ่ายงาน</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+<div class="modal fade" id="editDepartmentModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="editDepartmentForm" method="POST"> <div class="modal-header">
+          <h5 class="modal-title">แก้ไขชื่อฝ่ายงานบริหาร</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <label for="edit_department_name" class="form-label">ชื่อฝ่ายงาน</label>
+          <input type="text" class="form-control" id="edit_department_name" name="name" required>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+          <button type="submit" class="btn btn-primary">บันทึกการแก้ไข</button>
         </div>
       </form>
     </div>
@@ -277,6 +345,27 @@ document.addEventListener('DOMContentLoaded', function() {
             modal.status.textContent = 'ผิดพลาด!';
         }
     });
+    // [ใหม่] เพิ่ม JavaScript สำหรับ Edit Department Modal
+    const editDepartmentModalEl = document.getElementById('editDepartmentModal');
+    if (editDepartmentModalEl) {
+        const editForm = editDepartmentModalEl.querySelector('#editDepartmentForm');
+        const editNameInput = editDepartmentModalEl.querySelector('#edit_department_name');
+
+        editDepartmentModalEl.addEventListener('show.bs.modal', (event) => {
+            const button = event.relatedTarget;
+            if (!button) return; // ออกถ้าไม่ได้เปิดจากปุ่ม
+            
+            const deptId = button.dataset.deptId;
+            const deptName = button.dataset.deptName;
+
+            if(deptId && editForm && editNameInput) {
+                // 1. ตั้งค่า URL ที่จะส่ง Form ไป
+                editForm.action = `/admin/positions/department/${deptId}/update-name`; 
+                // 2. ตั้งค่าชื่อเดิมในช่อง Input
+                editNameInput.value = deptName;
+            }
+        });
+    }
 });
 </script>
 {% endblock %}

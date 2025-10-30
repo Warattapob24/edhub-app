@@ -7,13 +7,13 @@
 
         <h6 class="sidebar-heading px-3 mt-2 mb-1 text-muted"><span>แดชบอร์ดหลัก</span></h6>
         <ul class="nav flex-column">
-            {% if current_user.has_role('Teacher') or current_user.advised_classrooms or current_user.courses %}<li class="nav-item"><a class="nav-link" href="{{ url_for('teacher.dashboard') }}"><i class="bi bi-person-video3 me-1"></i> <span>หน้าหลักครู</span></a></li>{% endif %}
+            {% if current_user.has_role('Teacher') or current_user.advised_classrooms or current_user.courses %}<li class="nav-item"><a class="nav-link" href="{{ url_for('teacher.dashboard') }}"><i class="bi bi-person-video3 me-2"></i> <span>หน้าหลักครู</span></a></li>{% endif %}
             {% if current_user.has_role('Advisor') %}<li class="nav-item"><a class="nav-link" href="{{ url_for('advisor.dashboard') }}"><i class="bi bi-speedometer2 me-2"></i> <span>ครูที่ปรึกษา</span></a></li>{% endif %}
-            {% if current_user.led_subject_group %}<li class="nav-item"><a class="nav-link" href="{{ url_for('department.dashboard') }}"><i class="bi bi-diagram-3-fill me-1"></i> <span>หัวหน้ากลุ่มสาระฯ</span></a></li>{% endif %}
-            {% if current_user.has_role('Academic') %}<li class="nav-item"><a class="nav-link" href="{{ url_for('academic.dashboard') }}"><i class="bi bi-building-gear me-1"></i> <span>ฝ่ายวิชาการ</span></a></li>{% endif %}
+            {% if current_user.led_subject_group %}<li class="nav-item"><a class="nav-link" href="{{ url_for('department.dashboard') }}"><i class="bi bi-diagram-3-fill me-2"></i> <span>หัวหน้ากลุ่มสาระฯ</span></a></li>{% endif %}
+            {% if current_user.has_role('Academic') %}<li class="nav-item"><a class="nav-link" href="{{ url_for('academic.dashboard') }}"><i class="bi bi-building-gear me-2"></i> <span>ฝ่ายวิชาการ</span></a></li>{% endif %}
             {% if current_user.led_grade_level %}<li class="nav-item"><a class="nav-link" href="{{ url_for('grade_level_head.dashboard') }}"><i class="bi bi-person-badge me-2"></i> <span>หัวหน้าสายชั้น</span></a></li>{% endif %}
-            {% if current_user.has_role('ผู้อำนวยการ') %}<li class="nav-item"><a class="nav-link" href="{{ url_for('director.dashboard') }}"><i class="bi bi-person-workspace me-1"></i> <span>ผู้อำนวยการ</span></a></li>{% endif %}
-            {% if current_user.has_role('Admin') %}<li class="nav-item"><a class="nav-link active" href="{{ url_for('admin.index') }}"><i class="bi bi-shield-lock-fill me-1"></i> <span>ผู้ดูแลระบบ</span></a></li>{% endif %}
+            {% if current_user.has_role('ผู้อำนวยการ') %}<li class="nav-item"><a class="nav-link" href="{{ url_for('director.dashboard') }}"><i class="bi bi-person-workspace me-2"></i> <span>ผู้อำนวยการ</span></a></li>{% endif %}
+            {% if current_user.has_role('Admin') %}<li class="nav-item"><a class="nav-link active" href="{{ url_for('admin.index') }}"><i class="bi bi-shield-lock-fill me-2"></i> <span>ผู้ดูแลระบบ</span></a></li>{% endif %}
         </ul>
         <hr>   
         {% if current_user.has_role('Admin') %}

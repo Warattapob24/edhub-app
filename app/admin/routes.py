@@ -2900,7 +2900,7 @@ def manage_positions():
     # ดึงข้อมูลตำแหน่งผู้อำนวยการ
     director_id_setting = Setting.query.filter_by(key='director_user_id').first()
     director_id = int(director_id_setting.value) if director_id_setting and director_id_setting.value else None
-    
+
     # ดึงรายชื่อบุคลากรทั้งหมดสำหรับ Dropdown
     users = User.query.order_by(User.first_name).all()
 
@@ -2910,7 +2910,7 @@ def manage_positions():
         joinedload(AdministrativeDepartment.vice_director),
         selectinload(AdministrativeDepartment.members)
     ).order_by(AdministrativeDepartment.name).all()
-
+    
     # ******** START: ส่วนที่เพิ่มเข้ามาเพื่อวินิจฉัย ********
     print("--- DEBUG: manage_positions ---")
     print(f"Found {len(departments)} department(s):")
@@ -2924,12 +2924,15 @@ def manage_positions():
         selectinload(SubjectGroup.members)
     ).order_by(SubjectGroup.name).all()
 
+    all_roles = Role.query.order_by(Role.name).all()
+
     return render_template('admin/manage_positions.html', 
                            title='ผังองค์กรและการมอบหมายตำแหน่ง',
                            users=users,
                            director_id=director_id,
                            departments=departments,
-                           subject_groups=subject_groups)
+                           subject_groups=subject_groups,
+                           all_roles=all_roles)
 
 @bp.route('/api/position-details')
 @login_required
@@ -3041,36 +3044,131 @@ def update_director():
 @bp.route('/positions/departments/add', methods=['POST'])
 @login_required
 def add_department():
+    # [แก้ไข] รับค่าจากฟอร์มที่ส่งมา
     name = request.form.get('name')
+    head_role_id = request.form.get('head_role_id')
+    vice_role_id = request.form.get('vice_role_id')
+    member_role_id = request.form.get('member_role_id')
+
     if name and not AdministrativeDepartment.query.filter_by(name=name).first():
-        new_dept = AdministrativeDepartment(name=name)
+        new_dept = AdministrativeDepartment(
+            name=name,
+            # [ใหม่] บันทึก Role ID ที่ผูกไว้ (ถ้ามี)
+            head_role_id=int(head_role_id) if head_role_id else None,
+            vice_role_id=int(vice_role_id) if vice_role_id else None,
+            member_role_id=int(member_role_id) if member_role_id else None
+        )
         db.session.add(new_dept)
-        db.session.commit() # Commit triggers the event listener to create roles
+        db.session.commit()
         flash(f'สร้างฝ่ายงาน "{name}" เรียบร้อยแล้ว', 'success')
     else:
         flash(f'ไม่สามารถสร้างฝ่ายงานได้ เนื่องจากชื่อ "{name}" ซ้ำซ้อนหรือว่างเปล่า', 'danger')
     return redirect(url_for('admin.manage_positions'))
 
+# [ใหม่] Route สำหรับแก้ไขชื่อฝ่ายงาน
+@bp.route('/positions/department/<int:dept_id>/update-name', methods=['POST'])
+@login_required
+def update_department_name(dept_id):
+    dept = AdministrativeDepartment.query.get_or_404(dept_id)
+    new_name = request.form.get('name', '').strip()
+    
+    if not new_name:
+        flash('ชื่อฝ่ายงานห้ามว่างเปล่า', 'danger')
+        return redirect(url_for('admin.manage_positions'))
+
+    old_name = dept.name
+    if old_name == new_name:
+        flash('ชื่อไม่มีการเปลี่ยนแปลง', 'info')
+        return redirect(url_for('admin.manage_positions'))
+    
+    # ตรวจสอบชื่อซ้ำ
+    if AdministrativeDepartment.query.filter(AdministrativeDepartment.name == new_name, AdministrativeDepartment.id != dept_id).first():
+        flash(f'ชื่อฝ่ายงาน "{new_name}" มีอยู่แล้ว', 'danger')
+        return redirect(url_for('admin.manage_positions'))
+
+    try:
+        # === [ข้อควรระวัง] ===
+        # โค้ดของคุณ (routes.py บรรทัด 1509) มีการใช้ Role ที่ผูกกับ "ชื่อ" (f"Head of {dept.name}")
+        # ซึ่งถ้าเปลี่ยนชื่อตรงนี้ Role เก่าจะไม่ถูกอัปเดต และระบบจะพัง
+        # คุณต้องเลือกใช้มาตรฐานเดียว (เช่น f"DEPT_HEAD_{dept.id}" ที่ใช้ในบรรทัด 1478)
+        # โค้ดด้านล่างนี้จะทำงานโดยสมมติว่าคุณใช้ Role ที่ผูกกับ ID
+        
+        dept.name = new_name
+        db.session.commit()
+        log_action("Update Department Name", model=AdministrativeDepartment, record_id=dept.id, old_value={'name': old_name}, new_value={'name': new_name})
+        db.session.commit()
+        flash(f'อัปเดตชื่อฝ่ายงานเป็น "{new_name}" เรียบร้อยแล้ว', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'เกิดข้อผิดพลาดในการอัปเดตชื่อ: {e}', 'danger')
+        
+    return redirect(url_for('admin.manage_positions'))
+
+# [ใหม่] Route สำหรับลบฝ่ายงาน
+@bp.route('/positions/department/<int:dept_id>/delete', methods=['POST'])
+@login_required
+def delete_department(dept_id):
+    form = FlaskForm()
+    if not form.validate_on_submit():
+         flash('CSRF Token ไม่ถูกต้อง', 'danger')
+         return redirect(url_for('admin.manage_positions'))
+         
+    dept = AdministrativeDepartment.query.options(
+        selectinload(AdministrativeDepartment.members)
+    ).get_or_404(dept_id)
+    
+    dept_name = dept.name # เก็บชื่อไว้ log
+    
+    # [ลบ] โค้ดที่ค้นหา Role (role_names_to_delete, roles_to_delete) ทิ้งไป
+
+    try:
+        # 1. ล้างค่าตำแหน่ง
+        dept.head_id = None
+        dept.vice_director_id = None
+        
+        # 2. ลบสมาชิก (M-M relationship)
+        dept.members.clear()
+        
+        # 3. ลบตัวฝ่ายงาน
+        db.session.delete(dept)
+        
+        # 4. [ลบ] โค้ดที่ลบ Role (for role in roles_to_delete) ทิ้งไป
+            
+        db.session.commit()
+        log_action("Delete Department", model=AdministrativeDepartment, record_id=dept_id, old_value={'name': dept_name})
+        db.session.commit()
+        flash(f'ลบฝ่ายงาน "{dept_name}" เรียบร้อยแล้ว', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'เกิดข้อผิดพลาดในการลบฝ่ายงาน: {e}', 'danger')
+        
+    return redirect(url_for('admin.manage_positions'))
+
 @bp.route('/positions/department/<int:dept_id>/positions', methods=['POST'])
 @login_required
 def update_department_positions(dept_id):
-    dept = AdministrativeDepartment.query.get_or_404(dept_id)
+    # [แก้ไข] Eager load Role ที่ผูกไว้ด้วย
+    dept = AdministrativeDepartment.query.options(
+        joinedload(AdministrativeDepartment.head_role),
+        joinedload(AdministrativeDepartment.vice_role),
+        joinedload(AdministrativeDepartment.member_role)
+    ).get_or_404(dept_id)
+    
     data = request.get_json()
     new_head_id = int(data.get('head_id')) if data.get('head_id') else None
     new_vice_id = int(data.get('vice_director_id')) if data.get('vice_director_id') else None
     new_member_ids = {int(m_id) for m_id in data.get('member_ids', [])}
 
-    # --- Smart Assignment for Head ---
-    # The helper function _handle_position_change will manage role assignment/removal
-    _handle_position_change(dept.head, new_head_id, f"DEPT_HEAD_{dept.id}")
+    # --- [แก้ไข] ส่ง Role Object (dept.head_role) แทน Role Name ---
+    _handle_position_change(dept.head, new_head_id, dept.head_role) # 👈
     dept.head_id = new_head_id
     
-    # --- Smart Assignment for Vice Director ---
-    _handle_position_change(dept.vice_director, new_vice_id, f"DEPT_VICE_{dept.id}")
+    # --- [แก้ไข] ส่ง Role Object (dept.vice_role) แทน Role Name ---
+    _handle_position_change(dept.vice_director, new_vice_id, dept.vice_role) # 👈
     dept.vice_director_id = new_vice_id
 
-    # --- Smart Assignment for Members ---
-    member_role_name = f"DEPT_MEMBER_{dept.id}"
+    # --- [แก้ไข] Smart Assignment for Members ---
+    member_role = dept.member_role # 👈 ดึง Role ของสมาชิกที่ผูกไว้
     current_member_ids = {member.id for member in dept.members}
 
     # 1. Add new members
@@ -3079,31 +3177,30 @@ def update_department_positions(dept_id):
         user = User.query.get(user_id)
         if user and user not in dept.members:
             dept.members.append(user)
-            _assign_role_smart(user, member_role_name)
+            _assign_role_smart(user, member_role.name if member_role else None) # 👈 ใช้ชื่อ Role ที่ผูกไว้
     
     # 2. Remove old members
     ids_to_remove = current_member_ids - new_member_ids
     for user_id in ids_to_remove:
-        # Prevent removing head or vice director from the member list accidentally
         if user_id == dept.head_id or user_id == dept.vice_director_id:
             continue
         user = User.query.get(user_id)
         if user and user in dept.members:
             dept.members.remove(user)
-            _remove_role_smart(user, member_role_name)
+            _remove_role_smart(user, member_role.name if member_role else None) # 👈 ใช้ชื่อ Role ที่ผูกไว้
 
-    # 3. Auto-add Head/Vice to members if they were selected but not in the member list
+    # 3. Auto-add Head/Vice to members (เหมือนเดิม แต่ใช้ Role ที่ผูกไว้)
     if new_head_id and new_head_id not in current_member_ids:
         head_user = User.query.get(new_head_id)
         if head_user and head_user not in dept.members:
             dept.members.append(head_user)
-            _assign_role_smart(head_user, member_role_name)
+            _assign_role_smart(head_user, member_role.name if member_role else None) # 👈
     
     if new_vice_id and new_vice_id not in current_member_ids:
         vice_user = User.query.get(new_vice_id)
         if vice_user and vice_user not in dept.members:
             dept.members.append(vice_user)
-            _assign_role_smart(vice_user, member_role_name)
+            _assign_role_smart(vice_user, member_role.name if member_role else None) # 👈
 
     db.session.commit()
     return jsonify({'status': 'success', 'message': f'อัปเดตฝ่ายงาน {dept.name} เรียบร้อยแล้ว'})
@@ -3207,16 +3304,23 @@ def update_subject_group_head(group_id):
     db.session.commit()
     return jsonify({'status': 'success', 'message': f'อัปเดตหัวหน้ากลุ่มสาระฯ {group.name} เรียบร้อยแล้ว'})
 
-def _handle_position_change(old_user, new_user_id, role_name):
-    """ Helper for smart role assignment """
-    # Remove role from old user
-    if old_user and (not new_user_id or old_user.id != int(new_user_id)):
-        _remove_role_smart(old_user, role_name)
+def _handle_position_change(old_user, new_user_id, role_to_apply): # [แก้ไข] รับ Role Object
+    """ Helper for smart role assignment. 'role_to_apply' is now a Role object. """
     
-    # Add role to new user
+    # 0. ถ้าไม่มี Role ผูกไว้ ก็ไม่ต้องทำอะไร
+    if not role_to_apply:
+        return
+
+    # 1. Remove role from old user
+    if old_user and (not new_user_id or old_user.id != int(new_user_id)):
+        # ใช้ role_to_apply.name (จาก object ที่ส่งมา)
+        _remove_role_smart(old_user, role_to_apply.name) 
+    
+    # 2. Add role to new user
     if new_user_id:
         new_user = User.query.get(int(new_user_id))
-        _assign_role_smart(new_user, role_name)
+        # ใช้ role_to_apply.name (จาก object ที่ส่งมา)
+        _assign_role_smart(new_user, role_to_apply.name)
 
 @bp.route('/timeslots/manage/<int:semester_id>', methods=['GET', 'POST'])
 @login_required
