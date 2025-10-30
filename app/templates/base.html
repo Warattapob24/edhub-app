@@ -10,6 +10,9 @@
 
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
+    {% set favicon_ver = g.favicon_version if g.favicon_version else '1' %}
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='img/favicon_32.png') }}?v={{ favicon_ver }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='img/favicon_180.png') }}?v={{ favicon_ver }}">
     <style>
         :root {
             --sidebar-width: 280px;

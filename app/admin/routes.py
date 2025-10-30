@@ -8,6 +8,7 @@ import zipfile
 from flask_wtf.file import FileAllowed
 import io
 import math
+from PIL import Image
 from sqlalchemy.exc import IntegrityError # สำหรับดักจับ Error ข้อมูลซ้ำ
 from flask_wtf import FlaskForm
 from wtforms import FileField, HiddenField, StringField, SubmitField, TextAreaField
@@ -73,7 +74,7 @@ def list_roles():
 @login_required
 # @admin_required
 def manage_settings():
-    form = SettingsForm()
+    form = SettingsForm() # สมมติว่าฟอร์มของคุณชื่อนี้
     current_logo_setting = Setting.query.filter_by(key='school_logo_path').first()
     current_logo_url = url_for('static', filename=f"uploads/{current_logo_setting.value}") if current_logo_setting and current_logo_setting.value else None
 
@@ -82,7 +83,7 @@ def manage_settings():
             changes = {} # Track changes for logging
             old_logo_value = current_logo_setting.value if current_logo_setting else None
 
-            # --- File Upload Handling ---
+            # --- File Upload Handling (โค้ดเดิมของคุณ) ---
             logo_file = form.school_logo.data
             if logo_file:
                 # Create unique filename
@@ -97,11 +98,51 @@ def manage_settings():
                     if os.path.exists(old_file_path):
                         try: os.remove(old_file_path)
                         except OSError as oe: current_app.logger.warning(f"Could not delete old logo {old_logo_value}: {oe}")
+                
+                # --- [โค้ดเดิม] บันทึกโลโก้หลัก ---
+                logo_file.save(file_path)
+
+                # --- [START] 🔽 โค้ดใหม่: สร้าง Favicon อัตโนมัติ 🔽 ---
+                try:
+                    # 1. กำหนดตำแหน่งที่จะบันทึกไฟล์ (ใน /static/img/)
+                    favicon_32_path = os.path.join(current_app.static_folder, 'img', 'favicon_32.png')
+                    favicon_180_path = os.path.join(current_app.static_folder, 'img', 'favicon_180.png')
+                    os.makedirs(os.path.join(current_app.static_folder, 'img'), exist_ok=True) # สร้างโฟลเดอร์ 'img' ถ้ายังไม่มี
+
+                    # 2. เปิดไฟล์โลโก้หลักที่เพิ่งบันทึก (file_path)
+                    with Image.open(file_path) as img:
+                        # 3. สร้างเวอร์ชัน 32x32
+                        img_32 = img.copy()
+                        img_32.thumbnail((32, 32), Image.Resampling.LANCZOS)
+                        img_32.save(favicon_32_path, "PNG", optimize=True)
+                        
+                        # 4. สร้างเวอร์ชัน 180x180 (สำหรับ apple-touch-icon)
+                        img_180 = img.copy()
+                        img_180.thumbnail((180, 180), Image.Resampling.LANCZOS)
+                        img_180.save(favicon_180_path, "PNG", optimize=True)
+
+                    # 5. [สำคัญ] อัปเดต 'favicon_version' ในฐานข้อมูลเพื่อทำ Cache Busting
+                    new_version = str(int(time.time())) # ใช้ timestamp ปัจจุบัน
+                    
+                    # --- [FIX] ใช้ .filter_by(key=...) เสมอ ---
+                    favicon_setting = Setting.query.filter_by(key='favicon_version').first()
+                    
+                    if not favicon_setting:
+                        favicon_setting = Setting(key='favicon_version', value=new_version)
+                        db.session.add(favicon_setting)
+                    else:
+                        favicon_setting.value = new_version
+                    
+                    changes['favicon_version'] = {'old': favicon_setting.value if 'value' in locals() and favicon_setting else None, 'new': new_version} # แก้ไขการอ้างอิงเล็กน้อย
+                    flash('สร้าง Favicon อัตโนมัติจากโลโก้ใหม่เรียบร้อยแล้ว', 'info')
+
+                except Exception as e:
+                    current_app.logger.error(f"Failed to generate favicon: {e}")
+                    flash(f'บันทึกโลโก้หลักสำเร็จ แต่สร้าง Favicon อัตโนมัติไม่สำเร็จ: {e}', 'warning')
+                # --- [END] 🔼 โค้ดใหม่: สร้าง Favicon อัตโนมัติ 🔼 ---
 
 
-                logo_file.save(file_path) # Save new file
-
-                # Update Setting DB entry
+                # --- [โค้ดเดิม] อัปเดต Setting DB entry ---
                 setting_logo = Setting.query.filter_by(key='school_logo_path').first()
                 if setting_logo:
                     setting_logo.value = filename
@@ -113,7 +154,7 @@ def manage_settings():
                 changes['school_logo_path'] = {'old': old_logo_value, 'new': filename}
                 current_logo_url = url_for('static', filename=f"uploads/{filename}") # Update URL for immediate display
 
-            # --- Text Settings Handling ---
+            # --- Text Settings Handling (โค้ดเดิมของคุณ) ---
             settings_to_update = {
                 'school_name': form.school_name.data,
                 'school_address': form.school_address.data,
@@ -132,19 +173,19 @@ def manage_settings():
                     setting = Setting(key=key, value=value)
                     db.session.add(setting)
 
-            # --- [START LOG] Log the changes before commit ---
+            # --- [START LOG] Log the changes before commit (โค้ดเดิมของคุณ) ---
             if changes: # Only log if something actually changed
                 log_action("Update Settings", model=Setting, new_value=changes) # Log all changes together
             # --- [END LOG] ---
 
-            db.session.commit() # Commit setting changes and log
+            db.session.commit() # Commit setting changes, favicon_version, and log
             flash('บันทึกการตั้งค่าเรียบร้อยแล้ว', 'success')
             # No redirect needed, stay on page to show updated logo/values
 
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(f"Error updating settings: {e}", exc_info=True)
-            # --- [START LOG] Log failure ---
+            # --- [START LOG] Log failure (โค้ดเดิมของคุณ) ---
             log_action(f"Update Settings Failed: {type(e).__name__}")
             try:
                 db.session.commit() # Commit failure log
@@ -154,7 +195,7 @@ def manage_settings():
             # --- [END LOG] ---
             flash(f'เกิดข้อผิดพลาดในการบันทึกการตั้งค่า: {e}', 'danger')
 
-    # Load existing values on GET request (unchanged logic)
+    # Load existing values on GET request (โค้ดเดิมของคุณ)
     if request.method == 'GET':
         for field_name, field in form._fields.items():
             if field.type not in ['FileField', 'SubmitField', 'CSRFTokenField']:
@@ -163,9 +204,9 @@ def manage_settings():
                     field.data = setting.value
 
     return render_template('admin/settings.html',
-                            form=form,
-                            title='ตั้งค่าโรงเรียน',
-                            current_logo_url=current_logo_url)
+                           form=form,
+                           title='ตั้งค่าโรงเรียน',
+                           current_logo_url=current_logo_url)
 
 # เส้นทางสำหรับเพิ่มบทบาทใหม่ (CREATE)
 @bp.route('/roles/add', methods=['GET', 'POST'])

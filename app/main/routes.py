@@ -1,8 +1,8 @@
 # FILE: app/main/routes.py
-from flask import abort, current_app, jsonify, redirect, url_for
+from flask import abort, current_app, g, jsonify, redirect, url_for
 from flask_login import login_required, current_user
 from app.main import bp
-from app.models import Notification
+from app.models import Notification, Setting
 from app import db 
 
 @bp.route('/')
@@ -60,3 +60,9 @@ def mark_notification_as_read(notification_id):
     notification.is_read = True
     db.session.commit()
     return jsonify({'status': 'success'})
+
+@bp.before_app_request  # หรือ @main.before_request ขึ้นอยู่กับโครงสร้างของคุณ
+def load_global_settings():
+    # ดึงค่าเวอร์ชัน favicon จากฐานข้อมูล
+    favicon_setting = Setting.query.filter_by(key='favicon_version').first()
+    g.favicon_version = favicon_setting.value if favicon_setting else '1' # ถ้าไม่เจอก็ใช้ '1'
