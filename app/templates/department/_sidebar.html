@@ -19,8 +19,14 @@
 
         <h6 class="sidebar-heading px-3 mt-4 mb-1 text-muted"><span>เมนูหัวหน้ากลุ่มสาระฯ</span></h6>
         <ul class="nav flex-column mb-2">
-            <li class="nav-item"><a class="nav-link" href="{{ url_for('department.dashboard') }}"><i class="bi bi-journals me-1"></i> <span>หน้าหลัก</span></a></li>
-            <li class="nav-item"><a class="nav-link" href="{{ url_for('department.assign_teaching') }}"><i class="bi bi-person-video me-1"></i> <span>มอบหมายการสอน</span></a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('department.dashboard') }}"><i class="bi bi-journals me-2"></i> <span>หน้าหลัก</span></a></li>
+            <li class="nav-item">
+                <a class="nav-link {% if request.endpoint == 'department.manage_curriculum' %}active{% endif %}" 
+                href="{{ url_for('department.manage_curriculum') }}">
+                    <i class="bi bi-journal-check me-2"></i> <span>จัดการหลักสูตรกลุ่มสาระฯ</span>
+                </a>
+            </li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('department.assign_teaching') }}"><i class="bi bi-person-video me-2"></i> <span>มอบหมายการสอน</span></a></li>
             <li class="nav-item"><a class="nav-link" href="{{ url_for('department.dashboard') }}"><i class="bi bi-send-check-fill me-2"></i class="bi bi-check2-square me-1"> <span>ตรวจสอบผลการเรียน</span></a></li>
             <li class="nav-item">
                 <a class="nav-link" href="{{ url_for('department.remediation_overview') }}">

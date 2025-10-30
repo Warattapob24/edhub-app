@@ -210,17 +210,57 @@ def delete_role(role_id):
 
 # เส้นทางสำหรับแสดงรายการผู้ใช้ (READ)
 @bp.route('/users')
+@login_required # Add @admin_required if you have one
 def list_users():
+    # --- Filter Logic Start ---
+    search_name = request.args.get('name', '', type=str).strip()
+    selected_role_id = request.args.get('role_id', '', type=str).strip() # Get as string first
+
+    query = User.query # Start with the base query
+
+    # Apply name filter if provided
+    if search_name:
+        search_pattern = f"%{search_name}%"
+        query = query.filter(or_(
+            User.first_name.ilike(search_pattern),
+            User.last_name.ilike(search_pattern),
+            User.username.ilike(search_pattern) # Optional: search username too
+        ))
+
+    # Apply role filter if provided and valid
+    role_id_int = None # Variable to hold integer role ID for template
+    if selected_role_id:
+        try:
+            role_id_int = int(selected_role_id)
+            # Join with the roles relationship and filter by Role.id
+            query = query.join(User.roles).filter(Role.id == role_id_int)
+        except ValueError:
+            flash('Role ID ที่ระบุไม่ถูกต้อง', 'warning')
+            selected_role_id = '' # Clear invalid ID
+
+    # Get all roles for the filter dropdown
+    all_roles = Role.query.order_by(Role.name).all()
+    # --- Filter Logic End ---
+
+    # Pagination using the potentially filtered query
     page = request.args.get('page', 1, type=int)
-    pagination = User.query.order_by(User.id.desc()).paginate(
-        page=page, per_page=20, error_out=False
+    # Use the filtered query here, and adjust per_page if needed (e.g., from config)
+    pagination = query.order_by(User.id.asc()).paginate(
+        page=page, per_page=current_app.config.get('USERS_PER_PAGE', 20), error_out=False # Use config or default to 20
     )
     users = pagination.items
-    return render_template('admin/users.html', 
-                           users=users, 
-                           pagination=pagination, 
-                           title='จัดการผู้ใช้งาน',
-                           icon_class='bi-people-fill')
+
+    return render_template('admin/users.html',
+                           title='จัดการผู้ใช้งาน', # Keep your title
+                           # icon_class='bi-people-fill', # Keep your icon class if you use it
+                           users=users,
+                           pagination=pagination,
+                           # --- Pass filter values back to the template ---
+                           all_roles=all_roles,
+                           current_name_filter=search_name,
+                           current_role_id=role_id_int
+                           # --- End pass filter values ---
+                          )
 
 # เส้นทางสำหรับเพิ่มผู้ใช้ใหม่ (CREATE)
 @bp.route('/users/add', methods=['GET', 'POST'])

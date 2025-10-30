@@ -1,15 +1,17 @@
 # FILE: app/department/routes.py
 from collections import Counter, defaultdict
-from flask import current_app, flash, redirect, render_template, jsonify, request, abort, url_for
+from sqlite3 import IntegrityError
+from flask import current_app, flash, json, redirect, render_template, jsonify, request, abort, url_for
 from flask_login import login_required, current_user
 from flask_wtf import FlaskForm
 import numpy as np
 from sqlalchemy.orm import joinedload, selectinload
 from sqlalchemy import and_, func, or_
+from app.admin.forms import CurriculumForm, get_all_grade_levels, get_all_semesters
 from app.department import bp
 from app import db
-from app.models import AssessmentItem, AssessmentTopic, Classroom, Course, CourseGrade, Curriculum, AssessmentDimension, Enrollment, GradeLevel, GradedItem, Indicator, LessonPlan, LearningUnit, Semester, Standard, Student, Subject, User, learning_unit_indicators
-from app.services import calculate_final_grades_for_course
+from app.models import AssessmentItem, AssessmentTopic, Classroom, Course, CourseGrade, Curriculum, AssessmentDimension, Enrollment, GradeLevel, GradedItem, Indicator, LessonPlan, LearningUnit, Program, Semester, Standard, Student, Subject, User, learning_unit_indicators
+from app.services import calculate_final_grades_for_course, log_action
 
 @bp.route('/dashboard')
 @login_required
@@ -1276,3 +1278,159 @@ def forward_remediation_to_academic():
         try: db.session.commit()
         except: db.session.rollback()
         return jsonify({'status': 'error', 'message': f'เกิดข้อผิดพลาด: {e}'}), 500
+    
+@bp.route('/curriculum', methods=['GET', 'POST'])
+@login_required
+# @department_head_required # <-- (ถ้าคุณมี Decorator)
+def manage_curriculum():
+    # --- 0. ตรวจสอบสิทธิ์และดึงกลุ่มสาระฯ ---
+    if not current_user.has_role('DepartmentHead'):
+        abort(403) # หรือ redirect ไปหน้า dashboard
+        
+    subject_group = current_user.led_subject_group
+    if not subject_group:
+        flash('คุณยังไม่ได้รับมอบหมายให้เป็นหัวหน้ากลุ่มสาระฯ', 'danger')
+        return redirect(url_for('department.dashboard')) # (หรือหน้าหลักของ department)
+
+    if request.method == 'POST':
+        # --- POST Logic (สำหรับ Department Head) ---
+        data = request.get_json()
+        if not data:
+            return jsonify({'status': 'error', 'message': 'Invalid data'}), 400
+
+        try:
+            semester_id = int(data.get('semester_id'))
+            grade_id = int(data.get('grade_level_id'))
+            program_id = int(data.get('program_id'))
+            selected_subject_ids_str = data.get('subject_ids', [])
+            selected_subject_ids = set(map(int, selected_subject_ids_str))
+        except (ValueError, TypeError, AttributeError):
+             return jsonify({'status': 'error', 'message': 'รูปแบบ ID ที่ส่งมาไม่ถูกต้อง'}), 400
+
+        if not all([semester_id, grade_id, program_id]):
+            return jsonify({'status': 'error', 'message': 'Missing semester, grade, or program ID'}), 400
+
+        try:
+            # --- 1. ดึง ID รายวิชาทั้งหมดที่ Head คนนี้ "มีสิทธิ์" จัดการ (เฉพาะกลุ่มสาระฯ ตัวเอง) ---
+            valid_subject_ids_in_group = {
+                row[0] for row in db.session.query(Subject.id).filter_by(subject_group_id=subject_group.id)
+            }
+
+            # 2. กรอง ID ที่ส่งมาจาก Frontend ให้เหลือเฉพาะที่ Head มีสิทธิ์
+            validated_selected_ids = selected_subject_ids & valid_subject_ids_in_group
+
+            # 3. ค้นหารายการ Curriculum เดิมที่มีอยู่ (เฉพาะในกลุ่มสาระฯ นี้)
+            existing_items = Curriculum.query.filter_by(
+                semester_id=semester_id,
+                grade_level_id=grade_id,
+                program_id=program_id
+            ).join(Subject).filter(
+                Subject.subject_group_id == subject_group.id # <-- กรองเฉพาะวิชาในกลุ่มสาระฯ นี้
+            ).all()
+            existing_subject_ids_in_group = {c.subject_id for c in existing_items}
+
+            # 4. คำนวณส่วนต่าง (เฉพาะวิชาในกลุ่มสาระฯ นี้)
+            ids_to_delete = existing_subject_ids_in_group - validated_selected_ids
+            ids_to_add = validated_selected_ids - existing_subject_ids_in_group
+
+            # 5. Log การเปลี่ยนแปลง (ถ้ามี)
+            if ids_to_delete or ids_to_add:
+                log_action(
+                    action=f"Update Curriculum (Dept: {subject_group.name})",
+                    model=Curriculum,
+                    record_id=f"S{semester_id}-G{grade_id}-P{program_id}",
+                    old_value={'subject_ids': sorted(list(existing_subject_ids_in_group))},
+                    new_value={'subject_ids': sorted(list(validated_selected_ids))}
+                )
+
+            # 6. ทำการลบ
+            if ids_to_delete:
+                items_to_delete = [item for item in existing_items if item.subject_id in ids_to_delete]
+                for item in items_to_delete:
+                    db.session.delete(item)
+
+            # 7. ทำการเพิ่ม
+            if ids_to_add:
+                db.session.bulk_insert_mappings(
+                    Curriculum,
+                    [{'semester_id': semester_id,
+                      'grade_level_id': grade_id,
+                      'program_id': program_id,
+                      'subject_id': sub_id}
+                     for sub_id in ids_to_add]
+                )
+
+            db.session.commit()
+            return jsonify({'status': 'success', 'message': 'บันทึกเรียบร้อยแล้ว'})
+
+        except Exception as e:
+            db.session.rollback()
+            log_record_id = f"S{semester_id}-G{grade_id}-P{program_id}"
+            log_action(f"Update Curriculum Failed: {type(e).__name__}", model=Curriculum, record_id=log_record_id)
+            try: db.session.commit()
+            except: db.session.rollback()
+            current_app.logger.error(f"Error updating curriculum (Dept) {log_record_id}: {e}", exc_info=True)
+            if isinstance(e, IntegrityError):
+                 return jsonify({'status': 'error', 'message': f'เกิดข้อผิดพลาด: ข้อมูลซ้ำซ้อน'}), 409
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    # --- GET Request Logic (สำหรับ Department Head) ---
+    form = CurriculumForm() 
+
+    # (ตรรกะการดึง Semester, Grade, Program เหมือนของ Admin)
+    all_semesters = get_all_semesters()
+    all_grades = get_all_grade_levels()
+    all_programs = Program.query.order_by(Program.name).all()
+
+    form.semester.choices = [(s.id, f"{s.term}/{s.academic_year.year}") for s in all_semesters]
+    form.grade_level.choices = [(g.id, g.name) for g in all_grades]
+    form.program.choices = [(p.id, p.name) for p in all_programs]
+
+    selected_semester_id = request.args.get('semester', type=int)
+    selected_grade_id = request.args.get('grade_level', type=int)
+    selected_program_id = request.args.get('program', type=int)
+
+    if not selected_semester_id and all_semesters:
+        selected_semester_id = all_semesters[0].id
+    if not selected_grade_id and all_grades:
+        selected_grade_id = all_grades[0].id
+    if not selected_program_id and all_programs:
+        selected_program_id = all_programs[0].id 
+
+    form.semester.data = selected_semester_id
+    form.grade_level.data = selected_grade_id
+    form.program.data = selected_program_id
+
+    # --- [START] ตรรกะสำคัญที่แตกต่างจาก Admin ---
+    # Master Data รายวิชา (กรองเฉพาะกลุ่มสาระฯ ของ Head)
+    master_curriculum = {}
+    for grade in all_grades:
+        # กรองวิชา 1) ที่อยู่ในระดับชั้นนี้ และ 2) อยู่ในกลุ่มสาระฯ ของ Head คนนี้
+        subjects_for_grade = Subject.query.with_parent(grade).filter(
+            Subject.subject_group_id == subject_group.id
+        ).options(
+            joinedload(Subject.subject_type)
+        ).order_by(Subject.subject_code).all()
+        
+        master_curriculum[grade.id] = [
+            {"id": s.id, "code": s.subject_code, "name": s.name, "type": s.subject_type.name, "credit": s.credit}
+            for s in subjects_for_grade
+        ]
+    # --- [END] ตรรกะสำคัญที่แตกต่างจาก Admin ---
+
+    # Master Data หลักสูตรที่มีอยู่ (เหมือนของ Admin)
+    all_existing_curriculum_items = Curriculum.query.all()
+    all_existing_curriculum = {}
+    for item in all_existing_curriculum_items:
+        key = f"{item.semester_id}-{item.grade_level_id}-{item.program_id}"
+        if key not in all_existing_curriculum:
+            all_existing_curriculum[key] = []
+        all_existing_curriculum[key].append(item.subject_id)
+
+    return render_template(
+        'department/manage_curriculum.html', # <-- ชี้ไปที่ Template ใหม่
+        form=form,
+        title='จัดการหลักสูตร (กลุ่มสาระฯ)', # <-- เปลี่ยน Title
+        master_curriculum_json=json.dumps(master_curriculum), # <-- ข้อมูลวิชาที่กรองแล้ว
+        all_existing_curriculum_json=json.dumps(all_existing_curriculum)
+    )

@@ -7,8 +7,37 @@
 {% block main_content %}
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h2 class="bi bi-people"> {{ title }}</h2>
-        <a href="{{ url_for('admin.add_user') }}" class="btn btn-primary"><i class="bi bi-plus-lg"></i> เพิ่มครูใหม่</a>
-        <a href="{{ url_for('admin.import_teachers') }}" class="btn btn-info"><i class="bi bi-upload"></i> นำเข้าข้อมูลครู</a>
+        {# --- ปุ่มเพิ่ม/นำเข้า (เหมือนเดิม) --- #}
+        <div> {# <--- เพิ่ม div ครอบปุ่มเพื่อให้จัดเรียงสวยงาม #}
+            <a href="{{ url_for('admin.add_user') }}" class="btn btn-primary me-2"><i class="bi bi-plus-lg"></i> เพิ่มครูใหม่</a>
+            <a href="{{ url_for('admin.import_teachers') }}" class="btn btn-info"><i class="bi bi-upload"></i> นำเข้าข้อมูลครู</a>
+        </div>
+    </div>
+
+    {# --- [START] ฟอร์ม Filter ที่เพิ่มเข้ามา --- #}
+    <div class="card mb-3">
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('admin.list_users') }}">
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-6"> {# <-- เปลี่ยนเป็น 6 #}
+                        <label for="nameFilter" class="form-label">ค้นหาตามชื่อ/Username</label>
+                        <input type="text" class="form-control" id="nameFilter" name="name" value="{{ current_name_filter or '' }}">
+                    </div>
+                    <div class="col-md-6"> {# <-- เปลี่ยนเป็น 6 #}
+                        <label for="roleFilter" class="form-label">กรองตามบทบาท</label>
+                        <select class="form-select" id="roleFilter" name="role_id">
+                            <option value="">-- ทุกบทบาท --</option>
+                            {% for role in all_roles %}
+                            <option value="{{ role.id }}" {% if role.id == current_role_id %}selected{% endif %}>
+                                {{ role.name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {# ไม่มี col-md-3 แล้ว #}
+                </div>
+            </form>
+        </div>
     </div>
     <div class="card">
         <div class="card-body">
@@ -41,13 +70,15 @@
                             <td class="text-end">
                                 <a href="{{ url_for('admin.edit_user', user_id=user.id) }}" class="btn btn-sm btn-warning"><i class="bi bi-pencil-fill"></i> แก้ไข</a>
                                 <form action="{{ url_for('admin.delete_user', user_id=user.id) }}" method="POST" class="d-inline" onsubmit="return confirm('คุณแน่ใจหรือไม่ว่าต้องการลบผู้ใช้งานนี้?');">
+                                    {# {{ csrf_token() }} #} {# If using CSRF #}
+                                    {# <input type="hidden" name="_method" value="DELETE"> #} {# If using DELETE method #}
                                     <button type="submit" class="btn btn-sm btn-danger"><i class="bi bi-trash-fill"></i> ลบ</button>
                                 </form>
                             </td>
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="7" class="text-center">ยังไม่มีผู้ใช้งานในระบบ</td>
+                            <td colspan="7" class="text-center">ไม่พบผู้ใช้งานที่ตรงตามเงื่อนไข</td> {# <--- แก้ไขข้อความ #}
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -60,25 +91,63 @@
         <nav aria-label="Page navigation">
             <ul class="pagination justify-content-center">
                 {% if pagination.has_prev %}
-                    <li class="page-item"><a class="page-link" href="{{ url_for('admin.list_users', page=pagination.prev_num) }}">ก่อนหน้า</a></li>
+                    <li class="page-item"><a class="page-link" href="{{ url_for('admin.list_users', page=pagination.prev_num, name=current_name_filter, role_id=current_role_id) }}">ก่อนหน้า</a></li>
                 {% else %}
                     <li class="page-item disabled"><a class="page-link" href="#">ก่อนหน้า</a></li>
                 {% endif %}
                 {% for page_num in pagination.iter_pages() %}
                     {% if page_num %}
                         <li class="page-item {% if page_num == pagination.page %}active{% endif %}">
-                            <a class="page-link" href="{{ url_for('admin.list_users', page=page_num) }}">{{ page_num }}</a>
+                            <a class="page-link" href="{{ url_for('admin.list_users', page=page_num, name=current_name_filter, role_id=current_role_id) }}">{{ page_num }}</a>
                         </li>
                     {% else %}
                         <li class="page-item disabled"><span class="page-link">...</span></li>
                     {% endif %}
                 {% endfor %}
                 {% if pagination.has_next %}
-                    <li class="page-item"><a class="page-link" href="{{ url_for('admin.list_users', page=pagination.next_num) }}">ถัดไป</a></li>
+                    <li class="page-item"><a class="page-link" href="{{ url_for('admin.list_users', page=pagination.next_num, name=current_name_filter, role_id=current_role_id) }}">ถัดไป</a></li>
                 {% else %}
                     <li class="page-item disabled"><a class="page-link" href="#">ถัดไป</a></li>
                 {% endif %}
             </ul>
         </nav>
     </div>
+{% block scripts %}
+{{ super() }} {# ถ้าคุณมีการสืบทอด scripts จาก base.html #}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const nameInput = document.getElementById('nameFilter');
+    const roleSelect = document.getElementById('roleFilter');
+    let debounceTimeout;
+
+    // ฟังก์ชันสำหรับสร้าง URL และ Redirect
+    function applyFilters() {
+        const nameValue = nameInput.value.trim();
+        const roleValue = roleSelect.value;
+        const currentUrl = new URL(window.location.href);
+
+        // ตั้งค่า parameter ใหม่ (ลบ page ออกก่อน เพื่อให้เริ่มนับหน้า 1 ใหม่)
+        currentUrl.searchParams.delete('page');
+        currentUrl.searchParams.set('name', nameValue);
+        currentUrl.searchParams.set('role_id', roleValue);
+
+        // Redirect ไปยัง URL ใหม่
+        window.location.href = currentUrl.toString();
+    }
+
+    // Listener สำหรับช่องค้นหาชื่อ (ทำงานหลังหยุดพิมพ์ 500ms)
+    nameInput.addEventListener('input', () => {
+        clearTimeout(debounceTimeout);
+        debounceTimeout = setTimeout(() => {
+            applyFilters();
+        }, 500); // รอ 500 มิลลิวินาทีก่อน Filter
+    });
+
+    // Listener สำหรับ Dropdown บทบาท (ทำงานทันทีที่เลือก)
+    roleSelect.addEventListener('change', () => {
+        applyFilters();
+    });
+});
+</script>
+{% endblock %}
 {% endblock %}
