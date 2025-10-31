@@ -1,0 +1,77 @@
+<div class="card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>ID</th>
+                        <th>Username</th>
+                        <th>Email</th>
+                        <th>ชื่อ-นามสกุล</th>
+                        <th>ตำแหน่ง</th>
+                        <th>บทบาท</th>
+                        <th class="text-end">การกระทำ</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in users %}
+                    <tr>
+                        <td>{{ user.id }}</td>
+                        <td>{{ user.username }}</td>
+                        <td>{{ user.email or '-' }}</td>
+                        <td>{{ user.name_prefix or '' }}{{ user.first_name }} {{ user.last_name }}</td>
+                        <td>{{ user.job_title or '-' }}</td>
+                        <td>
+                            {% for role in user.roles %}
+                                <span class="badge bg-secondary">{{ role.name }}</span>
+                            {% endfor %}
+                        </td>
+                        <td class="d-flex justify-content-end gap-1">
+                            <a href="{{ url_for('admin.edit_user', user_id=user.id) }}" class="btn btn-sm btn-warning">
+                                <i class="bi bi-pencil-fill"></i> แก้ไข
+                            </a>
+                            
+                            <form action="{{ url_for('admin.delete_user', user_id=user.id) }}" method="POST" class="d-inline" onsubmit="return confirm('คุณแน่ใจหรือไม่ว่าต้องการลบผู้ใช้งานนี้?');">
+                                {# {{ csrf_token() }} #}
+                                <button type="submit" class="btn btn-sm btn-danger">
+                                    <i class="bi bi-trash-fill"></i> ลบ
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="7" class="text-center">ไม่พบผู้ใช้งานที่ตรงตามเงื่อนไข</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="mt-3">
+    <nav aria-label="Page navigation">
+        <ul class="pagination justify-content-center">
+            {% if pagination.has_prev %}
+                <li class="page-item"><a class="page-link" href="{{ url_for('admin.list_users', page=pagination.prev_num, name=current_name_filter, role_id=current_role_id) }}">ก่อนหน้า</a></li>
+            {% else %}
+                <li class="page-item disabled"><a class="page-link" href="#">ก่อนหน้า</a></li>
+            {% endif %}
+            {% for page_num in pagination.iter_pages() %}
+                {% if page_num %}
+                    <li class="page-item {% if page_num == pagination.page %}active{% endif %}">
+                        <a class="page-link" href="{{ url_for('admin.list_users', page=page_num, name=current_name_filter, role_id=current_role_id) }}">{{ page_num }}</a>
+                    </li>
+                {% else %}
+                    <li class="page-item disabled"><span class="page-link">...</span></li>
+                {% endif %}
+            {% endfor %}
+            {% if pagination.has_next %}
+                <li class="page-item"><a class="page-link" href="{{ url_for('admin.list_users', page=pagination.next_num, name=current_name_filter, role_id=current_role_id) }}">ถัดไป</a></li>
+            {% else %}
+                <li class="page-item disabled"><a class="page-link" href="#">ถัดไป</a></li>
+            {% endif %}
+        </ul>
+    </nav>
+</div>

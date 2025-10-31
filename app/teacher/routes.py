@@ -92,7 +92,8 @@ def dashboard():
             Entry2.weekly_schedule_slot_id == db.session.query(Slot2.id).filter(
                 Slot1.semester_id == Slot2.semester_id,
                 Slot1.day_of_week == Slot2.day_of_week,
-                Slot2.period_number == Slot1.period_number + 1 # Next period
+                Slot2.period_number == Slot1.period_number + 1, # Next period
+                Slot1.grade_level_id == Slot2.grade_level_id
             ).scalar_subquery() # Find the slot ID for the next period
         )
     ).filter(

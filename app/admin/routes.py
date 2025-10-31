@@ -291,6 +291,15 @@ def list_users():
     )
     users = pagination.items
 
+    # ตรวจสอบ Header ว่าถูกเรียกโดย JavaScript (AJAX) หรือไม่
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        # ถ้าใช่, ให้ render เฉพาะไฟล์ตารางย่อย
+        return render_template('admin/_users_table.html', # <-- ⭐️ ชี้ไปที่ไฟล์ใหม่
+                               users=users,
+                               pagination=pagination,
+                               current_name_filter=search_name,
+                               current_role_id=role_id_int)
+
     return render_template('admin/users.html',
                            title='จัดการผู้ใช้งาน', # Keep your title
                            # icon_class='bi-people-fill', # Keep your icon class if you use it
@@ -3298,7 +3307,16 @@ def update_subject_group_head(group_id):
             group.members.append(head_user)
             flash(f'เพิ่ม {head_user.full_name} เป็นสมาชิกของกลุ่มสาระฯ โดยอัตโนมัติ', 'info')
 
-    _handle_position_change(group.head, new_head_id, "DepartmentHead")
+    # 1. ดึง Role Object ที่ชื่อ "DepartmentHead" มาก่อน
+    # (เพราะฟังก์ชัน _handle_position_change คาดหวัง Object)
+    department_head_role = Role.query.filter_by(name="DepartmentHead").first()
+    
+    # 2. ตรวจสอบว่า Role นี้มีอยู่จริงในฐานข้อมูล
+    if not department_head_role:
+        current_app.logger.error("Critical Error: Role 'DepartmentHead' not found in database.")
+        return jsonify({'status': 'error', 'message': "Role 'DepartmentHead' ไม่พบในระบบ"}), 500
+
+    _handle_position_change(group.head, new_head_id, department_head_role)
     group.head_id = new_head_id
 
     db.session.commit()
@@ -3314,7 +3332,7 @@ def _handle_position_change(old_user, new_user_id, role_to_apply): # [แก้�
     # 1. Remove role from old user
     if old_user and (not new_user_id or old_user.id != int(new_user_id)):
         # ใช้ role_to_apply.name (จาก object ที่ส่งมา)
-        _remove_role_smart(old_user, role_to_apply.name) 
+        _remove_role_smart(old_user, role_to_apply.name)
     
     # 2. Add role to new user
     if new_user_id:

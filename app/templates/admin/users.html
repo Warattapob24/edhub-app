@@ -7,23 +7,22 @@
 {% block main_content %}
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h2 class="bi bi-people"> {{ title }}</h2>
-        {# --- ปุ่มเพิ่ม/นำเข้า (เหมือนเดิม) --- #}
-        <div> {# <--- เพิ่ม div ครอบปุ่มเพื่อให้จัดเรียงสวยงาม #}
+        <div>
             <a href="{{ url_for('admin.add_user') }}" class="btn btn-primary me-2"><i class="bi bi-plus-lg"></i> เพิ่มครูใหม่</a>
             <a href="{{ url_for('admin.import_teachers') }}" class="btn btn-info"><i class="bi bi-upload"></i> นำเข้าข้อมูลครู</a>
         </div>
     </div>
 
-    {# --- [START] ฟอร์ม Filter ที่เพิ่มเข้ามา --- #}
+    {# --- ฟอร์ม Filter (เหมือนเดิม) --- #}
     <div class="card mb-3">
         <div class="card-body">
-            <form method="GET" action="{{ url_for('admin.list_users') }}">
+            <form method="GET" action="{{ url_for('admin.list_users') }}" id="filter-form"> {# <-- [ใหม่] เพิ่ม ID ให้ฟอร์ม #}
                 <div class="row g-3 align-items-end">
-                    <div class="col-md-6"> {# <-- เปลี่ยนเป็น 6 #}
+                    <div class="col-md-6">
                         <label for="nameFilter" class="form-label">ค้นหาตามชื่อ/Username</label>
                         <input type="text" class="form-control" id="nameFilter" name="name" value="{{ current_name_filter or '' }}">
                     </div>
-                    <div class="col-md-6"> {# <-- เปลี่ยนเป็น 6 #}
+                    <div class="col-md-6">
                         <label for="roleFilter" class="form-label">กรองตามบทบาท</label>
                         <select class="form-select" id="roleFilter" name="role_id">
                             <option value="">-- ทุกบทบาท --</option>
@@ -34,119 +33,111 @@
                             {% endfor %}
                         </select>
                     </div>
-                    {# ไม่มี col-md-3 แล้ว #}
                 </div>
             </form>
         </div>
     </div>
-    <div class="card">
-        <div class="card-body">
-            <div class="table-responsive">
-                <table class="table table-striped table-hover align-middle">
-                    <thead class="table-light">
-                        <tr>
-                            <th>ID</th>
-                            <th>Username</th>
-                            <th>Email</th>
-                            <th>ชื่อ-นามสกุล</th>
-                            <th>ตำแหน่ง</th>
-                            <th>บทบาท</th>
-                            <th class="text-end">การกระทำ</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for user in users %}
-                        <tr>
-                            <td>{{ user.id }}</td>
-                            <td>{{ user.username }}</td>
-                            <td>{{ user.email or '-' }}</td>
-                            <td>{{ user.name_prefix or '' }}{{ user.first_name }} {{ user.last_name }}</td>
-                            <td>{{ user.job_title or '-' }}</td>
-                            <td>
-                                {% for role in user.roles %}
-                                    <span class="badge bg-secondary">{{ role.name }}</span>
-                                {% endfor %}
-                            </td>
-                            <td class="text-end">
-                                <a href="{{ url_for('admin.edit_user', user_id=user.id) }}" class="btn btn-sm btn-warning"><i class="bi bi-pencil-fill"></i> แก้ไข</a>
-                                <form action="{{ url_for('admin.delete_user', user_id=user.id) }}" method="POST" class="d-inline" onsubmit="return confirm('คุณแน่ใจหรือไม่ว่าต้องการลบผู้ใช้งานนี้?');">
-                                    {# {{ csrf_token() }} #} {# If using CSRF #}
-                                    {# <input type="hidden" name="_method" value="DELETE"> #} {# If using DELETE method #}
-                                    <button type="submit" class="btn btn-sm btn-danger"><i class="bi bi-trash-fill"></i> ลบ</button>
-                                </form>
-                            </td>
-                        </tr>
-                        {% else %}
-                        <tr>
-                            <td colspan="7" class="text-center">ไม่พบผู้ใช้งานที่ตรงตามเงื่อนไข</td> {# <--- แก้ไขข้อความ #}
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
+
+    {# --- [แก้ไข] ลบตารางและ Pagination เดิมออก --- #}
+    {# --- ใส่ Container ว่างๆ นี้ไว้รอรับข้อมูล AJAX --- #}
+    <div id="user-table-container">
+        {# ตารางและ Pagination จาก _users_table.html จะถูกโหลดมาใส่ตรงนี้ #}
+        {# (เราจะโหลดข้อมูลเริ่มต้นโดยใช้ JavaScript) #}
     </div>
 
-    <div class="mt-3">
-        <nav aria-label="Page navigation">
-            <ul class="pagination justify-content-center">
-                {% if pagination.has_prev %}
-                    <li class="page-item"><a class="page-link" href="{{ url_for('admin.list_users', page=pagination.prev_num, name=current_name_filter, role_id=current_role_id) }}">ก่อนหน้า</a></li>
-                {% else %}
-                    <li class="page-item disabled"><a class="page-link" href="#">ก่อนหน้า</a></li>
-                {% endif %}
-                {% for page_num in pagination.iter_pages() %}
-                    {% if page_num %}
-                        <li class="page-item {% if page_num == pagination.page %}active{% endif %}">
-                            <a class="page-link" href="{{ url_for('admin.list_users', page=page_num, name=current_name_filter, role_id=current_role_id) }}">{{ page_num }}</a>
-                        </li>
-                    {% else %}
-                        <li class="page-item disabled"><span class="page-link">...</span></li>
-                    {% endif %}
-                {% endfor %}
-                {% if pagination.has_next %}
-                    <li class="page-item"><a class="page-link" href="{{ url_for('admin.list_users', page=pagination.next_num, name=current_name_filter, role_id=current_role_id) }}">ถัดไป</a></li>
-                {% else %}
-                    <li class="page-item disabled"><a class="page-link" href="#">ถัดไป</a></li>
-                {% endif %}
-            </ul>
-        </nav>
-    </div>
+{# --- [แก้ไข] แทนที่ JavaScript เดิมทั้งหมด --- #}
 {% block scripts %}
-{{ super() }} {# ถ้าคุณมีการสืบทอด scripts จาก base.html #}
+{{ super() }}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const nameInput = document.getElementById('nameFilter');
     const roleSelect = document.getElementById('roleFilter');
+    const tableContainer = document.getElementById('user-table-container');
+    const filterForm = document.getElementById('filter-form');
     let debounceTimeout;
 
-    // ฟังก์ชันสำหรับสร้าง URL และ Redirect
-    function applyFilters() {
-        const nameValue = nameInput.value.trim();
-        const roleValue = roleSelect.value;
-        const currentUrl = new URL(window.location.href);
+    /**
+     * ฟังก์ชันสำหรับดึงข้อมูลตารางใหม่ด้วย AJAX
+     */
+    async function fetchAndUpdateTable(url) {
+        try {
+            // 1. แสดงสถานะกำลังโหลด
+            tableContainer.innerHTML = '<div class="text-center p-5"><div class="spinner-border text-primary"></div></div>';
+            
+            // 2. ส่ง Request ไปยัง URL (เช่น /admin/users?name=test)
+            const response = await fetch(url, {
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest' // <-- [สำคัญ] ส่ง Header นี้เพื่อให้ Backend รู้
+                }
+            });
 
-        // ตั้งค่า parameter ใหม่ (ลบ page ออกก่อน เพื่อให้เริ่มนับหน้า 1 ใหม่)
-        currentUrl.searchParams.delete('page');
-        currentUrl.searchParams.set('name', nameValue);
-        currentUrl.searchParams.set('role_id', roleValue);
+            if (!response.ok) throw new Error(`Network error: ${response.statusText}`);
+            
+            // 3. นำ HTML ที่ได้ (จากไฟล์ _users_table.html) มาใส่ใน Container
+            const html = await response.text();
+            tableContainer.innerHTML = html;
+            
+            // 4. [สำคัญ] อัปเดต URL ในบราวเซอร์ (โดยที่หน้าไม่รีโหลด)
+            window.history.pushState({}, '', url);
 
-        // Redirect ไปยัง URL ใหม่
-        window.location.href = currentUrl.toString();
+        } catch (error) {
+            console.error('Fetch error:', error);
+            tableContainer.innerHTML = '<div class="alert alert-danger">เกิดข้อผิดพลาดในการโหลดข้อมูล</div>';
+        }
     }
 
-    // Listener สำหรับช่องค้นหาชื่อ (ทำงานหลังหยุดพิมพ์ 500ms)
+    /**
+     * ฟังก์ชันสำหรับสร้าง URL และเรียก fetch
+     */
+    function applyFilters(page = 1) { // ค่าเริ่มต้นคือหน้า 1
+        const nameValue = nameInput.value.trim();
+        const roleValue = roleSelect.value;
+        
+        // ใช้ URL ปัจจุบันเป็นฐาน หรือใช้ action ของฟอร์ม
+        const baseUrl = new URL(filterForm.action || window.location.href);
+        
+        baseUrl.searchParams.set('name', nameValue);
+        baseUrl.searchParams.set('role_id', roleValue);
+        baseUrl.searchParams.set('page', page); // ตั้งค่าหน้า
+
+        fetchAndUpdateTable(baseUrl.toString());
+    }
+
+    // --- Event Listeners ---
+
+    // 1. Listener สำหรับช่องค้นหาชื่อ (ทำงานหลังหยุดพิมพ์ 500ms)
     nameInput.addEventListener('input', () => {
         clearTimeout(debounceTimeout);
         debounceTimeout = setTimeout(() => {
-            applyFilters();
-        }, 500); // รอ 500 มิลลิวินาทีก่อน Filter
+            applyFilters(1); // ค้นหาใหม่ ให้เริ่มที่หน้า 1
+        }, 500);
     });
 
-    // Listener สำหรับ Dropdown บทบาท (ทำงานทันทีที่เลือก)
+    // 2. Listener สำหรับ Dropdown บทบาท (ทำงานทันทีที่เลือก)
     roleSelect.addEventListener('change', () => {
-        applyFilters();
+        applyFilters(1); // เลือกใหม่ ให้เริ่มที่หน้า 1
     });
+
+    // 3. [สำคัญ] Listener สำหรับ Pagination (Event Delegation)
+    // เราต้องดักฟังที่ 'tableContainer' เพราะปุ่ม Pagination จะถูกโหลดมาใหม่เรื่อยๆ
+    tableContainer.addEventListener('click', function(event) {
+        const target = event.target;
+        
+        // ตรวจสอบว่าที่คลิกคือลิงก์ Pagination (<a> ที่มี class 'page-link')
+        if (target.tagName === 'A' && target.classList.contains('page-link')) {
+            event.preventDefault(); // ป้องกันการรีโหลดหน้า
+            const url = target.getAttribute('href');
+            if (url && url !== '#') {
+                fetchAndUpdateTable(url); // เรียกโหลดข้อมูลตาม URL ของปุ่มที่กด
+            }
+        }
+    });
+
+    // --- Initial Load ---
+    // โหลดตารางครั้งแรกเมื่อหน้าเว็บพร้อม
+    // (ใช้ URL ปัจจุบัน ซึ่งอาจจะมี filter ค้างอยู่ ถ้าผู้ใช้กด F5)
+    fetchAndUpdateTable(window.location.href);
+
 });
 </script>
 {% endblock %}
