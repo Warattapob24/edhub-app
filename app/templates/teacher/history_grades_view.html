@@ -55,7 +55,7 @@
                     <td>{{ data.full_name }}</td>
                     <td class="text-center">{{ data.collected_score|round(1)|replace('.0', '') if data.collected_score is not none else '-' }}</td>
                     <td class="text-center">{{ data.midterm_score|round(1)|replace('.0', '') if data.midterm_score is not none else '-' }}</td>
-                    <td class="text-center fw-bold">{{ (data.collected_score or 0 + data.midterm_score or 0)|round(1)|replace('.0', '') }}</td>
+                    <td class="text-center fw-bold">{{ ((data.collected_score or 0) + (data.midterm_score or 0))|round(1)|replace('.0', '') }}</td>
                     <td class="text-center">{{ data.final_score|round(1)|replace('.0', '') if data.final_score is not none else '-' }}</td>
                     <td class="text-center fw-bold">{{ data.total_score|round(1)|replace('.0', '') if data.total_score is not none else '-' }}</td>
                     <td class="text-center fw-bold">
