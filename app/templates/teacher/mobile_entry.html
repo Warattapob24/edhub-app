@@ -3,7 +3,6 @@
 
 {% block styles %}
     {{ super() }}
-    {# --- V28.3: CSS ใหม่สำหรับ UI แบบคลิก/แตะ --- #}
     <style>
         :root {
             --status-present: #d1e7dd;
@@ -33,8 +32,9 @@
             background-color: var(--bs-gray-100);
         }
         .tab-pane {
-            background-color: #fff;
+            background-color: #f8f9fa;
             padding: 1rem;
+            min-height: 70vh; 
         }
 
         /* 2. Attendance Tab */
@@ -122,6 +122,8 @@
         }
         .score-card {
             border: 1px solid var(--bs-gray-300);
+            background-color: #fff; 
+            border-radius: 0.375rem; 
             padding: 0.5rem;
             text-align: center;
         }
@@ -138,7 +140,6 @@
             font-weight: 700;
             padding: 0.25rem 0.5rem;
         }
-        /* Style input based on score vs max_score */
         .score-input.is-invalid {
             color: var(--bs-danger);
             border-color: var(--bs-danger);
@@ -149,49 +150,63 @@
         }
 
         /* 4. Assessment Tab */
-        .assessment-table { font-size: 0.85rem; }
-        .assessment-table th, .assessment-table td { vertical-align: middle; }
-        .assessment-table th.student-name {
-            min-width: 120px;
-            position: sticky;
-            left: 0;
-            background: white;
-            z-index: 2;
+        #assessmentGrid {
+            display: grid;
+            grid-template-columns: 1fr; 
+            gap: 0.5rem;
         }
-        .assessment-table .topic-header {
-            writing-mode: vertical-rl;
-            transform: rotate(180deg);
-            text-align: left;
-            padding: 0.5rem 0.25rem !important;
+        
+        .assessment-card {
+            background-color: #fff;
+            border: 1px solid var(--bs-gray-300);
+            border-radius: 0.375rem;
+            padding: 0.75rem;
+            display: flex; 
+            align-items: center;
+            gap: 0.75rem;
+        }
+        
+        .assessment-card .student-info {
+            flex-basis: 100px;
+            flex-shrink: 0;
+            font-size: 0.8rem;
             font-weight: 500;
-            min-width: 40px;
         }
-        .assessment-table .rubric-cell {
-            text-align: center;
-            padding: 0.25rem;
-            cursor: pointer;
-        }
-        .rubric-btn {
-            width: 35px;
-            height: 35px;
-            border-radius: 50%;
-            font-weight: 600;
-            border: 2px solid transparent;
-            background-color: var(--bs-gray-200);
-            color: var(--bs-gray-600);
-            transition: all 0.1s ease;
-        }
-        .rubric-btn:hover {
-            transform: scale(1.1);
-            box-shadow: 0 0 5px rgba(0,0,0,0.2);
-        }
-        .rubric-btn.active {
-            border-color: var(--bs-primary);
-            background-color: var(--bs-primary);
-            color: white;
-            box-shadow: 0 0 5px var(--bs-primary);
+        
+        .assessment-card .student-info .roll-number {
+            font-weight: 700;
+            font-size: 1rem;
+            color: var(--bs-primary);
         }
 
+        .assessment-card .qual-button-group {
+            flex-grow: 1;
+            display: flex;
+            flex-wrap: wrap; 
+            gap: 0.25rem; 
+            justify-content: flex-end; 
+        }
+        
+        .assessment-card .qual-button-group .btn {
+            flex-basis: 60px; 
+            flex-grow: 1; 
+            border-radius: 0.375rem !important; 
+            font-size: 0.8rem; 
+            padding: 0.5rem 0.25rem; 
+        }
+
+        /* 5. Group Management Modal */
+        #ungrouped-students-list {
+            position: -webkit-sticky;
+            position: sticky;
+            top: 1rem;
+            max-height: 40vh; /* 👈 [ใหม่] จำกัดความสูงสำหรับมือถือ */
+            overflow-y: auto;
+        }
+        #groups-container {
+            max-height: 70vh; /* 👈 [ใหม่] จำกัดความสูงสำหรับมือถือ */
+            overflow-y: auto;
+        }
     </style>
 {% endblock %}
 
@@ -200,9 +215,11 @@
      class="mobile-entry-container"
      data-entry-id="{{ entry.id }}"
      data-course-id="{{ entry.course.id }}"
-     data-date-iso="{{ date_iso }}">
+     data-date-iso="{{ date_iso }}"
+     data-classroom-id="{{ classroom_id_js }}" {# 👈 [ภารกิจที่ 3] #}
+     data-plan-id="{{ lesson_plan.id if lesson_plan else '' }}"> {# 👈 [ภารกิจที่ 3] #}
 
-    {# --- V28.3: Top Navbar --- #}
+    {# --- Top Navbar --- #}
     <nav class="navbar navbar-light bg-light fixed-top border-bottom shadow-sm p-2">
         <div class="container-fluid">
             <a href="{{ url_for('teacher.dashboard') }}" class="btn btn-sm btn-outline-secondary me-2">
@@ -218,6 +235,16 @@
                     <i class="bi bi-calendar-check"></i> {{ attendance_date.strftime('%d/%m/%Y') }}
                 </small>
             </div>
+            
+            {% if lesson_plan %}
+            <button class="btn btn-sm btn-outline-primary ms-2" 
+                    id="mobile-manage-groups-btn"
+                    data-bs-toggle="modal" 
+                    data-bs-target="#groupManagementModal">
+                <i class="bi bi-people-fill"></i>
+            </button>
+            {% endif %}
+
             {# Loading Spinner #}
             <div class="spinner-border spinner-border-sm text-primary ms-2" role="status" id="globalSpinner" style="display: none;">
                 <span class="visually-hidden">Loading...</span>
@@ -225,7 +252,7 @@
         </div>
     </nav>
 
-    {# --- V28.3: Nav Tabs --- #}
+    {# --- Nav Tabs --- #}
     <ul class="nav nav-tabs nav-fill sticky-top bg-white" id="mainTabs" role="tablist" style="top: 56px; z-index: 1025;">
         <li class="nav-item" role="presentation">
             <button class="nav-link active" id="attendance-tab" data-bs-toggle="tab" data-bs-target="#attendance" type="button" role="tab" aria-controls="attendance" aria-selected="true">
@@ -244,12 +271,12 @@
         </li>
     </ul>
 
-    {# --- V28.3: Tab Content --- #}
+    {# --- Tab Content --- #}
     <div class="tab-content" id="mainTabContent">
         
         {# --- 1. Attendance Tab --- #}
         <div class="tab-pane fade show active" id="attendance" role="tabpanel" aria-labelledby="attendance-tab">
-            <p class="text-muted small text-center">แตะที่บัตรนักเรียนเพื่อเปลี่ยนสถานะ (มา -> ขาด -> ลา -> สาย)</p>
+            <p class="text-muted small text-center mb-3">แตะที่บัตรนักเรียนเพื่อเปลี่ยนสถานะ (มา -> ขาด -> ลา -> สาย)</p>
             <div id="attendanceGrid">
                 {# Student cards will be rendered here by JS #}
             </div>
@@ -257,31 +284,66 @@
 
         {# --- 2. Scoring Tab --- #}
         <div class="tab-pane fade" id="scoring" role="tabpanel" aria-labelledby="scoring-tab">
-            <div class="mb-3">
-                <label for="gradedItemSelect" class="form-label fw-bold">เลือกรายการให้คะแนน:</label>
+            <div class="mb-3"> 
+                <label for="gradedItemSelect" class="form-label">เลือกรายการให้คะแนน:</label>
                 <select class="form-select" id="gradedItemSelect">
-                    <option value="">-- เลือกรายการ --</option>
+                    <option value="" selected>-- เลือกรายการ --</option>
                     {% for item in graded_items %}
-                    <option value="{{ item.id }}" data-max-score="{{ item.max_score }}">{{ item.name }} (เต็ม {{ item.max_score }})</option>
+                    <option value="{{ item.id }}">{{ item.name }} ({{ item.max_score }} คะแนน)</option>
                     {% endfor %}
                 </select>
             </div>
+            
+            <div class="d-flex justify-content-center small mb-3">
+                <div class="form-check form-switch form-check-inline me-3">
+                    <input class="form-check-input propagation-toggle" type="checkbox" role="switch" id="score-group-toggle" data-mode="group">
+                    <label class="form-check-label" for="score-group-toggle">ให้คะแนนแบบกลุ่ม</label>
+                </div>
+                <div class="form-check form-switch form-check-inline">
+                    <input class="form-check-input propagation-toggle" type="checkbox" role="switch" id="score-all-toggle" data-mode="all">
+                    <label class="form-check-label" for="score-all-toggle">ให้คะแนนทั้งหมด</label>
+                </div>
+            </div>
+            
             <div id="scoringGrid">
-                <p class="text-muted text-center">กรุณาเลือกรายการให้คะแนน</p>
+                <p class="text-muted text-center mt-4" id="scoring-placeholder">กรุณาเลือกรายการให้คะแนน</p>
             </div>
         </div>
 
-        {# --- 3. Assessment Tab --- #}
+        {# --- 3. Assessment Tab [REBUILT] --- #}
         <div class="tab-pane fade" id="assessment" role="tabpanel" aria-labelledby="assessment-tab">
-            <div id="assessmentContainer">
-                {# Assessment table will be rendered here by JS #}
+            
+            <div class="mb-3">
+                <label for="qual-topic-select" class="form-label">เลือกรายการประเมิน:</label>
+                <select class="form-select" id="qual-topic-select">
+                    <option value="">-- เลือกรายการ --</option>
+                    </select>
+            </div>
+
+            <div class="d-flex justify-content-center small mb-3">
+                <div class="form-check form-switch form-check-inline me-3">
+                    <input class="form-check-input propagation-toggle" type="checkbox" role="switch" id="qual-group-toggle" data-mode="group">
+                    <label class="form-check-label" for="qual-group-toggle">ประเมินแบบกลุ่ม</label>
+                </div>
+                <div class="form-check form-switch form-check-inline">
+                    <input class="form-check-input propagation-toggle" type="checkbox" role="switch" id="qual-all-toggle" data-mode="all">
+                    <label class="form-check-label" for="qual-all-toggle">ประเมินทั้งหมด</label>
+                </div>
+            </div>
+
+            <div id="assessmentGrid">
+                </div>
+            
+            <div id="qualitative-placeholder" class="text-center text-muted p-4 mt-4" style="display: block;">
+                <i class="bi bi-clipboard-check" style="font-size: 3rem;"></i>
+                <p class="mt-2">กรุณาเลือกรายการประเมินเพื่อเริ่ม</p>
             </div>
         </div>
 
     </div>
 </div>
 
-{# --- V28.3: Attendance Summary Bar (Fixed Bottom) --- #}
+{# --- Attendance Summary Bar (Fixed Bottom) --- #}
 <div id="attendanceSummaryBar">
     <div class="summary-item" style="color: var(--status-present);">
         มา
@@ -304,14 +366,53 @@
         <span class="summary-count" id="summaryTotal">0</span>
     </div>
 </div>
+
+<div class="modal fade" id="groupManagementModal" tabindex="-1">
+    {# 👈 [ใหม่] เปลี่ยน modal-xl เป็น modal-fullscreen #}
+    <div class="modal-dialog modal-fullscreen"> 
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">จัดการกลุ่มนักเรียน</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info d-none" id="group-manager-loader">
+                    <div class="spinner-border spinner-border-sm me-2"></div> กำลังโหลดข้อมูล...
+                </div>
+                {# 👈 [ใหม่] เปลี่ยน row เป็น d-flex flex-column #}
+                <div id="group-manager-content" style="display: none;" class="d-flex flex-column h-100">
+                    <div class="mb-3"> {# 👈 [ใหม่] ห่อ col-md-4 เดิม #}
+                        <h6>นักเรียนที่ยังไม่มีกลุ่ม</h6>
+                        <div id="ungrouped-students-list" class="list-group border p-2"></div>
+                    </div>
+                    <div class="flex-grow-1"> {# 👈 [ใหม่] ห่อ col-md-8 เดิม #}
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h6>กลุ่มในห้องเรียนนี้</h6>
+                            <div>
+                                <button class="btn btn-sm btn-outline-secondary" id="auto-generate-groups-btn">สร้างกลุ่มอัตโนมัติ</button>
+                                <button class="btn btn-sm btn-primary" id="add-new-group-btn"><i class="bi bi-plus-circle"></i> สร้างกลุ่มใหม่</button>
+                            </div>
+                        </div>
+                        <div id="groups-container"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+                <button type="button" class="btn btn-primary" id="save-groups-btn">บันทึกการจัดกลุ่ม</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
 {{ super() }}
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
 
 <script>
-    {# --- V28.3: NEW JAVASCRIPT LOGIC --- #}
     document.addEventListener('DOMContentLoaded', function() {
         
         // --- 1. Global State & Constants ---
@@ -319,22 +420,23 @@
         const ENTRY_ID = container.dataset.entryId;
         const COURSE_ID = container.dataset.courseId;
         const DATE_ISO = container.dataset.dateIso;
-        const CSRF_TOKEN = "{{ csrf_token() }}"; // Requires CSRF token from Flask-WTF
+        const CSRF_TOKEN = "{{ csrf_token() }}";
         const SPINNER = document.getElementById('globalSpinner');
+        
+        // [ภารกิจที่ 3] Add new globals
+        const CLASSROOM_ID = container.dataset.classroomId;
+        const PLAN_ID = container.dataset.planId;
+        let groupModal; // 👈 [ใหม่]
+        if (document.getElementById('groupManagementModal')) {
+             groupModal = new bootstrap.Modal(document.getElementById('groupManagementModal'));
+        }
+        let allEnrollments = [];
+        let sortableInstances = [];
 
         // Status cycle
         const STATUS_CYCLE = ['PRESENT', 'ABSENT', 'LEAVE', 'LATE'];
         const STATUS_ICONS = {
-            'PRESENT': '',
-            'ABSENT': 'ขาด',
-            'LATE': 'สาย',
-            'LEAVE': 'ลา'
-        };
-        const STATUS_TEXT = {
-            'PRESENT': 'มา',
-            'ABSENT': 'ขาด',
-            'LATE': 'สาย',
-            'LEAVE': 'ลา'
+            'PRESENT': '', 'ABSENT': 'ขาด', 'LATE': 'สาย', 'LEAVE': 'ลา'
         };
 
         // Data Models
@@ -353,7 +455,13 @@
             "{{ item.id }}": { id: {{ item.id }}, name: "{{ item.name }}", max_score: {{ item.max_score }} }{% if not loop.last %},{% endif %}
             {% endfor %}
         };
+        
+        // ASSESSMENT DATA
+        const ASSESSMENT_TOPICS = JSON.parse('{{ assessment_topics_json|safe }}');
         const ASSESSMENT_DATA = JSON.parse('{{ qualitative_assessment_data_json|safe }}');
+        const SUGGESTED_UNIT_ID = {{ suggested_unit_id or 'null' }};
+        const STUDENT_GROUP_MAP = JSON.parse('{{ student_group_map_json|safe }}');
+
 
         // UI Elements
         const attendanceGrid = document.getElementById('attendanceGrid');
@@ -365,11 +473,22 @@
         
         const gradedItemSelect = document.getElementById('gradedItemSelect');
         const scoringGrid = document.getElementById('scoringGrid');
+        const scoringPlaceholder = document.getElementById('scoring-placeholder'); // 👈 [ใหม่]
         
-        const assessmentContainer = document.getElementById('assessmentContainer');
-
-        let saveQueue = {};
-        let saveTimer;
+        // [ภารกิจที่ 2] Scoring Toggles
+        const scoreGroupToggle = document.getElementById('score-group-toggle');
+        const scoreAllToggle = document.getElementById('score-all-toggle');
+        let isScoreDistributing = false;
+        let scoreSaveDebounce;
+        
+        // ASSESSMENT UI ELEMENTS
+        const qualTopicSelect = document.getElementById('qual-topic-select');
+        const assessmentGrid = document.getElementById('assessmentGrid');
+        const qualPlaceholder = document.getElementById('qualitative-placeholder');
+        const qualGroupToggle = document.getElementById('qual-group-toggle');
+        const qualAllToggle = document.getElementById('qual-all-toggle');
+        let isQualDistributing = false; 
+        let qualSaveDebounce; 
 
         // --- Helper: Debounce ---
         function debounce(func, wait) {
@@ -410,7 +529,8 @@
 
             } catch (error) {
                 console.error(`Save error at ${endpoint}:`, error);
-                Swal.fire('เกิดข้อผิดพลาด', `การบันทึกล้มเหลว: ${error.message}`, 'error');
+                // Return the error object for handling
+                return { status: 'error', message: error.message }; 
             } finally {
                 SPINNER.style.display = 'none';
             }
@@ -422,21 +542,19 @@
         // ===================================
         
         function renderStudentCards() {
+            // ... (Code นี้ไม่เปลี่ยนแปลง) ...
             attendanceGrid.innerHTML = '';
             STUDENTS.forEach(student => {
                 const card = document.createElement('div');
                 card.className = 'student-card';
                 card.dataset.studentId = student.id;
                 card.dataset.status = student.status;
-                
                 const statusIcon = STATUS_ICONS[student.status];
-
                 card.innerHTML = `
                     <div class="student-roll">${student.roll || '-'}</div>
                     <div class="student-name">${student.name}</div>
                     <div class="status-badge">${statusIcon}</div>
                 `;
-                
                 card.addEventListener('click', () => cycleAttendanceStatus(card, student.id));
                 attendanceGrid.appendChild(card);
             });
@@ -444,38 +562,36 @@
         }
 
         function cycleAttendanceStatus(card, studentId) {
+            // ... (Code นี้ไม่เปลี่ยนแปลง) ...
             const currentStatus = card.dataset.status;
             const currentIndex = STATUS_CYCLE.indexOf(currentStatus);
             const nextIndex = (currentIndex + 1) % STATUS_CYCLE.length;
             const newStatus = STATUS_CYCLE[nextIndex];
-
-            // Update UI
             card.dataset.status = newStatus;
             card.querySelector('.status-badge').textContent = STATUS_ICONS[newStatus];
-
-            // Update local model
             const student = STUDENTS.find(s => s.id === studentId);
             student.status = newStatus;
-
-            // Update summary
             updateAttendanceSummary();
-
-            // Save to server
             saveAttendance(studentId, newStatus, card);
         }
         
-        function saveAttendance(studentId, newStatus, card) {
+        async function saveAttendance(studentId, newStatus, card) {
+            // ... (Code นี้ไม่เปลี่ยนแปลง) ...
             const payload = {
                 student_id: studentId,
                 entry_id: ENTRY_ID,
                 date: DATE_ISO,
                 status: newStatus
             };
-            saveApi("{{ url_for('teacher.api_set_attendance_status') }}", payload);
-            // No need to handle success/error, saveApi does it
+            const result = await saveApi("{{ url_for('teacher.api_set_attendance_status') }}", payload);
+            if (!result || result.status !== 'success') {
+                console.error("Failed to save attendance");
+                // Optional: Show an error icon on the card
+            }
         }
 
         function updateAttendanceSummary() {
+            // ... (Code นี้ไม่เปลี่ยนแปลง) ...
             let present = 0, absent = 0, late = 0, leave = 0;
             STUDENTS.forEach(student => {
                 switch(student.status) {
@@ -493,16 +609,30 @@
         }
 
         // ===================================
-        // --- 3. SCORING MODULE ---
+        // --- 3. SCORING MODULE [REBUILT] ---
         // ===================================
 
         function initScoring() {
+            // 1. Listen for dropdown change
             gradedItemSelect.addEventListener('change', () => {
                 const selectedItemId = gradedItemSelect.value;
                 if (selectedItemId) {
+                    scoringPlaceholder.style.display = 'none';
                     renderScoreCards(selectedItemId);
                 } else {
-                    scoringGrid.innerHTML = '<p class="text-muted text-center">กรุณาเลือกรายการให้คะแนน</p>';
+                    scoringGrid.innerHTML = '';
+                    scoringPlaceholder.style.display = 'block';
+                }
+            });
+            
+            // 2. Listen for toggle changes [ภารกิจที่ 2]
+            scoreGroupToggle.addEventListener('change', handleScoreToggleChange);
+            scoreAllToggle.addEventListener('change', handleScoreToggleChange);
+
+            // 3. Listen for input changes (delegation) [ภารกิจที่ 2]
+            scoringGrid.addEventListener('input', (e) => {
+                if (e.target.classList.contains('score-input')) {
+                    handleScoreChange(e.target);
                 }
             });
         }
@@ -516,6 +646,8 @@
             STUDENTS.forEach(student => {
                 const card = document.createElement('div');
                 card.className = 'score-card';
+                card.dataset.studentId = student.id; // 👈 [ใหม่]
+                card.dataset.groupId = STUDENT_GROUP_MAP[student.id] || ''; // 👈 [ใหม่]
                 
                 const scoreKey = `${student.id}-${item.id}`;
                 const currentScore = SCORES[scoreKey] !== undefined ? SCORES[scoreKey] : '';
@@ -529,179 +661,497 @@
                            max="${item.max_score}" 
                            step="0.25"
                            placeholder="-"
-                           data-student-id="${student.id}"
                            data-item-id="${item.id}"
                            data-max-score="${item.max_score}">
                 `;
-                
-                const input = card.querySelector('.score-input');
-                // Debounce saving on input
-                input.addEventListener('input', debounce((e) => {
-                    handleScoreSave(e.target);
-                }, 1000)); // Save 1 sec after user stops typing
                 
                 scoringGrid.appendChild(card);
             });
         }
 
-        function handleScoreSave(inputElement) {
-            const studentId = inputElement.dataset.studentId;
-            const itemId = inputElement.dataset.itemId;
-            const maxScore = parseFloat(inputElement.dataset.maxScore);
-            let score = inputElement.value;
+        // [ภารกิจที่ 2] New Handler
+        function handleScoreToggleChange(e) {
+            if (!e.target.checked) return; 
+            const mode = e.target.dataset.mode;
+            if (mode === 'group') {
+                scoreAllToggle.checked = false;
+            } else if (mode === 'all') {
+                scoreGroupToggle.checked = false;
+            }
+        }
 
-            // Validation
-            if (score === '') {
-                score = null; // Send null to delete score
+        // [ภารกิจที่ 2] New Handler (Replaces handleScoreSave)
+        function handleScoreChange(inputElement) {
+            if (isScoreDistributing) return;
+            isScoreDistributing = true;
+
+            const card = inputElement.closest('.score-card');
+            const clickedStudentId = card.dataset.studentId;
+            const clickedGroupId = card.dataset.groupId;
+            const itemId = inputElement.dataset.itemId;
+            const newScoreValue = inputElement.value;
+            const maxScore = parseFloat(inputElement.dataset.maxScore);
+
+            // 1. Validation
+            let scoreForSave = newScoreValue;
+            if (scoreForSave === '') {
+                scoreForSave = null; 
                 inputElement.classList.remove('is-invalid', 'is-valid');
             } else {
-                score = parseFloat(score);
-                if (isNaN(score) || score < 0) {
+                scoreForSave = parseFloat(scoreForSave);
+                if (isNaN(scoreForSave) || scoreForSave < 0) {
                     inputElement.classList.add('is-invalid');
                     inputElement.classList.remove('is-valid');
+                    isScoreDistributing = false;
                     return; // Don't save invalid input
-                } else if (score > maxScore) {
+                } else if (scoreForSave > maxScore) {
                     inputElement.classList.add('is-invalid');
                     inputElement.classList.remove('is-valid');
-                    // We might still save it, depending on policy, but visually flag it.
-                    // For now, let's save it.
                 } else {
                     inputElement.classList.add('is-valid');
                     inputElement.classList.remove('is-invalid');
                 }
             }
+            
+            // 2. Propagation Logic
+            let targetCards = [];
+            if (scoreAllToggle.checked) {
+                targetCards = Array.from(scoringGrid.querySelectorAll('.score-card'));
+            } else if (scoreGroupToggle.checked && clickedGroupId) {
+                targetCards = Array.from(scoringGrid.querySelectorAll(`.score-card[data-group-id="${clickedGroupId}"]`));
+            } else {
+                targetCards = [card];
+            }
 
-            // Update local model
-            const scoreKey = `${studentId}-${itemId}`;
-            SCORES[scoreKey] = score;
+            let scoresToSave = [];
 
-            // Save to server (Uses existing API)
-            const payload = {
-                student_id: studentId,
-                item_id: itemId,
-                score: score
-            };
-            saveApi("{{ url_for('teacher.save_score', course_id=COURSE_ID) }}", payload);
+            // 3. Update UI and build payload
+            targetCards.forEach(targetCard => {
+                const studentId = targetCard.dataset.studentId;
+                const input = targetCard.querySelector(`.score-input[data-item-id="${itemId}"]`);
+                
+                if (input && input !== inputElement) {
+                    input.value = newScoreValue; // Update UI
+                    // (คัดลอก Validation classes)
+                    input.className = inputElement.className; 
+                }
+
+                // Update local model
+                const scoreKey = `${studentId}-${itemId}`;
+                SCORES[scoreKey] = scoreForSave;
+
+                // Add to payload
+                scoresToSave.push({
+                    student_id: parseInt(studentId),
+                    graded_item_id: parseInt(itemId),
+                    score: scoreForSave
+                });
+            });
+
+            // 4. Save (Debounced)
+            saveScoresBulk(scoresToSave);
+            
+            isScoreDistributing = false;
+        }
+        
+        // [ภารกิจที่ 2] New Save Function
+        function saveScoresBulk(scoresPayload) {
+            clearTimeout(scoreSaveDebounce);
+            scoreSaveDebounce = setTimeout(async () => {
+                const payload = {
+                    scores: scoresPayload,
+                    course_id: COURSE_ID
+                };
+                const result = await saveApi("{{ url_for('teacher.save_scores_bulk') }}", payload);
+                if (!result || result.status !== 'success') {
+                    Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถบันทึกข้อมูลคะแนนได้', 'error');
+                }
+            }, 800);
         }
 
         // ===================================
-        // --- 4. ASSESSMENT MODULE ---
+        // --- 4. ASSESSMENT MODULE [REBUILT] ---
         // ===================================
 
         function initAssessment() {
-            renderAssessmentTable();
+            // 1. Populate Dropdown
+            populateTopicDropdown();
+            
+            // 2. Add Listeners
+            qualTopicSelect.addEventListener('change', renderAssessmentGrid);
+            
+            qualGroupToggle.addEventListener('change', handleQualToggleChange);
+            qualAllToggle.addEventListener('change', handleQualToggleChange);
+            
+            assessmentGrid.addEventListener('click', handleRubricClick);
         }
-
-        function renderAssessmentTable() {
-            const templates = ASSESSMENT_DATA.templates;
-            const rubrics = templates.length > 0 ? templates[0].rubrics : []; // Assuming first template's rubrics
-            const topics = templates.length > 0 ? templates[0].topics : []; // Assuming first template's topics
-            const existingScores = ASSESSMENT_DATA.existing_scores;
-
-            if (templates.length === 0) {
-                assessmentContainer.innerHTML = '<p class="text-muted text-center">ยังไม่มีการตั้งค่าแม่แบบการประเมินผล (Admin)</p>';
-                return;
-            }
-
-            // Build Topic Headers (flatten tree)
-            let topicHeaders = [];
-            function flattenTopics(topic) {
-                if (topic.children && topic.children.length > 0) {
-                    topic.children.forEach(flattenTopics);
+        
+        function populateTopicDropdown() {
+            let currentUnitId = null;
+            let optgroup = null;
+            
+            ASSESSMENT_TOPICS.forEach(topic => {
+                if (topic.unit_id !== currentUnitId) {
+                    currentUnitId = topic.unit_id;
+                    optgroup = document.createElement('optgroup');
+                    optgroup.label = `หน่วยที่: ${topic.unit_name}`;
+                    qualTopicSelect.appendChild(optgroup);
+                }
+                
+                const option = document.createElement('option');
+                option.value = topic.topic_id;
+                
+                // --- [ภารกิจที่ 1] Add indentation for sub-topics ---
+                if (topic.parent_id) {
+                    option.textContent = `— ${topic.topic_name}`;
+                    option.style.paddingLeft = "1.5rem";
                 } else {
-                    // Only add topics that are "leaf" nodes
-                    topicHeaders.push(topic);
+                    option.textContent = topic.topic_name;
+                    // option.style.fontWeight = "bold"; // (Optional)
+                }
+                // --- End [ภารกิจที่ 1] ---
+                
+                option.dataset.unitId = topic.unit_id;
+                
+                if (optgroup) {
+                    optgroup.appendChild(option);
+                } else {
+                    qualTopicSelect.appendChild(option);
+                }
+            });
+            
+            // 3. Auto-select suggested unit
+            if (SUGGESTED_UNIT_ID) {
+                const suggestedOption = qualTopicSelect.querySelector(`option[data-unit-id="${SUGGESTED_UNIT_ID}"]`);
+                if (suggestedOption) {
+                    suggestedOption.selected = true;
+                    renderAssessmentGrid(); 
                 }
             }
-            topics.forEach(flattenTopics);
-            topicHeaders.sort((a, b) => a.id - b.id); // Ensure consistent order
-
-            let tableHtml = '<div class="table-responsive"><table class="table table-bordered assessment-table">';
-            
-            // Header
-            tableHtml += '<thead class="table-light"><tr><th class="student-name sticky-col">นักเรียน</th>';
-            topicHeaders.forEach(topic => {
-                tableHtml += `<th class="topic-header" title="${topic.name}">${topic.name}</th>`;
-            });
-            tableHtml += '</tr></thead>';
-
-            // Body
-            tableHtml += '<tbody>';
-            STUDENTS.forEach(student => {
-                tableHtml += `<tr><td class="student-name sticky-col">(${student.roll || '-'}) ${student.name}</td>`;
-                topicHeaders.forEach(topic => {
-                    const scoreKey = `${student.id}-${topic.id}`;
-                    const currentScore = existingScores[scoreKey];
-                    
-                    tableHtml += `<td class="rubric-cell" data-student-id="${student.id}" data-topic-id="${topic.id}">`;
-                    rubrics.forEach(rubric => {
-                        const isActive = (currentScore === rubric.value) ? 'active' : '';
-                        tableHtml += `
-                            <button class="btn rubric-btn ${isActive}" data-score-value="${rubric.value}" title="${rubric.label}">
-                                ${rubric.label}
-                            </button> `;
-                    });
-                    tableHtml += '</td>';
-                });
-                tableHtml += '</tr>';
-            });
-            tableHtml += '</tbody></table></div>';
-
-            assessmentContainer.innerHTML = tableHtml;
-
-            // Add event listeners for the new buttons
-            addAssessmentClickListeners();
         }
-
-        function addAssessmentClickListeners() {
-            assessmentContainer.querySelectorAll('.rubric-cell').forEach(cell => {
-                cell.addEventListener('click', (e) => {
-                    const button = e.target.closest('.rubric-btn');
-                    if (!button) return;
-
-                    const studentId = cell.dataset.studentId;
-                    const topicId = cell.dataset.topicId;
-                    let newScoreValue;
-
-                    // Toggle logic
-                    if (button.classList.contains('active')) {
-                        // Clicked active button: De-select (set score to null)
-                        button.classList.remove('active');
-                        newScoreValue = null;
-                    } else {
-                        // Clicked inactive button: De-select siblings, select this one
-                        cell.querySelectorAll('.rubric-btn').forEach(btn => btn.classList.remove('active'));
-                        button.classList.add('active');
-                        newScoreValue = parseInt(button.dataset.scoreValue);
-                    }
-                    
-                    // Save to server
-                    saveQualitativeScore(studentId, topicId, newScoreValue);
+        
+        function renderAssessmentGrid() {
+            const selectedTopicId = qualTopicSelect.value;
+            
+            if (!selectedTopicId) {
+                assessmentGrid.innerHTML = '';
+                qualPlaceholder.style.display = 'block';
+                return;
+            }
+            
+            qualPlaceholder.style.display = 'none';
+            assessmentGrid.innerHTML = '';
+            
+            // 1. Find Rubrics for this topic
+            const rubrics = findRubricsForTopic(selectedTopicId);
+            if (!rubrics || rubrics.length === 0) {
+                assessmentGrid.innerHTML = '<p class="text-muted text-center">ไม่พบ Rubric สำหรับรายการนี้ (หรือยังไม่ได้ตั้งค่าใน Template)</p>';
+                return;
+            }
+            
+            // 2. Loop through STUDENTS and render cards
+            STUDENTS.forEach(student => {
+                const card = document.createElement('div');
+                card.className = 'assessment-card';
+                card.dataset.studentId = student.id;
+                card.dataset.groupId = STUDENT_GROUP_MAP[student.id] || '';
+                
+                let buttonsHtml = '';
+                const scoreKey = `${student.id}-${selectedTopicId}`;
+                const currentScore = ASSESSMENT_DATA.existing_scores[scoreKey];
+                
+                rubrics.forEach(rubric => {
+                    const isActive = (currentScore === rubric.value);
+                    buttonsHtml += `
+                        <button type="button" 
+                                class="btn btn-sm ${isActive ? 'btn-primary' : 'btn-outline-primary'}" 
+                                data-value="${rubric.value}">
+                            ${rubric.label}
+                        </button>
+                    `;
                 });
+                
+                card.innerHTML = `
+                    <div class="student-info">
+                        <span class="roll-number">(${student.roll || '-'})</span>
+                        ${student.name}
+                    </div>
+                    <div class="btn-group btn-group-sm w-100 qual-button-group" 
+                         role="group" 
+                         data-topic-id="${selectedTopicId}">
+                        ${buttonsHtml}
+                    </div>
+                `;
+                assessmentGrid.appendChild(card);
             });
         }
         
-        function saveQualitativeScore(studentId, topicId, scoreValue) {
-            // Update local model
-            const scoreKey = `${studentId}-${topicId}`;
-            if (scoreValue === null) {
-                delete ASSESSMENT_DATA.existing_scores[scoreKey];
+        function findRubricsForTopic(topicId) {
+            // (Code นี้ไม่เปลี่ยนแปลง) ...
+            for (const template of ASSESSMENT_DATA.templates) {
+                function searchInTopic(topic) {
+                    if (topic.id == topicId) return true;
+                    if (topic.children) {
+                        for (const child of topic.children) {
+                            if (searchInTopic(child)) return true;
+                        }
+                    }
+                    return false;
+                }
+                
+                for (const topTopic of template.topics) {
+                    if (searchInTopic(topTopic)) {
+                        return template.rubrics; 
+                    }
+                }
+            }
+            return [];
+        }
+        
+        function handleQualToggleChange(e) {
+            // (Code นี้ไม่เปลี่ยนแปลง) ...
+            if (!e.target.checked) return; 
+            const mode = e.target.dataset.mode;
+            if (mode === 'group') {
+                qualAllToggle.checked = false; 
+            } else if (mode === 'all') {
+                qualGroupToggle.checked = false; 
+            }
+        }
+        
+        function handleRubricClick(e) {
+            // (Code นี้ไม่เปลี่ยนแปลง) ...
+            const button = e.target.closest('.qual-button-group button');
+            if (!button || isQualDistributing) return;
+            
+            isQualDistributing = true;
+            
+            const buttonGroup = button.closest('.qual-button-group');
+            const card = button.closest('.assessment-card');
+            
+            const topicId = buttonGroup.dataset.topicId;
+            const clickedStudentId = card.dataset.studentId;
+            const clickedGroupId = card.dataset.groupId;
+            
+            let newValue;
+            
+            if (button.classList.contains('btn-primary')) {
+                button.classList.remove('btn-primary');
+                button.classList.add('btn-outline-primary');
+                newValue = null;
             } else {
-                ASSESSMENT_DATA.existing_scores[scoreKey] = scoreValue;
+                newValue = parseFloat(button.dataset.value);
+                buttonGroup.querySelectorAll('button').forEach(btn => {
+                    btn.classList.remove('btn-primary');
+                    btn.classList.add('btn-outline-primary');
+                });
+                button.classList.add('btn-primary');
+                button.classList.remove('btn-outline-primary');
+            }
+            
+            let scoresToSave = []; 
+            
+            let targetCards = [];
+            if (qualAllToggle.checked) {
+                targetCards = Array.from(assessmentGrid.querySelectorAll('.assessment-card'));
+            } else if (qualGroupToggle.checked && clickedGroupId) {
+                targetCards = Array.from(assessmentGrid.querySelectorAll(`.assessment-card[data-group-id="${clickedGroupId}"]`));
+            } else {
+                targetCards = [card]; 
             }
 
-            // Save to server
-            const payload = {
-                student_id: studentId,
-                course_id: COURSE_ID,
-                topic_id: topicId,
-                score_value: scoreValue
-            };
-            saveApi("{{ url_for('teacher.api_set_qualitative_score') }}", payload);
+            targetCards.forEach(targetCard => {
+                const studentId = targetCard.dataset.studentId;
+                
+                targetCard.querySelectorAll('.qual-button-group button').forEach(btn => {
+                    const btnValue = parseFloat(btn.dataset.value);
+                    const shouldBeActive = (btnValue === newValue);
+                    btn.classList.toggle('btn-primary', shouldBeActive);
+                    btn.classList.toggle('btn-outline-primary', !shouldBeActive);
+                });
+                
+                scoresToSave.push({
+                    student_id: parseInt(studentId),
+                    topic_id: parseInt(topicId),
+                    score: newValue
+                });
+            });
+
+            saveQualitativeScore(scoresToSave);
+            
+            isQualDistributing = false;
+        }
+
+        function saveQualitativeScore(scoresPayload) {
+            // (Code นี้ไม่เปลี่ยนแปลง) ...
+            scoresPayload.forEach(item => {
+                const scoreKey = `${item.student_id}-${item.topic_id}`;
+                if (item.score === null) {
+                    delete ASSESSMENT_DATA.existing_scores[scoreKey];
+                } else {
+                    ASSESSMENT_DATA.existing_scores[scoreKey] = item.score;
+                }
+            });
+
+            clearTimeout(qualSaveDebounce);
+            qualSaveDebounce = setTimeout(async () => {
+                const payload = {
+                    scores: scoresPayload,
+                    course_id: COURSE_ID
+                };
+                const result = await saveApi("{{ url_for('teacher.save_qualitative_scores_bulk') }}", payload);
+                if (!result || result.status !== 'success') {
+                    Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถบันทึกข้อมูลการประเมินได้', 'error');
+                }
+            }, 800); 
         }
 
         // ===================================
-        // --- 5. INITIALIZATION ---
+        // --- 5. GROUP MANAGEMENT [ภารกิจที่ 3] ---
+        // ===================================
+        // (คัดลอกจาก attendance.html และปรับแก้ตัวแปร)
+
+        function createStudentElement(enrollment) {
+            return `<div class="list-group-item list-group-item-action p-2" data-id="${enrollment.id}">
+                        <small>${enrollment.roll_number}. ${enrollment.name}</small>
+                    </div>`;
+        }
+
+        function createGroupCard(group, membersHtml = '') {
+            return `
+                <div class="card mb-3 group-card" data-group-id="${group.id}">
+                    <div class="card-header p-2 d-flex justify-content-between align-items-center">
+                        <input type="text" class="form-control form-control-sm group-name-input" value="${group.name}">
+                        <button class="btn btn-xs btn-outline-danger ms-2 delete-group-btn border-0">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                    <div class="card-body p-2 list-group group-dropzone" style="min-height: 50px;">
+                        ${membersHtml}
+                    </div>
+                </div>`;
+        }
+        
+        function renderGroupManagerUI(groups = []) {
+            const ungroupedList = document.getElementById('ungrouped-students-list');
+            const groupsContainer = document.getElementById('groups-container');
+            ungroupedList.innerHTML = '';
+            groupsContainer.innerHTML = '';
+            const groupedIds = new Set(groups.flatMap(g => g.enrollments));
+            allEnrollments.filter(en => !groupedIds.has(en.id))
+                .forEach(en => ungroupedList.innerHTML += createStudentElement(en));
+            groups.forEach(group => {
+                let membersHtml = '';
+                allEnrollments.filter(en => group.enrollments.includes(en.id))
+                    .forEach(member => membersHtml += createStudentElement(member));
+                groupsContainer.insertAdjacentHTML('beforeend', createGroupCard({ id: group.id, name: group.name }, membersHtml));
+            });
+            initializeAllSortables();
+        }
+        
+        async function saveGroups() {
+            const saveBtn = document.getElementById('save-groups-btn');
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> กำลังบันทึก...`;
+            
+            const payload = {
+                groups: Array.from(document.querySelectorAll('#groups-container .group-card')).map(card => ({
+                    id: card.dataset.groupId.startsWith('new-') ? null : parseInt(card.dataset.groupId),
+                    name: card.querySelector('.group-name-input').value.trim(),
+                    members: Array.from(card.querySelectorAll('.list-group-item[data-id]')).map(item => parseInt(item.dataset.id))
+                })).filter(g => g.name),
+                course_id: COURSE_ID // 👈 ใช้ Global Var
+            };
+            
+            try {
+                // 👈 ใช้ Global Var
+                const response = await fetch(`/teacher/api/plan/${PLAN_ID}/groups`, { 
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
+                    body: JSON.stringify(payload)
+                });
+                if (!response.ok) throw new Error('Server error on save.');
+                Swal.fire('สำเร็จ!', 'บันทึกการจัดกลุ่มเรียบร้อยแล้ว', 'success');
+                groupModal.hide();
+                
+                // 👈 [ใหม่] เมื่อบันทึกสำเร็จ ต้อง Reload ข้อมูลกลุ่มใน JS
+                const newGroupMap = {};
+                const newGroupsData = await response.json(); // (ต้องมั่นใจว่า API ส่งข้อมูลกลุ่มกลับมา... ซึ่ง API เดิมไม่ได้ส่ง)
+                
+                // 👈 [แก้ไข] เนื่องจาก API เดิมไม่ส่งข้อมูลกลับ
+                // เราจะใช้ payload ที่เราเพิ่งส่งไปในการอัปเดต STUDENT_GROUP_MAP
+                payload.groups.forEach((group, index) => {
+                    const groupId = group.id || `temp-id-${index}`; // ใช้ ID ชั่วคราว (ไม่เป็นไร)
+                    group.members.forEach(studentId => {
+                        // (BUG: payload ใช้ enrollment_id, แต่ MAP ใช้ student_id)
+                        // (BUG 2: allEnrollments ใช้ enrollment_id)
+                        
+                        // 👈 [แก้ไข] เราต้องหา student_id จาก enrollment_id
+                        const enrollment = allEnrollments.find(en => en.id === studentId);
+                        if(enrollment) {
+                           STUDENT_GROUP_MAP[enrollment.student_id] = groupId;
+                        }
+                    });
+                });
+                
+                // 👈 [ใหม่] Reload หน้า Grid ที่เปิดอยู่
+                if (gradedItemSelect.value) renderScoreCards(gradedItemSelect.value);
+                if (qualTopicSelect.value) renderAssessmentGrid();
+
+            } catch (error) {
+                Swal.fire('ผิดพลาด!', 'ไม่สามารถบันทึกข้อมูลได้', 'error');
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'บันทึกการจัดกลุ่ม';
+            }
+        }
+        
+        function initializeAllSortables() {
+            sortableInstances.forEach(s => s.destroy());
+            sortableInstances = [];
+            document.querySelectorAll('#groupManagementModal .list-group').forEach(list =>
+                sortableInstances.push(new Sortable(list, {
+                    group: 'students',
+                    animation: 150,
+                    ghostClass: 'bg-primary-soft'
+                }))
+            );
+        }
+        
+        async function openGroupManager() {
+            if (!PLAN_ID) return Swal.fire('ข้อผิดพลาด', 'ไม่พบรหัสแผนการสอนในหน้านี้', 'error');
+            
+            const loader = document.getElementById('group-manager-loader');
+            const content = document.getElementById('group-manager-content');
+            loader.classList.remove('d-none');
+            content.style.display = 'none';
+            // groupModal.show(); (Modal ถูกเปิดโดย Button แล้ว)
+            
+            try {
+                // 👈 ใช้ Global Vars
+                const groupsUrl = `/teacher/api/plan/${PLAN_ID}/groups?course_id=${COURSE_ID}`; 
+                const enrollmentsUrl = `{{ url_for('teacher.get_enrollments_for_classroom', classroom_id=0) }}`.replace('0', CLASSROOM_ID);
+                
+                const [enrollmentsRes, groupsRes] = await Promise.all([
+                    fetch(enrollmentsUrl),
+                    fetch(groupsUrl)
+                ]);
+                
+                if (!enrollmentsRes.ok || !groupsRes.ok) throw new Error('Could not fetch initial data.');
+                allEnrollments = await enrollmentsRes.json();
+                const groups = await groupsRes.json();
+                
+                renderGroupManagerUI(groups);
+                loader.classList.add('d-none');
+                content.style.display = 'flex'; // 👈 [แก้ไข] เปลี่ยนกลับเป็น flex
+                initializeAllSortables();
+            } catch (error) {
+                loader.innerHTML = `<div class="text-danger">${error.message}</div>`;
+            }
+        }
+
+        // ===================================
+        // --- 6. INITIALIZATION ---
         // ===================================
         
         function init() {
@@ -713,6 +1163,60 @@
             
             // Tab 3: Assessment
             initAssessment();
+            
+            // [ภารกิจที่ 3] Group Management Listeners
+            const mobileManageGroupsBtn = document.getElementById('mobile-manage-groups-btn');
+            if (mobileManageGroupsBtn) {
+                 // 👈 [ใหม่] เราจะโหลดข้อมูลเมื่อ Modal ถูก *สั่งให้เปิด*
+                 document.getElementById('groupManagementModal').addEventListener('show.bs.modal', openGroupManager);
+            }
+
+            document.getElementById('groupManagementModal').addEventListener('click', async (e) => {
+                const target = e.target;
+                const groupsContainer = document.getElementById('groups-container');
+                if (target.closest('#save-groups-btn')) {
+                    saveGroups();
+                } else if (target.closest('#add-new-group-btn')) {
+                    const groupHtml = createGroupCard({ id: `new-${Date.now()}`, name: `กลุ่มที่ ${groupsContainer.children.length + 1}` }, '');
+                    groupsContainer.insertAdjacentHTML('beforeend', groupHtml);
+                    initializeAllSortables();
+                } else if (target.closest('.delete-group-btn')) {
+                    const card = target.closest('.group-card');
+                    if (card) {
+                        card.querySelectorAll('.list-group-item').forEach(item => document.getElementById('ungrouped-students-list').appendChild(item));
+                        card.remove();
+                    }
+                } else if (target.closest('#auto-generate-groups-btn')) {
+                    const { value: numGroups } = await Swal.fire({
+                        target: document.getElementById('groupManagementModal'),
+                        title: 'สร้างกลุ่มอัตโนมัติ',
+                        input: 'number',
+                        inputLabel: 'คุณต้องการสร้างกี่กลุ่ม?',
+                        showCancelButton: true,
+                        inputValidator: (v) => { if (!v || v < 1) return 'กรุณาใส่จำนวนกลุ่มที่ถูกต้อง!'; }
+                    });
+                    if (numGroups) {
+                        const students = Array.from(document.querySelectorAll('#ungrouped-students-list .list-group-item[data-id]'));
+                        for (let i = students.length - 1; i > 0; i--) {
+                            const j = Math.floor(Math.random() * (i + 1));
+                            [students[i], students[j]] = [students[j], students[i]];
+                        }
+                        groupsContainer.innerHTML = '';
+                        const newGroupElements = [];
+                        for (let i = 1; i <= numGroups; i++) {
+                            const groupId = `new-${Date.now()}-${i}`;
+                            groupsContainer.insertAdjacentHTML('beforeend', createGroupCard({ id: groupId, name: `กลุ่มที่ ${i}` }, ''));
+                            newGroupElements.push(groupsContainer.querySelector(`[data-group-id="${groupId}"] .list-group`));
+                        }
+                        if (newGroupElements.length > 0) {
+                            students.forEach((studentNode, index) => {
+                                newGroupElements[index % numGroups].appendChild(studentNode);
+                            });
+                        }
+                        initializeAllSortables();
+                    }
+                }
+            });
         }
         
         init();
