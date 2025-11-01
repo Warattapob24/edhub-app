@@ -49,6 +49,10 @@ sub_unit_assessment_items = db.Table('sub_unit_assessment_items',
     db.Column('sub_unit_id', db.Integer, db.ForeignKey('sub_unit.id'), primary_key=True),
     db.Column('assessment_item_id', db.Integer, db.ForeignKey('assessment_item.id'), primary_key=True)
 )
+subunit_topics = db.Table('subunit_topics',
+    db.Column('subunit_id', db.Integer, db.ForeignKey('sub_unit.id', name='fk_subunit_topics_subunit'), primary_key=True),
+    db.Column('topic_id', db.Integer, db.ForeignKey('assessment_topic.id', name='fk_subunit_topics_topic'), primary_key=True)
+)
 student_group_members = db.Table('student_group_members',
     db.Column('enrollment_id', db.Integer, db.ForeignKey('enrollment.id'), primary_key=True),
     db.Column('student_group_id', db.Integer, db.ForeignKey('student_group.id'), primary_key=True)
@@ -205,10 +209,10 @@ class Subject(db.Model):
 
 class Curriculum(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    semester_id = db.Column(db.Integer, db.ForeignKey('semester.id'), nullable=False)
-    grade_level_id = db.Column(db.Integer, db.ForeignKey('grade_level.id'), nullable=False)
-    subject_id = db.Column(db.Integer, db.ForeignKey('subject.id'), nullable=False)
-    program_id = db.Column(db.Integer, db.ForeignKey('program.id'), nullable=False, index=True) # <-- เพิ่ม ForeignKey (Require Program)
+    semester_id = db.Column(db.Integer, db.ForeignKey('semester.id', name='fk_curriculum_semester'), nullable=False)
+    grade_level_id = db.Column(db.Integer, db.ForeignKey('grade_level.id', name='fk_curriculum_grade_level'), nullable=False)
+    subject_id = db.Column(db.Integer, db.ForeignKey('subject.id', name='fk_curriculum_subject'), nullable=False)
+    program_id = db.Column(db.Integer, db.ForeignKey('program.id', name='fk_curriculum_program'), nullable=False, index=True)
     semester = db.relationship('Semester', back_populates='curriculums')
     grade_level = db.relationship('GradeLevel', backref=db.backref('curriculum_items'))
     subject = db.relationship('Subject', backref=db.backref('curriculum_items'))
@@ -222,10 +226,10 @@ class Curriculum(db.Model):
 class Classroom(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(50), nullable=False)
-    grade_level_id = db.Column(db.Integer, db.ForeignKey('grade_level.id'), nullable=False)
-    academic_year_id = db.Column(db.Integer, db.ForeignKey('academic_year.id'), nullable=False)
-    program_id = db.Column(db.Integer, db.ForeignKey('program.id'), nullable=True, index=True) # <-- เพิ่ม ForeignKey (Allow NULL initially)
-    room_id = db.Column(db.Integer, db.ForeignKey('room.id'), nullable=True)
+    grade_level_id = db.Column(db.Integer, db.ForeignKey('grade_level.id', name='fk_classroom_grade_level'), nullable=False)
+    academic_year_id = db.Column(db.Integer, db.ForeignKey('academic_year.id', name='fk_classroom_academic_year'), nullable=False)
+    program_id = db.Column(db.Integer, db.ForeignKey('program.id', name='fk_classroom_program'), nullable=True, index=True)
+    room_id = db.Column(db.Integer, db.ForeignKey('room.id', name='fk_classroom_room'), nullable=True)
     grade_level = db.relationship('GradeLevel', back_populates='classrooms')
     academic_year = db.relationship('AcademicYear', back_populates='classrooms')
     enrollments = db.relationship('Enrollment', back_populates='classroom', lazy='dynamic', cascade="all, delete-orphan")
@@ -564,8 +568,8 @@ class SubUnit(db.Model):
                                  backref=db.backref('sub_units', lazy=True))
     graded_items = db.relationship('GradedItem', secondary=sub_unit_graded_items, lazy='subquery',
                                    backref=db.backref('sub_units', lazy=True))
-    assessment_items = db.relationship('AssessmentItem', secondary=sub_unit_assessment_items, lazy='subquery',
-                                       backref=db.backref('sub_units', lazy=True))
+    assessment_topics = db.relationship('AssessmentTopic', secondary=subunit_topics, lazy='subquery',
+                                          backref=db.backref('sub_units', lazy=True))
 
     def __repr__(self):
         return f'<SubUnit {self.title}>'
@@ -635,9 +639,9 @@ class AdministrativeDepartment(db.Model):
     members = db.relationship('User', secondary=admin_department_members, back_populates='member_of_admin_depts')
     
     # --- [ใหม่] เพิ่มคอลัมน์สำหรับ "ผูก" กับ Role ที่มีอยู่ ---
-    head_role_id = db.Column(db.Integer, db.ForeignKey('role.id'), nullable=True)
-    vice_role_id = db.Column(db.Integer, db.ForeignKey('role.id'), nullable=True)
-    member_role_id = db.Column(db.Integer, db.ForeignKey('role.id'), nullable=True) # Role มาตรฐานสำหรับสมาชิก
+    head_role_id = db.Column(db.Integer, db.ForeignKey('role.id', name='fk_admin_dept_head_role'), nullable=True)
+    vice_role_id = db.Column(db.Integer, db.ForeignKey('role.id', name='fk_admin_dept_vice_role'), nullable=True)
+    member_role_id = db.Column(db.Integer, db.ForeignKey('role.id', name='fk_admin_dept_member_role'), nullable=True)
 
     # --- [ใหม่] สร้าง Relationship ไปยัง Role ---
     head_role = db.relationship('Role', foreign_keys=[head_role_id])

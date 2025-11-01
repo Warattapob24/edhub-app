@@ -1,9 +1,198 @@
 {% extends "mobile_base.html" %}
-{% block title %}Mobile Classroom - {{ entry.course.subject.name }}{% endblock %}
+{% block title %}Mobile Hub - {{ entry.course.subject.name }}{% endblock %}
 
 {% block styles %}
     {{ super() }}
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/mobile_entry.css') }}">
+    {# --- V28.3: CSS ใหม่สำหรับ UI แบบคลิก/แตะ --- #}
+    <style>
+        :root {
+            --status-present: #d1e7dd;
+            --status-absent: #f8d7da;
+            --status-late: #fff3cd;
+            --status-leave: #e2e3e5;
+            --status-border-present: #a3cfbb;
+            --status-border-absent: #f1b0b7;
+            --status-border-late: #ffe69c;
+            --status-border-leave: #adb5bd;
+        }
+        
+        /* 1. Container & Tabs */
+        .mobile-entry-container {
+            padding-top: 56px; /* Space for fixed navbar */
+            padding-bottom: 56px; /* Space for fixed summary bar */
+        }
+        .nav-tabs .nav-link {
+            border-radius: 0;
+            font-weight: 500;
+            color: var(--bs-gray-600);
+            padding: 0.8rem 0.5rem;
+        }
+        .nav-tabs .nav-link.active {
+            color: var(--bs-primary);
+            border-bottom: 3px solid var(--bs-primary) !important;
+            background-color: var(--bs-gray-100);
+        }
+        .tab-pane {
+            background-color: #fff;
+            padding: 1rem;
+        }
+
+        /* 2. Attendance Tab */
+        #attendanceGrid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            gap: 0.75rem;
+        }
+        .student-card {
+            border: 2px solid var(--status-border-present);
+            background-color: var(--status-present);
+            border-radius: 0.375rem;
+            padding: 0.5rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+            overflow: hidden;
+            font-size: 0.85rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+        .student-card:active {
+            transform: scale(0.95);
+        }
+        .student-card .student-roll {
+            font-weight: 700;
+            font-size: 1.1rem;
+            color: #333;
+        }
+        .student-card .student-name {
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            min-height: 2.5em; /* 2 lines height */
+            margin-bottom: 0.25rem;
+            color: #444;
+        }
+        .student-card .status-badge {
+            position: absolute;
+            top: 2px;
+            right: 4px;
+            font-size: 1.25rem;
+            font-weight: 700;
+            opacity: 0.7;
+        }
+        /* Status Colors */
+        .student-card[data-status="PRESENT"] { background-color: var(--status-present); border-color: var(--status-border-present); }
+        .student-card[data-status="ABSENT"] { background-color: var(--status-absent); border-color: var(--status-border-absent); }
+        .student-card[data-status="LATE"] { background-color: var(--status-late); border-color: var(--status-border-late); }
+        .student-card[data-status="LEAVE"] { background-color: var(--status-leave); border-color: var(--status-border-leave); }
+
+        /* Summary Bar */
+        #attendanceSummaryBar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background-color: var(--bs-dark);
+            color: white;
+            padding: 0.5rem 0.75rem;
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            z-index: 1020;
+            border-top: 1px solid var(--bs-gray-700);
+        }
+        #attendanceSummaryBar .summary-item {
+            text-align: center;
+            font-size: 0.7rem;
+            font-weight: 500;
+        }
+        #attendanceSummaryBar .summary-count {
+            display: block;
+            font-size: 1.25rem;
+            font-weight: 700;
+        }
+
+        /* 3. Scoring Tab */
+        #scoringGrid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 0.75rem;
+        }
+        .score-card {
+            border: 1px solid var(--bs-gray-300);
+            padding: 0.5rem;
+            text-align: center;
+        }
+        .score-card .student-name {
+            font-size: 0.8rem;
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+            height: 2.4em; /* 2 lines */
+            overflow: hidden;
+        }
+        .score-input {
+            width: 100%;
+            text-align: center;
+            font-weight: 700;
+            padding: 0.25rem 0.5rem;
+        }
+        /* Style input based on score vs max_score */
+        .score-input.is-invalid {
+            color: var(--bs-danger);
+            border-color: var(--bs-danger);
+        }
+        .score-input.is-valid {
+            color: var(--bs-success);
+            border-color: var(--bs-success);
+        }
+
+        /* 4. Assessment Tab */
+        .assessment-table { font-size: 0.85rem; }
+        .assessment-table th, .assessment-table td { vertical-align: middle; }
+        .assessment-table th.student-name {
+            min-width: 120px;
+            position: sticky;
+            left: 0;
+            background: white;
+            z-index: 2;
+        }
+        .assessment-table .topic-header {
+            writing-mode: vertical-rl;
+            transform: rotate(180deg);
+            text-align: left;
+            padding: 0.5rem 0.25rem !important;
+            font-weight: 500;
+            min-width: 40px;
+        }
+        .assessment-table .rubric-cell {
+            text-align: center;
+            padding: 0.25rem;
+            cursor: pointer;
+        }
+        .rubric-btn {
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            font-weight: 600;
+            border: 2px solid transparent;
+            background-color: var(--bs-gray-200);
+            color: var(--bs-gray-600);
+            transition: all 0.1s ease;
+        }
+        .rubric-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 0 5px rgba(0,0,0,0.2);
+        }
+        .rubric-btn.active {
+            border-color: var(--bs-primary);
+            background-color: var(--bs-primary);
+            color: white;
+            box-shadow: 0 0 5px var(--bs-primary);
+        }
+
+    </style>
 {% endblock %}
 
 {% block main_content %}
@@ -13,6 +202,7 @@
      data-course-id="{{ entry.course.id }}"
      data-date-iso="{{ date_iso }}">
 
+    {# --- V28.3: Top Navbar --- #}
     <nav class="navbar navbar-light bg-light fixed-top border-bottom shadow-sm p-2">
         <div class="container-fluid">
             <a href="{{ url_for('teacher.dashboard') }}" class="btn btn-sm btn-outline-secondary me-2">
@@ -24,139 +214,509 @@
                 </h6>
                 <small class="text-muted">
                     <i class="bi bi-people-fill"></i> {{ entry.course.classroom.name }} | 
-                    <i class="bi bi-clock"></i> คาบที่ {{ entry.slot.period_number }}
+                    <i class="bi bi-clock"></i> คาบที่ {{ entry.slot.period_number }} |
+                    <i class="bi bi-calendar-check"></i> {{ attendance_date.strftime('%d/%m/%Y') }}
                 </small>
             </div>
-            
-            <div class="ms-auto">
-                <button id="randomBtn" class="btn btn-sm btn-outline-secondary me-1" data-bs-toggle="modal" data-bs-target="#randomStudentModal">
-                    <i class="bi bi-shuffle"></i> <span class="d-none d-sm-inline">สุ่ม</span>
-                </button>
-                <button id="groupBtn" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#groupingModal">
-                    <i class="bi bi-people-fill"></i> <span class="d-none d-sm-inline">จัดกลุ่ม</span>
-                </button>
+            {# Loading Spinner #}
+            <div class="spinner-border spinner-border-sm text-primary ms-2" role="status" id="globalSpinner" style="display: none;">
+                <span class="visually-hidden">Loading...</span>
             </div>
-        </div>
-        <div class="container-fluid mt-2">
-            <select class="form-select form-select-sm" id="gradedItemSelect">
-                <option value="">-- เลือกรายการให้คะแนน --</option>
-                {% for item in graded_items %}
-                    <option value="{{ item.id }}">{{ item.name }} ({{ item.max_score }} คะแนน)</option>
-                {% endfor %}
-            </select>
         </div>
     </nav>
 
-    <div id="studentGrid" class="row row-cols-4">
-        {% for enrollment in enrollments %}
-            <div class="col" id="card-enrollment-{{ enrollment.id }}">
-                <div class="student-card" 
-                     data-student-id="{{ enrollment.student.id }}" 
-                     data-enrollment-id="{{ enrollment.id }}"
-                     data-status="{{ status_map.get(enrollment.id, 'PRESENT') }}">
-                    
-                    <span class="student-number">{{ enrollment.student_number or 'N/A' }}</span>
-                    <div class="student-avatar">
-                        <i class="bi bi-person-circle"></i>
-                    </div>
-                    <div class="student-name">
-                        {{ enrollment.student.first_name }}
-                    </div>
-                    <div class="score-display" data-student-id="{{ enrollment.student.id }}">
-                        -
-                    </div>
-                </div>
+    {# --- V28.3: Nav Tabs --- #}
+    <ul class="nav nav-tabs nav-fill sticky-top bg-white" id="mainTabs" role="tablist" style="top: 56px; z-index: 1025;">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="attendance-tab" data-bs-toggle="tab" data-bs-target="#attendance" type="button" role="tab" aria-controls="attendance" aria-selected="true">
+                <i class="bi bi-check2-circle-fill"></i> เช็คชื่อ
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="scoring-tab" data-bs-toggle="tab" data-bs-target="#scoring" type="button" role="tab" aria-controls="scoring" aria-selected="false">
+                <i class="bi bi-pencil-square"></i> ให้คะแนน
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="assessment-tab" data-bs-toggle="tab" data-bs-target="#assessment" type="button" role="tab" aria-controls="assessment" aria-selected="false">
+                <i class="bi bi-clipboard2-data-fill"></i> ประเมินผล
+            </button>
+        </li>
+    </ul>
+
+    {# --- V28.3: Tab Content --- #}
+    <div class="tab-content" id="mainTabContent">
+        
+        {# --- 1. Attendance Tab --- #}
+        <div class="tab-pane fade show active" id="attendance" role="tabpanel" aria-labelledby="attendance-tab">
+            <p class="text-muted small text-center">แตะที่บัตรนักเรียนเพื่อเปลี่ยนสถานะ (มา -> ขาด -> ลา -> สาย)</p>
+            <div id="attendanceGrid">
+                {# Student cards will be rendered here by JS #}
             </div>
-        {% endfor %}
-    </div>
+        </div>
 
-    <div id="statusZones" class="fixed-bottom d-flex justify-content-around bg-light p-1 border-top shadow-lg">
-        <div class="status-zone present" data-status="PRESENT">
-            <i class="bi bi-check-circle-fill"></i>
-            <div>มา</div>
-        </div>
-        <div class="status-zone late" data-status="LATE">
-            <i class="bi bi-clock-history"></i>
-            <div>สาย</div>
-        </div>
-        <div class="status-zone leave" data-status="LEAVE">
-            <i class="bi bi-box-arrow-left"></i>
-            <div>ลา</div>
-        </div>
-        <div class="status-zone absent" data-status="ABSENT">
-            <i class="bi bi-x-circle-fill"></i>
-            <div>ขาด</div>
-        </div>
-    </div>
-</div>
-
-<div class="modal fade" id="groupingModal" tabindex="-1" aria-labelledby="groupingModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-fullscreen-md-down modal-dialog-scrollable">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="groupingModalLabel"><i class="bi bi-people-fill"></i> จัดกลุ่มนักเรียน</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <div class="group-container mb-3">
-                    <h6><i class="bi bi-person-dash"></i> ยังไม่มีกลุ่ม</h6>
-                    <div id="ungroupedStudentsArea" class="group-zone drop-zone" data-group-id="null">
-                        </div>
-                </div>
-
-                <div id="groupZonesContainer">
-                    {% for group in groups %}
-                        <div class="group-container mb-3" id="group-container-{{ group.id }}">
-                            <h6><i class="bi bi-collection-fill"></i> {{ group.name }}</h6>
-                            <div class="group-zone drop-zone" data-group-id="{{ group.id }}">
-                                </div>
-                        </div>
+        {# --- 2. Scoring Tab --- #}
+        <div class="tab-pane fade" id="scoring" role="tabpanel" aria-labelledby="scoring-tab">
+            <div class="mb-3">
+                <label for="gradedItemSelect" class="form-label fw-bold">เลือกรายการให้คะแนน:</label>
+                <select class="form-select" id="gradedItemSelect">
+                    <option value="">-- เลือกรายการ --</option>
+                    {% for item in graded_items %}
+                    <option value="{{ item.id }}" data-max-score="{{ item.max_score }}">{{ item.name }} (เต็ม {{ item.max_score }})</option>
                     {% endfor %}
-                </div>
+                </select>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-success" id="createGroupBtn">
-                    <i class="bi bi-plus-circle"></i> สร้างกลุ่มใหม่
-                </button>
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ปิด</button>
+            <div id="scoringGrid">
+                <p class="text-muted text-center">กรุณาเลือกรายการให้คะแนน</p>
             </div>
         </div>
+
+        {# --- 3. Assessment Tab --- #}
+        <div class="tab-pane fade" id="assessment" role="tabpanel" aria-labelledby="assessment-tab">
+            <div id="assessmentContainer">
+                {# Assessment table will be rendered here by JS #}
+            </div>
+        </div>
+
     </div>
 </div>
 
-<div class="modal fade" id="randomStudentModal" tabindex="-1" aria-labelledby="randomStudentModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="randomStudentModalLabel"><i class="bi bi-shuffle"></i> สุ่มนักเรียน</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body text-center">
-                <p>นักเรียนผู้โชคดีคือ...</p>
-                <h2 id="randomResult" class="display-4 my-4" style="display: none;"></h2>
-                <div id="wheelPlaceholder" class="my-4">
-                    <i class="bi bi-arrow-clockwise" style="font-size: 5rem;"></i>
-                    <p>(Wheel Library Placeholder)</p>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-primary" id="spinWheelBtn">หมุน!</button>
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ปิด</button>
-            </div>
-        </div>
+{# --- V28.3: Attendance Summary Bar (Fixed Bottom) --- #}
+<div id="attendanceSummaryBar">
+    <div class="summary-item" style="color: var(--status-present);">
+        มา
+        <span class="summary-count" id="summaryPresent">0</span>
+    </div>
+    <div class="summary-item" style="color: var(--status-absent);">
+        ขาด
+        <span class="summary-count" id="summaryAbsent">0</span>
+    </div>
+    <div class="summary-item" style="color: var(--status-late);">
+        สาย
+        <span class="summary-count" id="summaryLate">0</span>
+    </div>
+    <div class="summary-item" style="color: var(--status-leave);">
+        ลา
+        <span class="summary-count" id="summaryLeave">0</span>
+    </div>
+    <div class="summary-item text-white">
+        รวม
+        <span class="summary-count" id="summaryTotal">0</span>
     </div>
 </div>
 {% endblock %}
 
-
 {% block scripts %}
-    {{ super() }} <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    
-    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+{{ super() }}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
-    <script>
-        const ALL_SCORES_DATA = {{ score_data_json | tojson }};
-    </script>
+<script>
+    {# --- V28.3: NEW JAVASCRIPT LOGIC --- #}
+    document.addEventListener('DOMContentLoaded', function() {
+        
+        // --- 1. Global State & Constants ---
+        const container = document.getElementById('mobileEntryContainer');
+        const ENTRY_ID = container.dataset.entryId;
+        const COURSE_ID = container.dataset.courseId;
+        const DATE_ISO = container.dataset.dateIso;
+        const CSRF_TOKEN = "{{ csrf_token() }}"; // Requires CSRF token from Flask-WTF
+        const SPINNER = document.getElementById('globalSpinner');
 
-    <script src="{{ url_for('static', filename='js/mobile_entry.js') }}"></script>
+        // Status cycle
+        const STATUS_CYCLE = ['PRESENT', 'ABSENT', 'LEAVE', 'LATE'];
+        const STATUS_ICONS = {
+            'PRESENT': '',
+            'ABSENT': 'ขาด',
+            'LATE': 'สาย',
+            'LEAVE': 'ลา'
+        };
+        const STATUS_TEXT = {
+            'PRESENT': 'มา',
+            'ABSENT': 'ขาด',
+            'LATE': 'สาย',
+            'LEAVE': 'ลา'
+        };
+
+        // Data Models
+        const STUDENTS = [
+            {% for e in enrollments %}
+            { id: {{ e.student.id }}, roll: {{ e.roll_number or 'null' }}, name: "{{ e.student.first_name }} {{ e.student.last_name | truncate(15) }}", status: "{{ attendance_records.get(e.student.id, 'PRESENT') }}" }{% if not loop.last %},{% endif %}
+            {% endfor %}
+        ];
+        const SCORES = {
+            {% for key, value in scores.items() %}
+            "{{ key }}": {{ value }}{% if not loop.last %},{% endif %}
+            {% endfor %}
+        };
+        const GRADED_ITEMS = {
+            {% for item in graded_items %}
+            "{{ item.id }}": { id: {{ item.id }}, name: "{{ item.name }}", max_score: {{ item.max_score }} }{% if not loop.last %},{% endif %}
+            {% endfor %}
+        };
+        const ASSESSMENT_DATA = JSON.parse('{{ qualitative_assessment_data_json|safe }}');
+
+        // UI Elements
+        const attendanceGrid = document.getElementById('attendanceGrid');
+        const summaryPresent = document.getElementById('summaryPresent');
+        const summaryAbsent = document.getElementById('summaryAbsent');
+        const summaryLate = document.getElementById('summaryLate');
+        const summaryLeave = document.getElementById('summaryLeave');
+        const summaryTotal = document.getElementById('summaryTotal');
+        
+        const gradedItemSelect = document.getElementById('gradedItemSelect');
+        const scoringGrid = document.getElementById('scoringGrid');
+        
+        const assessmentContainer = document.getElementById('assessmentContainer');
+
+        let saveQueue = {};
+        let saveTimer;
+
+        // --- Helper: Debounce ---
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+
+        // --- Helper: API Save ---
+        async function saveApi(endpoint, payload) {
+            SPINNER.style.display = 'block';
+            try {
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': CSRF_TOKEN
+                    },
+                    body: JSON.stringify(payload)
+                });
+                
+                if (!response.ok) {
+                    const errorResult = await response.json();
+                    throw new Error(errorResult.message || 'Server error');
+                }
+                
+                const result = await response.json();
+                if (result.status !== 'success') {
+                    throw new Error(result.message || 'API returned an error');
+                }
+                return result;
+
+            } catch (error) {
+                console.error(`Save error at ${endpoint}:`, error);
+                Swal.fire('เกิดข้อผิดพลาด', `การบันทึกล้มเหลว: ${error.message}`, 'error');
+            } finally {
+                SPINNER.style.display = 'none';
+            }
+        }
+
+        
+        // ===================================
+        // --- 2. ATTENDANCE MODULE ---
+        // ===================================
+        
+        function renderStudentCards() {
+            attendanceGrid.innerHTML = '';
+            STUDENTS.forEach(student => {
+                const card = document.createElement('div');
+                card.className = 'student-card';
+                card.dataset.studentId = student.id;
+                card.dataset.status = student.status;
+                
+                const statusIcon = STATUS_ICONS[student.status];
+
+                card.innerHTML = `
+                    <div class="student-roll">${student.roll || '-'}</div>
+                    <div class="student-name">${student.name}</div>
+                    <div class="status-badge">${statusIcon}</div>
+                `;
+                
+                card.addEventListener('click', () => cycleAttendanceStatus(card, student.id));
+                attendanceGrid.appendChild(card);
+            });
+            updateAttendanceSummary();
+        }
+
+        function cycleAttendanceStatus(card, studentId) {
+            const currentStatus = card.dataset.status;
+            const currentIndex = STATUS_CYCLE.indexOf(currentStatus);
+            const nextIndex = (currentIndex + 1) % STATUS_CYCLE.length;
+            const newStatus = STATUS_CYCLE[nextIndex];
+
+            // Update UI
+            card.dataset.status = newStatus;
+            card.querySelector('.status-badge').textContent = STATUS_ICONS[newStatus];
+
+            // Update local model
+            const student = STUDENTS.find(s => s.id === studentId);
+            student.status = newStatus;
+
+            // Update summary
+            updateAttendanceSummary();
+
+            // Save to server
+            saveAttendance(studentId, newStatus, card);
+        }
+        
+        function saveAttendance(studentId, newStatus, card) {
+            const payload = {
+                student_id: studentId,
+                entry_id: ENTRY_ID,
+                date: DATE_ISO,
+                status: newStatus
+            };
+            saveApi("{{ url_for('teacher.api_set_attendance_status') }}", payload);
+            // No need to handle success/error, saveApi does it
+        }
+
+        function updateAttendanceSummary() {
+            let present = 0, absent = 0, late = 0, leave = 0;
+            STUDENTS.forEach(student => {
+                switch(student.status) {
+                    case 'PRESENT': present++; break;
+                    case 'ABSENT': absent++; break;
+                    case 'LATE': late++; break;
+                    case 'LEAVE': leave++; break;
+                }
+            });
+            summaryPresent.textContent = present;
+            summaryAbsent.textContent = absent;
+            summaryLate.textContent = late;
+            summaryLeave.textContent = leave;
+            summaryTotal.textContent = STUDENTS.length;
+        }
+
+        // ===================================
+        // --- 3. SCORING MODULE ---
+        // ===================================
+
+        function initScoring() {
+            gradedItemSelect.addEventListener('change', () => {
+                const selectedItemId = gradedItemSelect.value;
+                if (selectedItemId) {
+                    renderScoreCards(selectedItemId);
+                } else {
+                    scoringGrid.innerHTML = '<p class="text-muted text-center">กรุณาเลือกรายการให้คะแนน</p>';
+                }
+            });
+        }
+        
+        function renderScoreCards(itemId) {
+            const item = GRADED_ITEMS[itemId];
+            if (!item) return;
+            
+            scoringGrid.innerHTML = ''; // Clear grid
+            
+            STUDENTS.forEach(student => {
+                const card = document.createElement('div');
+                card.className = 'score-card';
+                
+                const scoreKey = `${student.id}-${item.id}`;
+                const currentScore = SCORES[scoreKey] !== undefined ? SCORES[scoreKey] : '';
+
+                card.innerHTML = `
+                    <div class="student-name">(${student.roll || '-'}) ${student.name}</div>
+                    <input type="number" 
+                           class="form-control score-input" 
+                           value="${currentScore}" 
+                           min="0" 
+                           max="${item.max_score}" 
+                           step="0.25"
+                           placeholder="-"
+                           data-student-id="${student.id}"
+                           data-item-id="${item.id}"
+                           data-max-score="${item.max_score}">
+                `;
+                
+                const input = card.querySelector('.score-input');
+                // Debounce saving on input
+                input.addEventListener('input', debounce((e) => {
+                    handleScoreSave(e.target);
+                }, 1000)); // Save 1 sec after user stops typing
+                
+                scoringGrid.appendChild(card);
+            });
+        }
+
+        function handleScoreSave(inputElement) {
+            const studentId = inputElement.dataset.studentId;
+            const itemId = inputElement.dataset.itemId;
+            const maxScore = parseFloat(inputElement.dataset.maxScore);
+            let score = inputElement.value;
+
+            // Validation
+            if (score === '') {
+                score = null; // Send null to delete score
+                inputElement.classList.remove('is-invalid', 'is-valid');
+            } else {
+                score = parseFloat(score);
+                if (isNaN(score) || score < 0) {
+                    inputElement.classList.add('is-invalid');
+                    inputElement.classList.remove('is-valid');
+                    return; // Don't save invalid input
+                } else if (score > maxScore) {
+                    inputElement.classList.add('is-invalid');
+                    inputElement.classList.remove('is-valid');
+                    // We might still save it, depending on policy, but visually flag it.
+                    // For now, let's save it.
+                } else {
+                    inputElement.classList.add('is-valid');
+                    inputElement.classList.remove('is-invalid');
+                }
+            }
+
+            // Update local model
+            const scoreKey = `${studentId}-${itemId}`;
+            SCORES[scoreKey] = score;
+
+            // Save to server (Uses existing API)
+            const payload = {
+                student_id: studentId,
+                item_id: itemId,
+                score: score
+            };
+            saveApi("{{ url_for('teacher.save_score', course_id=COURSE_ID) }}", payload);
+        }
+
+        // ===================================
+        // --- 4. ASSESSMENT MODULE ---
+        // ===================================
+
+        function initAssessment() {
+            renderAssessmentTable();
+        }
+
+        function renderAssessmentTable() {
+            const templates = ASSESSMENT_DATA.templates;
+            const rubrics = templates.length > 0 ? templates[0].rubrics : []; // Assuming first template's rubrics
+            const topics = templates.length > 0 ? templates[0].topics : []; // Assuming first template's topics
+            const existingScores = ASSESSMENT_DATA.existing_scores;
+
+            if (templates.length === 0) {
+                assessmentContainer.innerHTML = '<p class="text-muted text-center">ยังไม่มีการตั้งค่าแม่แบบการประเมินผล (Admin)</p>';
+                return;
+            }
+
+            // Build Topic Headers (flatten tree)
+            let topicHeaders = [];
+            function flattenTopics(topic) {
+                if (topic.children && topic.children.length > 0) {
+                    topic.children.forEach(flattenTopics);
+                } else {
+                    // Only add topics that are "leaf" nodes
+                    topicHeaders.push(topic);
+                }
+            }
+            topics.forEach(flattenTopics);
+            topicHeaders.sort((a, b) => a.id - b.id); // Ensure consistent order
+
+            let tableHtml = '<div class="table-responsive"><table class="table table-bordered assessment-table">';
+            
+            // Header
+            tableHtml += '<thead class="table-light"><tr><th class="student-name sticky-col">นักเรียน</th>';
+            topicHeaders.forEach(topic => {
+                tableHtml += `<th class="topic-header" title="${topic.name}">${topic.name}</th>`;
+            });
+            tableHtml += '</tr></thead>';
+
+            // Body
+            tableHtml += '<tbody>';
+            STUDENTS.forEach(student => {
+                tableHtml += `<tr><td class="student-name sticky-col">(${student.roll || '-'}) ${student.name}</td>`;
+                topicHeaders.forEach(topic => {
+                    const scoreKey = `${student.id}-${topic.id}`;
+                    const currentScore = existingScores[scoreKey];
+                    
+                    tableHtml += `<td class="rubric-cell" data-student-id="${student.id}" data-topic-id="${topic.id}">`;
+                    rubrics.forEach(rubric => {
+                        const isActive = (currentScore === rubric.value) ? 'active' : '';
+                        tableHtml += `
+                            <button class="btn rubric-btn ${isActive}" data-score-value="${rubric.value}" title="${rubric.label}">
+                                ${rubric.label}
+                            </button> `;
+                    });
+                    tableHtml += '</td>';
+                });
+                tableHtml += '</tr>';
+            });
+            tableHtml += '</tbody></table></div>';
+
+            assessmentContainer.innerHTML = tableHtml;
+
+            // Add event listeners for the new buttons
+            addAssessmentClickListeners();
+        }
+
+        function addAssessmentClickListeners() {
+            assessmentContainer.querySelectorAll('.rubric-cell').forEach(cell => {
+                cell.addEventListener('click', (e) => {
+                    const button = e.target.closest('.rubric-btn');
+                    if (!button) return;
+
+                    const studentId = cell.dataset.studentId;
+                    const topicId = cell.dataset.topicId;
+                    let newScoreValue;
+
+                    // Toggle logic
+                    if (button.classList.contains('active')) {
+                        // Clicked active button: De-select (set score to null)
+                        button.classList.remove('active');
+                        newScoreValue = null;
+                    } else {
+                        // Clicked inactive button: De-select siblings, select this one
+                        cell.querySelectorAll('.rubric-btn').forEach(btn => btn.classList.remove('active'));
+                        button.classList.add('active');
+                        newScoreValue = parseInt(button.dataset.scoreValue);
+                    }
+                    
+                    // Save to server
+                    saveQualitativeScore(studentId, topicId, newScoreValue);
+                });
+            });
+        }
+        
+        function saveQualitativeScore(studentId, topicId, scoreValue) {
+            // Update local model
+            const scoreKey = `${studentId}-${topicId}`;
+            if (scoreValue === null) {
+                delete ASSESSMENT_DATA.existing_scores[scoreKey];
+            } else {
+                ASSESSMENT_DATA.existing_scores[scoreKey] = scoreValue;
+            }
+
+            // Save to server
+            const payload = {
+                student_id: studentId,
+                course_id: COURSE_ID,
+                topic_id: topicId,
+                score_value: scoreValue
+            };
+            saveApi("{{ url_for('teacher.api_set_qualitative_score') }}", payload);
+        }
+
+        // ===================================
+        // --- 5. INITIALIZATION ---
+        // ===================================
+        
+        function init() {
+            // Tab 1: Attendance
+            renderStudentCards();
+            
+            // Tab 2: Scoring
+            initScoring();
+            
+            // Tab 3: Assessment
+            initAssessment();
+        }
+        
+        init();
+
+    }); // End DOMContentLoaded
+</script>
 {% endblock %}
