@@ -457,8 +457,8 @@
         };
         
         // ASSESSMENT DATA
-        const ASSESSMENT_TOPICS = JSON.parse('{{ assessment_topics_json|safe }}');
         const ASSESSMENT_DATA = JSON.parse('{{ qualitative_assessment_data_json|safe }}');
+        const ASSESSMENT_TOPICS = JSON.parse('{{ assessment_topics_json|safe }}');
         const SUGGESTED_UNIT_ID = {{ suggested_unit_id or 'null' }};
         const STUDENT_GROUP_MAP = JSON.parse('{{ student_group_map_json|safe }}');
 
@@ -787,38 +787,69 @@
         }
         
         function populateTopicDropdown() {
+            // 1. สร้าง Map เพื่อเก็บข้อมูล Topic ทั้งหมด (เข้าถึงง่ายด้วย ID)
+            const topicMap = new Map(ASSESSMENT_TOPICS.map(t => [t.topic_id, t]));
+            
+            // 2. สร้าง Map เพื่อเก็บ "ลูก" ของแต่ละ "แม่"
+            const childrenMap = new Map();
+            ASSESSMENT_TOPICS.forEach(t => {
+                // ถ้า topic ไม่มีแม่ (parent_id = null) ให้ถือว่า 'root' คือแม่
+                const parentId = t.parent_id || 'root'; 
+                if (!childrenMap.has(parentId)) {
+                    childrenMap.set(parentId, []);
+                }
+                childrenMap.get(parentId).push(t.topic_id);
+            });
+
+            // 3. ตัวแปรสำหรับติดตาม <optgroup> ปัจจุบัน
             let currentUnitId = null;
             let optgroup = null;
-            
-            ASSESSMENT_TOPICS.forEach(topic => {
-                if (topic.unit_id !== currentUnitId) {
-                    currentUnitId = topic.unit_id;
-                    optgroup = document.createElement('optgroup');
-                    optgroup.label = `หน่วยที่: ${topic.unit_name}`;
-                    qualTopicSelect.appendChild(optgroup);
+
+            // 4. ฟังก์ชันเรียกซ้ำ (Recursive) เพื่อวาด <option>
+            function appendTopics(parentId, indentLevel) {
+                const childrenIds = childrenMap.get(parentId) || [];
+                
+                for (const topicId of childrenIds) {
+                    const topic = topicMap.get(topicId);
+                    if (!topic) continue; // ข้าม topic ที่ไม่มีข้อมูล
+
+                    // 4.1 ตรวจสอบว่าต้องสร้าง <optgroup> ใหม่หรือไม่
+                    if (topic.unit_id !== currentUnitId) {
+                        currentUnitId = topic.unit_id;
+                        optgroup = document.createElement('optgroup');
+                        optgroup.label = `หน่วยที่: ${topic.unit_name}`;
+                        qualTopicSelect.appendChild(optgroup);
+                    }
+
+                    // 4.2 สร้าง <option>
+                    const option = document.createElement('option');
+                    option.value = topic.topic_id;
+                    option.dataset.unitId = topic.unit_id;
+
+                    // 4.3 เพิ่มการย่อหน้าตามระดับความลึก (indentLevel)
+                    let indentPrefix = '';
+                    if (indentLevel > 0) {
+                        indentPrefix = '— '.repeat(indentLevel);
+                        // ใช้ padding-left เพื่อให้ย่อหน้าสวยงาม
+                        option.style.paddingLeft = `${1 + (indentLevel * 1.0)}rem`;
+                    }
+                    
+                    option.textContent = `${indentPrefix}${topic.topic_name}`;
+                    
+                    // 4.4 เพิ่ม <option> ลงใน <optgroup>
+                    if (optgroup) {
+                        optgroup.appendChild(option);
+                    } else {
+                        qualTopicSelect.appendChild(option); // Fallback
+                    }
+
+                    // 4.5 เรียกฟังก์ชันนี้ซ้ำเพื่อวาด "ลูก" ของ topic นี้ต่อไป
+                    appendTopics(topic.topic_id, indentLevel + 1);
                 }
-                
-                const option = document.createElement('option');
-                option.value = topic.topic_id;
-                
-                // --- [ภารกิจที่ 1] Add indentation for sub-topics ---
-                if (topic.parent_id) {
-                    option.textContent = `— ${topic.topic_name}`;
-                    option.style.paddingLeft = "1.5rem";
-                } else {
-                    option.textContent = topic.topic_name;
-                    // option.style.fontWeight = "bold"; // (Optional)
-                }
-                // --- End [ภารกิจที่ 1] ---
-                
-                option.dataset.unitId = topic.unit_id;
-                
-                if (optgroup) {
-                    optgroup.appendChild(option);
-                } else {
-                    qualTopicSelect.appendChild(option);
-                }
-            });
+            }
+
+            // 5. เริ่มต้นวาดจาก "root" (หัวข้อที่ไม่มีแม่) ที่ระดับ 0
+            appendTopics('root', 0);
             
             // 3. Auto-select suggested unit
             if (SUGGESTED_UNIT_ID) {
