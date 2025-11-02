@@ -4067,7 +4067,8 @@ def view_historical_grades(course_id):
 @login_required
 @initial_setup_required
 def mobile_entry(entry_id):
-    # --- 1. ดึงข้อมูลคาบเรียน, วันที่, และนักเรียน ---
+    
+    # --- 1. ดึงข้อมูลคาบเรียน, วันที่, และนักเรียน (เหมือนเดิม) ---
     date_iso = request.args.get('date', date.today().isoformat())
     attendance_date = date.fromisoformat(date_iso)
 
@@ -4082,6 +4083,7 @@ def mobile_entry(entry_id):
     if current_user not in course.teachers:
         abort(403)
 
+    # (โค้ดดึง Enrollments ที่แก้ไขแล้ว)
     enrollments = Enrollment.query.join(
         Student, Enrollment.student_id == Student.id
     ).filter(
@@ -4092,10 +4094,9 @@ def mobile_entry(entry_id):
         Enrollment.roll_number,
         Student.student_id 
     ).all()
-    
     student_ids = [e.student_id for e in enrollments]
 
-    # --- 2. คำนวณลำดับคาบเรียน (Hour Sequence) ---
+    # --- 2. [คืนค่า] คำนวณลำดับคาบเรียน (Hour Sequence) (กลับไปใช้ V28 เดิมของคุณ) ---
     hour_sequence = 1 
     suggested_unit_id = None 
     current_subunit = None 
@@ -4103,6 +4104,7 @@ def mobile_entry(entry_id):
     if not semester.start_date:
         current_app.logger.warning(f"Course {course.id}: ไม่ได้ตั้งค่าวันเริ่มเทอม (Semester Start Date)")
     else:
+        # (ใช้ Logic เดิมของคุณในการค้นหาคาบเรียนทั้งหมดของ Course นี้)
         all_entries_for_course = TimetableEntry.query.filter_by(
             course_id=course.id
         ).join(
@@ -4119,6 +4121,7 @@ def mobile_entry(entry_id):
         
         teaching_days_of_week = set(slots_by_day.keys())
         
+        # (วนลูปนับวันตั้งแต่วันเปิดเทอม - Logic เดิมของคุณ)
         temp_hour_count = 0
         current_date_loop = semester.start_date
         
@@ -4145,8 +4148,10 @@ def mobile_entry(entry_id):
         hour_sequence = temp_hour_count if temp_hour_count > 0 else 1
         
     current_app.logger.info(f"Mobile Entry: Course {course.id} on {attendance_date} is Hour Sequence: {hour_sequence}")
+    # --- (จบส่วนที่ 2) ---
 
-    # --- 3. ค้นหา SubUnit และ Unit ที่แนะนำ ---
+
+    # --- 3. [แก้ไข] ค้นหา SubUnit และ Unit ที่แนะนำ ---
     if lesson_plan:
         current_subunit = SubUnit.query.join(
             LearningUnit
@@ -4154,43 +4159,49 @@ def mobile_entry(entry_id):
             LearningUnit.lesson_plan_id == lesson_plan.id,
             SubUnit.hour_sequence == hour_sequence
         ).options(
-            joinedload(SubUnit.learning_unit) 
+            joinedload(SubUnit.learning_unit),
+            selectinload(SubUnit.graded_items), # 👈 Eager Load Graded Items ที่ผูกอยู่
+            selectinload(SubUnit.assessment_topics) # 👈 Eager Load Topics ที่ผูกอยู่
         ).first()
     
     if current_subunit:
         suggested_unit_id = current_subunit.learning_unit_id 
-        current_app.logger.info(f"Found suggested_unit_id: {suggested_unit_id}")
+        current_app.logger.info(f"Found SubUnit {current_subunit.id} (Unit {suggested_unit_id}) for Hour {hour_sequence}")
     else:
         current_app.logger.warning(f"No SubUnit found for lesson_plan {lesson_plan.id} hour {hour_sequence}")
 
-    # --- 4. ดึงข้อมูลการเช็คชื่อ ---
+
+    # --- 4. ดึงข้อมูลการเช็คชื่อ (เหมือนเดิม) ---
     existing_records_list = AttendanceRecord.query.filter(
         AttendanceRecord.timetable_entry_id == entry_id,
         AttendanceRecord.attendance_date == attendance_date
     ).all()
     attendance_records = {rec.student_id: rec.status for rec in existing_records_list}
     
-    # --- 5. ดึงข้อมูลคะแนนเก็บ (Graded Item) ---
-    graded_items = []
-    if lesson_plan:
-        graded_items = GradedItem.query.join(LearningUnit).filter(
-            LearningUnit.lesson_plan_id == lesson_plan.id
-        ).order_by(LearningUnit.sequence, GradedItem.id).all()
 
+    # --- 5. [แก้ไข] ดึงข้อมูลคะแนนเก็บ (Graded Item) ---
+    if current_subunit:
+        # [แก้ไข] ดึงคะแนนเก็บเฉพาะที่ผูกกับ SubUnit (คาบ) นี้
+        graded_items = current_subunit.graded_items # 👈 ใช้ข้อมูลที่ Eager Load มา
+    else:
+        graded_items = [] # ถ้าไม่มี SubUnit ก็ไม่มีคะแนนเก็บ
+
+    # (ส่วนนี้ทำงานได้เหมือนเดิม เพราะ graded_items ถูกกรองมาแล้ว)
     existing_scores_list = Score.query.filter(
         Score.graded_item_id.in_([item.id for item in graded_items]),
         Score.student_id.in_(student_ids)
     ).all()
     scores = {f"{s.student_id}-{s.graded_item_id}": s.score for s in existing_scores_list}
 
-    # --- 6. ดึงข้อมูลกลุ่มของนักเรียน (Student Group Map) ---
+
+    # --- 6. ดึงข้อมูลกลุ่มของนักเรียน (Student Group Map) (เหมือนเดิม) ---
     student_group_map = {}
     if lesson_plan:
         all_groups = StudentGroup.query.filter_by(
             lesson_plan_id=lesson_plan.id, 
             course_id=course.id
         ).options(
-            joinedload(StudentGroup.enrollments)
+            selectinload(StudentGroup.enrollments) # 👈 ใช้ selectinload
         ).all()
         student_group_map = {
             en.student_id: group.id 
@@ -4200,102 +4211,14 @@ def mobile_entry(entry_id):
         }
     student_group_map_json = json.dumps(student_group_map)
 
-    # --- 7. ดึงข้อมูลการประเมินเชิงคุณภาพ (Qualitative Assessment) ---
+
+    # --- 7. [แก้ไข] ดึงข้อมูลการประเมินเชิงคุณภาพ (Qualitative Assessment) (V28_FIX) ---
     
-    # --- [FIXED] 7.1 สร้างรายการประเมินสำหรับ Dropdown (Logic ใหม่) ---
-    assessment_topics_for_dropdown = []
-    final_topic_map = {} # 👈 [ใหม่] ใช้ map เพื่อป้องกันการซ้ำซ้อน และเก็บข้อมูล
-    unit_names_map = {} 
-    
-    if lesson_plan:
-        # 1. สร้าง unit_names_map ก่อน
-        unit_names_map = {
-            unit.id: unit.title 
-            for unit in lesson_plan.learning_units
-        }
-        
-        # 2. ดึง AssessmentItem "ทั้งหมด" ที่ถูกเลือกไว้ (เช่น หัวข้อย่อย)
-        all_plan_assessment_items = AssessmentItem.query.join(
-            LearningUnit, AssessmentItem.learning_unit_id == LearningUnit.id
-        ).filter(
-            LearningUnit.lesson_plan_id == lesson_plan.id
-        ).options(
-            joinedload(AssessmentItem.topic), # 👈 [FIX] Eager load topic
-            joinedload(AssessmentItem.unit)    # 👈 [FIX] Eager load unit
-        ).all()
-
-        # 3. รวบรวม ID ของ "หัวข้อแม่" ที่ขาดหายไป
-        parent_ids_to_fetch = set()
-        
-        for item in all_plan_assessment_items:
-            if item.topic and item.unit:
-                # 3.1 เพิ่มหัวข้อย่อย (ที่ถูกเลือก) ลงใน map
-                final_topic_map[item.topic.id] = {
-                    'topic_id': item.topic.id,
-                    'topic_name': item.topic.name,
-                    'unit_id': item.unit.id,
-                    'unit_name': unit_names_map.get(item.unit.id, 'N/A'),
-                    'parent_id': item.topic.parent_id
-                }
-                # 3.2 ถ้าหัวข้อย่อยนี้มีแม่ ให้เก็บ ID แม่ไว้
-                if item.topic.parent_id:
-                    parent_ids_to_fetch.add(item.topic.parent_id)
-
-        # 4. ดึงข้อมูล "หัวข้อแม่" ที่ขาดหายไป
-        if parent_ids_to_fetch:
-            # กรองเฉพาะ ID ที่ยังไม่มีใน map
-            missing_parent_ids = [pid for pid in parent_ids_to_fetch if pid not in final_topic_map]
-            if missing_parent_ids:
-                missing_parents = AssessmentTopic.query.filter(
-                    AssessmentTopic.id.in_(missing_parent_ids)
-                ).all()
-                
-                for parent in missing_parents:
-                    # (เราไม่รู้ว่าแม่นี้อยู่ Unit ไหน แต่ไม่เป็นไร)
-                    final_topic_map[parent.id] = {
-                        'topic_id': parent.id,
-                        'topic_name': parent.name,
-                        'unit_id': None, # 👈 ไม่ทราบ Unit ID (ไม่เป็นไร)
-                        'unit_name': "N/A",
-                        'parent_id': parent.parent_id
-                    }
-
-        # 5. [THE FIX] กำหนด Unit ID/Name ให้กับหัวข้อแม่ที่ขาดหายไป
-        # โดยใช้ข้อมูลจากลูกของมัน เพื่อให้จัดกลุ่มใน Dropdown ได้ถูกต้อง
-        for topic in final_topic_map.values():
-            parent = None
-            grand_parent = None
-            if topic['parent_id'] and topic['parent_id'] in final_topic_map:
-                parent = final_topic_map[topic['parent_id']]
-                
-                # --- [FIX V5] ---
-                # ลบ "if parent['unit_id'] is None:" ที่เป็นปัญหาทิ้ง
-                # และบังคับอัปเดต unit_id ของแม่ ให้ตรงกับลูก
-                parent['unit_id'] = topic['unit_id'] 
-                parent['unit_name'] = topic['unit_name']
-                # --- [END FIX V5] ---
-            
-            if parent and parent['parent_id'] and parent['parent_id'] in final_topic_map:
-                grand_parent = final_topic_map[parent['parent_id']]
-                # บังคับอัปเดตปู่/ทวดด้วย
-                grand_parent['unit_id'] = topic['unit_id'] 
-                grand_parent['unit_name'] = topic['unit_name']
-        
-        # 6. แปลง map เป็น list และจัดเรียง (Sort Key เดิม)
-        assessment_topics_for_dropdown = sorted(
-            final_topic_map.values(), 
-            key=lambda x: (
-                x['unit_id'] or 999,  # 1. จัดกลุ่มตาม Unit ID (ตอนนี้แม่กับลูกจะอยู่กลุ่มเดียวกัน)
-                x['parent_id'] or 0,   # 2. เอา Parent (None) ขึ้นก่อน
-                x['topic_id']         # 3. เรียงตาม ID ของ Topic
-            )
-        )
-        
-    assessment_topics_json = json.dumps(assessment_topics_for_dropdown)
-
-    # 7.2 ดึง Template, Rubric, และคะแนนที่มีอยู่
+    # 7.1 ดึง Template, Rubric, และคะแนนที่มีอยู่
     templates = AssessmentTemplate.query.options(
-        selectinload(AssessmentTemplate.topics).selectinload(AssessmentTopic.children),
+        selectinload(AssessmentTemplate.topics).options(
+            selectinload(AssessmentTopic.children).selectinload(AssessmentTopic.children)
+        ),
         selectinload(AssessmentTemplate.rubric_levels)
     ).order_by(AssessmentTemplate.display_order).all()
     
@@ -4307,7 +4230,13 @@ def mobile_entry(entry_id):
         for score in existing_qual_scores_list
     }
 
-    # 7.3 สร้าง JSON ก้อนใหญ่
+    # 7.2 [ใหม่] สร้าง Set ของ Topic ID ที่ได้รับอนุญาตให้แสดงในคาบนี้
+    valid_topic_ids = set()
+    if current_subunit:
+        # ใช้ข้อมูลที่ Eager Load มา
+        valid_topic_ids = {topic.id for topic in current_subunit.assessment_topics}
+
+    # 7.3 [แก้ไข] สร้าง JSON ก้อนใหญ่ (แบบกรองแล้ว)
     qualitative_assessment_data = {
         'templates': [], 
         'existing_scores': existing_qual_scores
@@ -4320,26 +4249,42 @@ def mobile_entry(entry_id):
         template_dict = {
             'id': tpl.id,
             'name': tpl.name,
-            'topics': [], 
+            'topics': [], # 👈 เราจะกรอง Tree แล้วใส่ในนี้
             'rubrics': sorted(
                 [{'label': r.label, 'value': r.value} for r in tpl.rubric_levels],
                 key=lambda x: x['value'], reverse=True
             )
         }
         
-        def build_topic_tree_full(topic):
-            topic_dict = {
-                'id': topic.id,
-                'name': topic.name,
-                'children': [build_topic_tree_full(child) for child in topic.children]
-            }
-            return topic_dict
+        # [ใหม่] ฟังก์ชันสำหรับสร้าง Tree แบบ "กรอง"
+        def build_filtered_tree(topic):
+            filtered_children = []
+            if topic.children:
+                for child in topic.children:
+                    filtered_child = build_filtered_tree(child)
+                    if filtered_child: 
+                        filtered_children.append(filtered_child)
             
-        top_level_topics = AssessmentTopic.query.filter_by(template_id=tpl.id, parent_id=None).all()
+            if topic.id in valid_topic_ids or filtered_children:
+                return {
+                    'id': topic.id,
+                    'name': topic.name,
+                    'children': filtered_children
+                }
+            
+            return None
+
+        # [แก้ไข] ใช้ tpl.topics ที่ Eager Load มา (ไม่ใช่ Query ใหม่)
+        top_level_topics = [t for t in tpl.topics if t.parent_id is None]
+        top_level_topics.sort(key=lambda x: x.id) 
+        
         for topic in top_level_topics:
-            template_dict['topics'].append(build_topic_tree_full(topic))
-            
-        qualitative_assessment_data['templates'].append(template_dict)
+            filtered_topic_tree = build_filtered_tree(topic)
+            if filtered_topic_tree: 
+                template_dict['topics'].append(filtered_topic_tree)
+                
+        if template_dict['topics']:
+            qualitative_assessment_data['templates'].append(template_dict)
 
     qualitative_assessment_data_json = json.dumps(qualitative_assessment_data)
 
@@ -4350,14 +4295,14 @@ def mobile_entry(entry_id):
                            classroom=classroom,
                            enrollments=enrollments,
                            attendance_records=attendance_records,
-                           graded_items=graded_items,
+                           graded_items=graded_items, # 👈 กรองแล้ว
                            scores=scores,
                            date_iso=date_iso,
                            attendance_date=attendance_date,
                            
-                           # --- ข้อมูลที่เพิ่มเข้ามา ---
-                           assessment_topics_json=assessment_topics_json,
-                           qualitative_assessment_data_json=qualitative_assessment_data_json,
+                           # --- ข้อมูลที่อัปเดต ---
+                           # [ลบ] assessment_topics_json (ซ้ำซ้อน)
+                           qualitative_assessment_data_json=qualitative_assessment_data_json, # 👈 กรองแล้ว
                            suggested_unit_id=suggested_unit_id,
                            student_group_map_json=student_group_map_json,
                            lesson_plan=lesson_plan, 
