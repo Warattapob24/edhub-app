@@ -4307,8 +4307,8 @@ def mobile_entry(entry_id):
                            qualitative_assessment_data_json=qualitative_assessment_data_json,
                            suggested_unit_id=suggested_unit_id,
                            student_group_map_json=student_group_map_json,
-                           lesson_plan=lesson_plan, # 👈 [ภารกิจที่ 3]
-                           classroom_id_js=classroom.id # 👈 [ภารกิจที่ 3]
+                           lesson_plan=lesson_plan, 
+                           classroom_id_js=classroom.id 
                            )
 
 # --- [ V28.2 START: เพิ่ม API 1 ] ---

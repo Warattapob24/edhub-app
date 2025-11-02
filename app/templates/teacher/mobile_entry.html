@@ -1075,24 +1075,34 @@
                 groupModal.hide();
                 
                 // 👈 [ใหม่] เมื่อบันทึกสำเร็จ ต้อง Reload ข้อมูลกลุ่มใน JS
-                const newGroupMap = {};
-                const newGroupsData = await response.json(); // (ต้องมั่นใจว่า API ส่งข้อมูลกลุ่มกลับมา... ซึ่ง API เดิมไม่ได้ส่ง)
                 
-                // 👈 [แก้ไข] เนื่องจาก API เดิมไม่ส่งข้อมูลกลับ
-                // เราจะใช้ payload ที่เราเพิ่งส่งไปในการอัปเดต STUDENT_GROUP_MAP
+                // 👈 [แก้ไข] เราต้องหา student_id จาก enrollment_id
+                // และอัปเดต STUDENT_GROUP_MAP
                 payload.groups.forEach((group, index) => {
-                    const groupId = group.id || `temp-id-${index}`; // ใช้ ID ชั่วคราว (ไม่เป็นไร)
-                    group.members.forEach(studentId => {
-                        // (BUG: payload ใช้ enrollment_id, แต่ MAP ใช้ student_id)
-                        // (BUG 2: allEnrollments ใช้ enrollment_id)
-                        
-                        // 👈 [แก้ไข] เราต้องหา student_id จาก enrollment_id
-                        const enrollment = allEnrollments.find(en => en.id === studentId);
+                    const groupId = group.id || `temp-id-${index}`; // (ID นี้ไม่สำคัญมากนัก)
+                    group.members.forEach(enrollmentId => {
+                        // allEnrollments คือ [{id: 1, student_id: 101, ...}, ...]
+                        const enrollment = allEnrollments.find(en => en.id === enrollmentId);
                         if(enrollment) {
                            STUDENT_GROUP_MAP[enrollment.student_id] = groupId;
                         }
                     });
                 });
+                
+                // 👈 [ใหม่] อัปเดต ID ของนักเรียนที่ไม่มีกลุ่ม
+                const allGroupedStudentIds = new Set(
+                    payload.groups.flatMap(g => g.members.map(enId => {
+                        const en = allEnrollments.find(e => e.id === enId);
+                        return en ? en.student_id : null;
+                    }))
+                );
+                
+                STUDENTS.forEach(student => {
+                    if (!allGroupedStudentIds.has(student.id)) {
+                        delete STUDENT_GROUP_MAP[student.id];
+                    }
+                });
+                
                 
                 // 👈 [ใหม่] Reload หน้า Grid ที่เปิดอยู่
                 if (gradedItemSelect.value) renderScoreCards(gradedItemSelect.value);
@@ -1183,7 +1193,7 @@
                 } else if (target.closest('.delete-group-btn')) {
                     const card = target.closest('.group-card');
                     if (card) {
-                        card.querySelectorAll('.list-group-item').forEach(item => document.getElementById('ungrouped-students-list').appendChild(item));
+                        card.querySelectorAll('.list-group-item[data-id]').forEach(item => document.getElementById('ungrouped-students-list').appendChild(item));
                         card.remove();
                     }
                 } else if (target.closest('#auto-generate-groups-btn')) {

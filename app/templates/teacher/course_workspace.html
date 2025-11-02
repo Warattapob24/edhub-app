@@ -3093,7 +3093,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const saveBtn = modalEl.querySelector('#saveTopicSelectionBtn');
         const saveHandler = async () => {
             const selectedIds = Array.from(modalEl.querySelectorAll('input[type=checkbox]:checked')).map(cb => parseInt(cb.value));
-            const response = await fetch(`/teacher/api/units/${activeUnitId}/assessment-items`, {
+            const response = await fetch(`/teacher/api/units/${state.activeUnitId}/assessment-items`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -3130,7 +3130,7 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             const [topicsResponse, selectedResponse] = await Promise.all([
                 fetch(`/teacher/api/templates/${templateId}/topics-for-selection`),
-                fetch(`/teacher/api/units/${activeUnitId}/selected-topics`)
+                fetch(`/teacher/api/units/${state.activeUnitId}/selected-topics`)
             ]);
 
             if (!topicsResponse.ok) throw new Error('Could not load topic structure.');
