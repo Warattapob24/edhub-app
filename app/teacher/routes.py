@@ -4063,8 +4063,6 @@ def view_historical_grades(course_id):
 #
 # ROUTE: Mobile Classroom Hub
 #
-# app/teacher/routes.py
-
 @bp.route('/mobile/entry/<int:entry_id>')
 @login_required
 @initial_setup_required
@@ -4149,7 +4147,6 @@ def mobile_entry(entry_id):
     current_app.logger.info(f"Mobile Entry: Course {course.id} on {attendance_date} is Hour Sequence: {hour_sequence}")
 
     # --- 3. ค้นหา SubUnit และ Unit ที่แนะนำ ---
-    # ❗️ [นี่คือส่วนที่แก้ไขแล้ว] ❗️
     if lesson_plan:
         current_subunit = SubUnit.query.join(
             LearningUnit
@@ -4157,7 +4154,7 @@ def mobile_entry(entry_id):
             LearningUnit.lesson_plan_id == lesson_plan.id,
             SubUnit.hour_sequence == hour_sequence
         ).options(
-            joinedload(SubUnit.learning_unit) # <-- โค้ดที่ถูกต้องจะโหลดแค่นี้
+            joinedload(SubUnit.learning_unit) 
         ).first()
     
     if current_subunit:
@@ -4205,38 +4202,94 @@ def mobile_entry(entry_id):
 
     # --- 7. ดึงข้อมูลการประเมินเชิงคุณภาพ (Qualitative Assessment) ---
     
-    # 7.1 สร้างรายการประเมินสำหรับ Dropdown
+    # --- [FIXED] 7.1 สร้างรายการประเมินสำหรับ Dropdown (Logic ใหม่) ---
     assessment_topics_for_dropdown = []
+    final_topic_map = {} # 👈 [ใหม่] ใช้ map เพื่อป้องกันการซ้ำซ้อน และเก็บข้อมูล
+    unit_names_map = {} 
+    
     if lesson_plan:
-        all_plan_assessment_items = AssessmentItem.query.join(
-            LearningUnit, AssessmentItem.learning_unit_id == LearningUnit.id
-        ).join(
-            AssessmentTopic, AssessmentItem.assessment_topic_id == AssessmentTopic.id # 👈 [ใหม่] Join Topic
-        ).filter(
-            LearningUnit.lesson_plan_id == lesson_plan.id
-        ).options(
-            contains_eager(AssessmentItem.topic), # 👈 [ใหม่] Eager load topic
-            joinedload(AssessmentItem.unit)
-        ).all()
-        
+        # 1. สร้าง unit_names_map ก่อน
         unit_names_map = {
             unit.id: unit.title 
             for unit in lesson_plan.learning_units
         }
         
-        topic_seen = set() 
+        # 2. ดึง AssessmentItem "ทั้งหมด" ที่ถูกเลือกไว้ (เช่น หัวข้อย่อย)
+        all_plan_assessment_items = AssessmentItem.query.join(
+            LearningUnit, AssessmentItem.learning_unit_id == LearningUnit.id
+        ).filter(
+            LearningUnit.lesson_plan_id == lesson_plan.id
+        ).options(
+            joinedload(AssessmentItem.topic), # 👈 [FIX] Eager load topic
+            joinedload(AssessmentItem.unit)    # 👈 [FIX] Eager load unit
+        ).all()
+
+        # 3. รวบรวม ID ของ "หัวข้อแม่" ที่ขาดหายไป
+        parent_ids_to_fetch = set()
+        
         for item in all_plan_assessment_items:
-            if item.topic and item.unit and item.topic.id not in topic_seen:
-                assessment_topics_for_dropdown.append({
+            if item.topic and item.unit:
+                # 3.1 เพิ่มหัวข้อย่อย (ที่ถูกเลือก) ลงใน map
+                final_topic_map[item.topic.id] = {
                     'topic_id': item.topic.id,
                     'topic_name': item.topic.name,
                     'unit_id': item.unit.id,
                     'unit_name': unit_names_map.get(item.unit.id, 'N/A'),
-                    'parent_id': item.topic.parent_id # 👈 [ภารกิจที่ 1] เพิ่ม Parent ID
-                })
-                topic_seen.add(item.topic.id) 
+                    'parent_id': item.topic.parent_id
+                }
+                # 3.2 ถ้าหัวข้อย่อยนี้มีแม่ ให้เก็บ ID แม่ไว้
+                if item.topic.parent_id:
+                    parent_ids_to_fetch.add(item.topic.parent_id)
 
-        assessment_topics_for_dropdown.sort(key=lambda x: (x['unit_id'], x['topic_id']))
+        # 4. ดึงข้อมูล "หัวข้อแม่" ที่ขาดหายไป
+        if parent_ids_to_fetch:
+            # กรองเฉพาะ ID ที่ยังไม่มีใน map
+            missing_parent_ids = [pid for pid in parent_ids_to_fetch if pid not in final_topic_map]
+            if missing_parent_ids:
+                missing_parents = AssessmentTopic.query.filter(
+                    AssessmentTopic.id.in_(missing_parent_ids)
+                ).all()
+                
+                for parent in missing_parents:
+                    # (เราไม่รู้ว่าแม่นี้อยู่ Unit ไหน แต่ไม่เป็นไร)
+                    final_topic_map[parent.id] = {
+                        'topic_id': parent.id,
+                        'topic_name': parent.name,
+                        'unit_id': None, # 👈 ไม่ทราบ Unit ID (ไม่เป็นไร)
+                        'unit_name': "N/A",
+                        'parent_id': parent.parent_id
+                    }
+
+        # 5. [THE FIX] กำหนด Unit ID/Name ให้กับหัวข้อแม่ที่ขาดหายไป
+        # โดยใช้ข้อมูลจากลูกของมัน เพื่อให้จัดกลุ่มใน Dropdown ได้ถูกต้อง
+        for topic in final_topic_map.values():
+            parent = None
+            grand_parent = None
+            if topic['parent_id'] and topic['parent_id'] in final_topic_map:
+                parent = final_topic_map[topic['parent_id']]
+                
+                # --- [FIX V5] ---
+                # ลบ "if parent['unit_id'] is None:" ที่เป็นปัญหาทิ้ง
+                # และบังคับอัปเดต unit_id ของแม่ ให้ตรงกับลูก
+                parent['unit_id'] = topic['unit_id'] 
+                parent['unit_name'] = topic['unit_name']
+                # --- [END FIX V5] ---
+            
+            if parent and parent['parent_id'] and parent['parent_id'] in final_topic_map:
+                grand_parent = final_topic_map[parent['parent_id']]
+                # บังคับอัปเดตปู่/ทวดด้วย
+                grand_parent['unit_id'] = topic['unit_id'] 
+                grand_parent['unit_name'] = topic['unit_name']
+        
+        # 6. แปลง map เป็น list และจัดเรียง (Sort Key เดิม)
+        assessment_topics_for_dropdown = sorted(
+            final_topic_map.values(), 
+            key=lambda x: (
+                x['unit_id'] or 999,  # 1. จัดกลุ่มตาม Unit ID (ตอนนี้แม่กับลูกจะอยู่กลุ่มเดียวกัน)
+                x['parent_id'] or 0,   # 2. เอา Parent (None) ขึ้นก่อน
+                x['topic_id']         # 3. เรียงตาม ID ของ Topic
+            )
+        )
         
     assessment_topics_json = json.dumps(assessment_topics_for_dropdown)
 
