@@ -4065,10 +4065,10 @@ def view_historical_grades(course_id):
 #
 @bp.route('/mobile/entry/<int:entry_id>')
 @login_required
-@initial_setup_required
+# @initial_setup_required
 def mobile_entry(entry_id):
     
-    # --- 1. ดึงข้อมูลคาบเรียน, วันที่, และนักเรียน (เหมือนเดิม) ---
+    # --- 1. ดึงข้อมูลคาบเรียน, วันที่, และนักเรียน ---
     date_iso = request.args.get('date', date.today().isoformat())
     attendance_date = date.fromisoformat(date_iso)
 
@@ -4096,7 +4096,7 @@ def mobile_entry(entry_id):
     ).all()
     student_ids = [e.student_id for e in enrollments]
 
-    # --- 2. [คืนค่า] คำนวณลำดับคาบเรียน (Hour Sequence) (กลับไปใช้ V28 เดิมของคุณ) ---
+    # --- 2. คำนวณลำดับคาบเรียน (Hour Sequence) (ใช้ V28 เดิมของคุณ) ---
     hour_sequence = 1 
     suggested_unit_id = None 
     current_subunit = None 
@@ -4104,7 +4104,6 @@ def mobile_entry(entry_id):
     if not semester.start_date:
         current_app.logger.warning(f"Course {course.id}: ไม่ได้ตั้งค่าวันเริ่มเทอม (Semester Start Date)")
     else:
-        # (ใช้ Logic เดิมของคุณในการค้นหาคาบเรียนทั้งหมดของ Course นี้)
         all_entries_for_course = TimetableEntry.query.filter_by(
             course_id=course.id
         ).join(
@@ -4121,7 +4120,6 @@ def mobile_entry(entry_id):
         
         teaching_days_of_week = set(slots_by_day.keys())
         
-        # (วนลูปนับวันตั้งแต่วันเปิดเทอม - Logic เดิมของคุณ)
         temp_hour_count = 0
         current_date_loop = semester.start_date
         
@@ -4148,10 +4146,8 @@ def mobile_entry(entry_id):
         hour_sequence = temp_hour_count if temp_hour_count > 0 else 1
         
     current_app.logger.info(f"Mobile Entry: Course {course.id} on {attendance_date} is Hour Sequence: {hour_sequence}")
-    # --- (จบส่วนที่ 2) ---
 
-
-    # --- 3. [แก้ไข] ค้นหา SubUnit และ Unit ที่แนะนำ ---
+    # --- 3. [แก้ไข] ค้นหา SubUnit (ตาม Model ล่าสุดของคุณ) ---
     if lesson_plan:
         current_subunit = SubUnit.query.join(
             LearningUnit
@@ -4160,8 +4156,8 @@ def mobile_entry(entry_id):
             SubUnit.hour_sequence == hour_sequence
         ).options(
             joinedload(SubUnit.learning_unit),
-            selectinload(SubUnit.graded_items), # 👈 Eager Load Graded Items ที่ผูกอยู่
-            selectinload(SubUnit.assessment_topics) # 👈 Eager Load Topics ที่ผูกอยู่
+            selectinload(SubUnit.graded_items),    # 👈 Eager Load Graded Items
+            selectinload(SubUnit.assessment_items) # 👈 [แก้ไข] Eager Load AssessmentItems (ตาม Model ของคุณ)
         ).first()
     
     if current_subunit:
@@ -4170,7 +4166,6 @@ def mobile_entry(entry_id):
     else:
         current_app.logger.warning(f"No SubUnit found for lesson_plan {lesson_plan.id} hour {hour_sequence}")
 
-
     # --- 4. ดึงข้อมูลการเช็คชื่อ (เหมือนเดิม) ---
     existing_records_list = AttendanceRecord.query.filter(
         AttendanceRecord.timetable_entry_id == entry_id,
@@ -4178,30 +4173,22 @@ def mobile_entry(entry_id):
     ).all()
     attendance_records = {rec.student_id: rec.status for rec in existing_records_list}
     
-
     # --- 5. [แก้ไข] ดึงข้อมูลคะแนนเก็บ (Graded Item) ---
-    if current_subunit:
-        # [แก้ไข] ดึงคะแนนเก็บเฉพาะที่ผูกกับ SubUnit (คาบ) นี้
-        graded_items = current_subunit.graded_items # 👈 ใช้ข้อมูลที่ Eager Load มา
-    else:
-        graded_items = [] # ถ้าไม่มี SubUnit ก็ไม่มีคะแนนเก็บ
-
-    # (ส่วนนี้ทำงานได้เหมือนเดิม เพราะ graded_items ถูกกรองมาแล้ว)
+    graded_items = current_subunit.graded_items if current_subunit else [] # 👈 กรองจาก SubUnit
     existing_scores_list = Score.query.filter(
         Score.graded_item_id.in_([item.id for item in graded_items]),
         Score.student_id.in_(student_ids)
     ).all()
     scores = {f"{s.student_id}-{s.graded_item_id}": s.score for s in existing_scores_list}
 
-
     # --- 6. ดึงข้อมูลกลุ่มของนักเรียน (Student Group Map) (เหมือนเดิม) ---
-    student_group_map = {}
+    student_group_map_json = json.dumps({}) # 👈 สร้างค่าว่างไว้ก่อน
     if lesson_plan:
         all_groups = StudentGroup.query.filter_by(
             lesson_plan_id=lesson_plan.id, 
             course_id=course.id
         ).options(
-            selectinload(StudentGroup.enrollments) # 👈 ใช้ selectinload
+            selectinload(StudentGroup.enrollments)
         ).all()
         student_group_map = {
             en.student_id: group.id 
@@ -4209,14 +4196,13 @@ def mobile_entry(entry_id):
             for en in group.enrollments 
             if en.student_id in student_ids 
         }
-    student_group_map_json = json.dumps(student_group_map)
+        student_group_map_json = json.dumps(student_group_map)
 
-
-    # --- 7. [แก้ไข] ดึงข้อมูลการประเมินเชิงคุณภาพ (Qualitative Assessment) (V28_FIX) ---
+    # --- 7. [แก้ไข] ดึงข้อมูลการประเมินเชิงคุณภาพ (Qualitative Assessment) (Logic ใหม่ทั้งหมด) ---
     
     # 7.1 ดึง Template, Rubric, และคะแนนที่มีอยู่
     templates = AssessmentTemplate.query.options(
-        selectinload(AssessmentTemplate.topics).options(
+        selectinload(AssessmentTemplate.topics).options( # Eager Load Topic tree
             selectinload(AssessmentTopic.children).selectinload(AssessmentTopic.children)
         ),
         selectinload(AssessmentTemplate.rubric_levels)
@@ -4230,11 +4216,13 @@ def mobile_entry(entry_id):
         for score in existing_qual_scores_list
     }
 
-    # 7.2 [ใหม่] สร้าง Set ของ Topic ID ที่ได้รับอนุญาตให้แสดงในคาบนี้
+    # 7.2 [ใหม่] สร้าง Set ของ "Topic ID" ที่ได้รับอนุญาต (จาก Model ของคุณ)
     valid_topic_ids = set()
     if current_subunit:
-        # ใช้ข้อมูลที่ Eager Load มา
-        valid_topic_ids = {topic.id for topic in current_subunit.assessment_topics}
+        # 1. ดึง AssessmentItem ที่ผูกกับคาบนี้ (จาก Eager Load)
+        items_in_subunit = current_subunit.assessment_items 
+        # 2. ดึง "topic_id" จาก Item เหล่านั้น
+        valid_topic_ids = {item.topic_id for item in items_in_subunit if item.topic_id}
 
     # 7.3 [แก้ไข] สร้าง JSON ก้อนใหญ่ (แบบกรองแล้ว)
     qualitative_assessment_data = {
@@ -4249,7 +4237,7 @@ def mobile_entry(entry_id):
         template_dict = {
             'id': tpl.id,
             'name': tpl.name,
-            'topics': [], # 👈 เราจะกรอง Tree แล้วใส่ในนี้
+            'topics': [], 
             'rubrics': sorted(
                 [{'label': r.label, 'value': r.value} for r in tpl.rubric_levels],
                 key=lambda x: x['value'], reverse=True
@@ -4265,6 +4253,9 @@ def mobile_entry(entry_id):
                     if filtered_child: 
                         filtered_children.append(filtered_child)
             
+            # [แก้ไข] เงื่อนไข: 
+            # 1. Topic นี้ ถูกเลือกใน SubUnit นี้หรือไม่ (valid_topic_ids)
+            # 2. หรือ Topic นี้ มีลูก (filtered_children) ที่ถูกเลือกหรือไม่
             if topic.id in valid_topic_ids or filtered_children:
                 return {
                     'id': topic.id,
@@ -4275,6 +4266,7 @@ def mobile_entry(entry_id):
             return None
 
         # [แก้ไข] ใช้ tpl.topics ที่ Eager Load มา (ไม่ใช่ Query ใหม่)
+        # นี่คือส่วนที่แก้ Bug "หัวข้อย่อยปนกัน" ครับ
         top_level_topics = [t for t in tpl.topics if t.parent_id is None]
         top_level_topics.sort(key=lambda x: x.id) 
         
@@ -4301,7 +4293,6 @@ def mobile_entry(entry_id):
                            attendance_date=attendance_date,
                            
                            # --- ข้อมูลที่อัปเดต ---
-                           # [ลบ] assessment_topics_json (ซ้ำซ้อน)
                            qualitative_assessment_data_json=qualitative_assessment_data_json, # 👈 กรองแล้ว
                            suggested_unit_id=suggested_unit_id,
                            student_group_map_json=student_group_map_json,
