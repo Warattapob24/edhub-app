@@ -14,7 +14,7 @@ from app import db
 from app.models import (
     AdvisorAssessmentRecord, AdvisorAssessmentScore, CourseGrade, RepeatCandidate, Student, 
     Semester, Classroom, Enrollment, AssessmentTemplate, AssessmentTopic, 
-    Course, QualitativeScore, Subject
+    Course, QualitativeScore, Subject, Role, User, Notification
 )
 
 # ==========================================================
@@ -392,7 +392,29 @@ def forward_to_academic():
             old_value={'old_status': old_status}
         )
         db.session.commit()
-        # TODO: Add Notification for Academic Affairs
+        try:
+            # ค้นหา Role ของฝ่ายวิชาการ (สมมติว่าชื่อ Role คือ 'Academic Affairs')
+            academic_role = db.session.query(Role).filter_by(name='Academic Affairs').first()
+            if academic_role:
+                title = "แจ้งเตือนการส่งผลประเมินคุณลักษณะ"
+                message = f"หัวหน้าสายชั้น {grade_level.name} ({current_user.full_name}) ได้ส่งต่อผลการประเมิน {count} รายการ เพื่อรอการตรวจสอบ"
+                url_for_academic = url_for('academic.review_advisor_assessments', _external=True)
+
+                # ส่งหา User ทุกคนที่อยู่ใน Role นี้
+                for user in academic_role.users:
+                    new_notif = Notification(
+                        user_id=user.id,
+                        title=title,
+                        message=message,
+                        url=url_for_academic,
+                        notification_type='ASSESSMENT_FORWARDED'
+                    )
+                    db.session.add(new_notif)
+                db.session.commit()
+        except Exception as e:
+            current_app.logger.error(f"Failed to send forward assessment notification: {e}", exc_info=True)
+            # ไม่ต้อง rollback เพราะการส่งต่อหลักสำเร็จแล้ว
+            pass
         return jsonify({'status': 'success', 'message': f'ส่งต่อผลการประเมิน {count} รายการเรียบร้อยแล้ว'})
     except Exception as e:
         db.session.rollback()
@@ -478,7 +500,27 @@ def submit_grade_head_decision(candidate_id):
             new_value={'status': new_status, 'final_decision': candidate.final_decision, 'notes': notes}
         )
         db.session.commit()
-        # TODO: Add Notification for Academic Affairs (if approve)
+        if decision == 'approve':
+            try:
+                academic_role = db.session.query(Role).filter_by(name='Academic Affairs').first()
+                if academic_role:
+                    title = "แจ้งเตือนการพิจารณาเลื่อนชั้น/ซ้ำชั้น"
+                    message = f"หัวหน้าสายชั้น {grade_level_led.name} ได้ส่งเรื่องของ {candidate.student.full_name} ({candidate.final_decision}) เพื่อรอการพิจารณาต่อ"
+                    url_for_academic = url_for('academic.review_repeat_candidates', _external=True)
+
+                    for user in academic_role.users:
+                        new_notif = Notification(
+                            user_id=user.id,
+                            title=title,
+                            message=message,
+                            url=url_for_academic,
+                            notification_type='REPEAT_CANDIDATE_FORWARDED'
+                        )
+                        db.session.add(new_notif)
+                    db.session.commit()
+            except Exception as e:
+                current_app.logger.error(f"Failed to send repeat candidate notification: {e}", exc_info=True)
+                pass
         if decision == 'approve':
             flash(f'ส่งเรื่องของ {candidate.student.first_name} ให้ฝ่ายวิชาการพิจารณาต่อเรียบร้อยแล้ว', 'success')
         else:

@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}EdHub {{ title }}{% endblock %}
+
+{% block sidebar %}
+    {% include 'advisor/_sidebar.html' %}
+{% endblock %}
+
+{% block styles %}
+<style>
+    /* CSS สำหรับแสดงผลเกรดที่เป็นปัญหา (ร, มส) */
+    .grade-r, .grade-ms {
+        color: #dc3545; /* สีแดง */
+        font-weight: bold;
+    }
+</style>
+{% endblock %}
+
+{% block main_content %}
+    <h2 class="bi bi-grid-3x3-gap-fill"> {{ title }}</h2>
+    <p class="text-muted">ตารางสรุปผลการเรียน (เกรด) ของนักเรียนในห้องที่ปรึกษา</p>
+
+    {# --- [ใหม่] Dropdown สำหรับเลือกห้องและภาคเรียน --- #}
+    {% if (advised_classrooms and advised_classrooms|length > 1) or (all_semesters and all_semesters|length > 1) %}
+    <div class="row mb-3">
+        
+        {# --- Dropdown เลือกภาคเรียน --- #}
+        {% if all_semesters and all_semesters|length > 0 %}
+        <div class="col-md-6">
+            <label for="semesterSelect" class="form-label">เลือกภาคเรียน:</label>
+            <select id="semesterSelect" class="form-select" onchange="window.location.href=this.value;">
+                {% for semester in all_semesters %}
+                    <option value="{{ url_for('advisor.gradebook_summary', semester_id=semester.id) }}"
+                            {% if semester.id == selected_semester_id %}selected{% endif %}>
+                        {{ semester.term }} (ปี {{ semester.academic_year.year }})
+                    </option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+
+        {# --- Dropdown เลือกห้อง (อัปเดต value ให้ส่ง semester_id ไปด้วย) --- #}
+        {% if advised_classrooms and advised_classrooms|length > 1 %}
+        <div class="col-md-6">
+            <label for="classroomSelect" class="form-label">เลือกห้องเรียนที่ปรึกษา:</label>
+            <select id="classroomSelect" class="form-select" onchange="window.location.href=this.value;">
+                {% for classroom in advised_classrooms %}
+                    <option value="{{ url_for('advisor.gradebook_summary', classroom_id=classroom.id, semester_id=selected_semester_id) }}"
+                            {% if classroom.id == selected_classroom_id %}selected{% endif %}>
+                        {{ classroom.name }}
+                    </option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+
+    </div>
+    {% endif %}
+
+    {# --- ตารางแสดงผลเกรด --- #}
+    {% if enrollments and courses %}
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover table-sm text-center align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="text-start" style="position: sticky; left: 0; background: #e9ecef; z-index: 2;">เลขที่</th>
+                            <th class="text-start" style="position: sticky; left: 60px; background: #e9ecef; z-index: 2; min-width: 250px;">ชื่อ-นามสกุล</th>
+                            
+                            {% for course in courses %}
+                            <th style="min-width: 100px;" title="{{ course.subject.name }}">
+                                {{ course.subject.subject_code }}
+                                <br>
+                                <small class="text-muted">({{ "%.1f"|format(course.subject.credit) }} นก.)</small>
+                            </th>
+                            {% endfor %}
+                            
+                            <th style="min-width: 80px; background: #e9ecef; position: sticky; right: 0; z-index: 2;">GPA</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for enrollment in enrollments %}
+                        <tr>
+                            <td class="text-center fw-bold" style="position: sticky; left: 0; background: #fff; z-index: 1;">
+                                {{ enrollment.roll_number or '-' }}
+                            </td>
+                            <td class="text-start" style="position: sticky; left: 60px; background: #fff; z-index: 1;">
+                                {% set student = enrollment.student %}
+                                {{ student.name_prefix or '' }}{{ student.first_name }} {{ student.last_name }}
+                            </td>
+
+                            {% for course in courses %}
+                                {% set grade = grade_matrix[student.id].get(course.subject.id, '-') %}
+                                
+                                {% set grade_class = '' %}
+                                {% if grade == 'ร' %}
+                                    {% set grade_class = 'grade-r' %}
+                                {% elif grade == 'มส' %}
+                                    {% set grade_class = 'grade-ms' %}
+                                {% endif %}
+                                
+                                <td class="{{ grade_class }}">{{ grade }}</td>
+                            {% endfor %}
+                            
+                            <td class="fw-bold" style="background: #fff; position: sticky; right: 0; z-index: 1;">
+                                {{ "%.2f"|format(gpa_map[student.id]) }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% elif advised_classrooms %}
+    <div class="alert alert-info">
+        ห้องเรียนนี้ยังไม่มีการลงทะเบียนวิชาในภาคเรียนที่เลือก
+    </div>
+    {% endif %}
+
+{% endblock %}

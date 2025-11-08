@@ -302,6 +302,24 @@ def return_plan(plan_id):
             old_value=original_status, new_value={'status': new_status, 'notes': revision_notes}
         )
         db.session.commit()
+        try:
+            recipients = set()
+            # ค้นหาครูผู้สอนทุกคนที่ใช้แผนนี้
+            courses_using_plan = Course.query.filter_by(lesson_plan_id=plan.id).options(selectinload(Course.teachers)).all()
+            for course in courses_using_plan:
+                recipients.update(course.teachers)
+
+            if recipients:
+                title = f"แผนฯ วิชา {plan.subject.name} ถูกส่งกลับ"
+                message = f"แผนการสอนวิชา {plan.subject.name} ถูกส่งกลับโดยฝ่ายวิชาการ พร้อมหมายเหตุ: '{revision_notes}'"
+                url_for_teacher = url_for('teacher.edit_lesson_plan_unit', plan_id=plan.id, unit_id=0) # ไปที่หน้าแผน
+
+                for user in recipients:
+                    db.session.add(Notification(user_id=user.id, title=title, message=message, url=url_for_teacher, notification_type='PLAN_REJECTED_ACADEMIC'))
+                db.session.commit()
+        except Exception as e:
+            current_app.logger.error(f"Failed to send plan reject (academic) notification: {e}", exc_info=True)
+            pass
         flash(f'แผนการสอนสำหรับวิชา "{plan.subject.name}" ถูกส่งกลับไปยังครูผู้สอนเพื่อแก้ไข', 'warning')
     except Exception as e:
         db.session.rollback()
@@ -410,7 +428,19 @@ def submit_to_director(plan_id):
             "Submit Lesson Plan to Director (Academic)", model=LessonPlan, record_id=plan.id,
             old_value=original_status, new_value=new_status
         )
-        # TODO: Add notification for Director
+        try:
+            # ค้นหา Director (สมมติว่ามี Role 'Director')
+            director_role = db.session.query(Role).filter_by(name='Director').first()
+            if director_role:
+                title = "แจ้งเตือนการเสนอแผนการสอน"
+                message = f"ฝ่ายวิชาการ ได้เสนอแผนฯ วิชา {plan.subject.name} เพื่อรอการอนุมัติ"
+                url_for_director = url_for('director.review_plan', plan_id=plan.id, _external=True)
+                for user in director_role.users:
+                    db.session.add(Notification(user_id=user.id, title=title, message=message, url=url_for_director, notification_type='PLAN_SUBMITTED_DIRECTOR'))
+                db.session.commit()
+        except Exception as e:
+            current_app.logger.error(f"Failed to send plan submission to director notification: {e}", exc_info=True)
+            pass
         db.session.commit()
         flash('เสนอแผนการสอนให้ผู้อำนวยการเพื่อพิจารณาเรียบร้อยแล้ว', 'success')
     except Exception as e:
@@ -1196,6 +1226,18 @@ def submit_level_grades(level_group):
         course.grade_submission_status = 'รอการอนุมัติจากผู้อำนวยการ'
     
     db.session.commit()
+    try:
+        director_role = db.session.query(Role).filter_by(name='Director').first()
+        if director_role and courses_to_submit:
+            title = f"แจ้งเตือนการส่งผลการเรียน (สายชั้น {level_group})"
+            message = f"ฝ่ายวิชาการ ได้ส่งผลการเรียน {len(courses_to_submit)} รายการ (สายชั้น {level_group}) เพื่อรอการอนุมัติ"
+            url_for_director = url_for('director.grades_dashboard', _external=True)
+            for user in director_role.users:
+                db.session.add(Notification(user_id=user.id, title=title, message=message, url=url_for_director, notification_type='GRADES_SUBMITTED_DIRECTOR_BULK'))
+            db.session.commit()
+    except Exception as e:
+        current_app.logger.error(f"Failed to send bulk grades (level) to director notification: {e}", exc_info=True)
+        pass
     flash(f'ส่งผลการเรียนสำหรับสายชั้นนี้จำนวน {len(courses_to_submit)} รายการให้ผู้อำนวยการฯ เรียบร้อยแล้ว', 'success')
     return redirect(url_for('academic.level_overview', level_group=level_group))
 
@@ -1219,6 +1261,18 @@ def submit_all_grades_to_director():
     
     if courses_to_submit:
         db.session.commit()
+        try:
+            director_role = db.session.query(Role).filter_by(name='Director').first()
+            if director_role:
+                title = "แจ้งเตือนการส่งผลการเรียน (ทั้งหมด)"
+                message = f"ฝ่ายวิชาการ ได้ส่งผลการเรียนที่ค้างอยู่ทั้งหมด {len(courses_to_submit)} รายการ เพื่อรอการอนุมัติ"
+                url_for_director = url_for('director.grades_dashboard', _external=True)
+                for user in director_role.users:
+                    db.session.add(Notification(user_id=user.id, title=title, message=message, url=url_for_director, notification_type='GRADES_SUBMITTED_DIRECTOR_ALL'))
+                db.session.commit()
+        except Exception as e:
+            current_app.logger.error(f"Failed to send bulk grades (all) to director notification: {e}", exc_info=True)
+            pass
         flash(f'ส่งผลการเรียนจำนวน {len(courses_to_submit)} รายการให้ผู้อำนวยการเพื่อพิจารณาเรียบร้อยแล้ว', 'success')
     else:
         flash('ไม่พบผลการเรียนที่รอการตรวจสอบเพื่อส่งต่อ', 'info')
@@ -1300,6 +1354,19 @@ def submit_grade_level_grades_from_detail(grade_level_id):
     
     if courses_to_submit:
         db.session.commit()
+        try:
+            director_role = db.session.query(Role).filter_by(name='Director').first()
+            if director_role:
+                grade_level = GradeLevel.query.get(grade_level_id)
+                title = f"แจ้งเตือนการส่งผลการเรียน (ระดับชั้น {grade_level.name})"
+                message = f"ฝ่ายวิชาการ ได้ส่งผลการเรียน {len(courses_to_submit)} รายการ (ระดับชั้น {grade_level.name}) เพื่อรอการอนุมัติ"
+                url_for_director = url_for('director.grades_dashboard', _external=True)
+                for user in director_role.users:
+                    db.session.add(Notification(user_id=user.id, title=title, message=message, url=url_for_director, notification_type='GRADES_SUBMITTED_DIRECTOR_BULK'))
+                db.session.commit()
+        except Exception as e:
+            current_app.logger.error(f"Failed to send bulk grades (grade_level) to director notification: {e}", exc_info=True)
+            pass
         flash(f'ส่งผลการเรียนสำหรับระดับชั้นนี้จำนวน {len(courses_to_submit)} รายการให้ผู้อำนวยการฯ เรียบร้อยแล้ว', 'success')
     
     return redirect(url_for('academic.grade_level_detail', grade_level_id=grade_level_id))
@@ -1557,7 +1624,18 @@ def forward_remediation_to_director():
             new_value={'count': updated_count, 'new_status': new_status, 'semester_id': current_semester.id},
             old_value={'old_status': old_status}
         )
-        # TODO: Add notification for the Director
+        try:
+            director_role = db.session.query(Role).filter_by(name='Director').first()
+            if director_role:
+                title = "แจ้งเตือนการส่งผลการซ่อม"
+                message = f"ฝ่ายวิชาการ ได้ส่งผลการซ่อม {updated_count} รายการ เพื่อรอการอนุมัติ"
+                url_for_director = url_for('director.remediation_approval', _external=True)
+                for user in director_role.users:
+                    db.session.add(Notification(user_id=user.id, title=title, message=message, url=url_for_director, notification_type='REMEDIATION_SUBMITTED_DIRECTOR'))
+                db.session.commit()
+        except Exception as e:
+            current_app.logger.error(f"Failed to send remediation to director notification: {e}", exc_info=True)
+            pass
 
         db.session.commit()
         return jsonify({
@@ -1734,7 +1812,18 @@ def approve_assessments(): # Renaming recommended: forward_assessments_to_direct
             new_value={'count': updated_count, 'new_status': new_status, 'semester_id': current_semester.id},
             old_value={'old_status': old_status}
         )
-        # TODO: Add Notification for Director
+        try:
+            director_role = db.session.query(Role).filter_by(name='Director').first()
+            if director_role:
+                title = "แจ้งเตือนการส่งผลประเมินคุณลักษณะ"
+                message = f"ฝ่ายวิชาการ ได้ส่งผลการประเมิน {updated_count} รายการ เพื่อรอการอนุมัติ"
+                url_for_director = url_for('director.review_advisor_assessments', _external=True)
+                for user in director_role.users:
+                    db.session.add(Notification(user_id=user.id, title=title, message=message, url=url_for_director, notification_type='ASSESSMENT_SUBMITTED_DIRECTOR'))
+                db.session.commit()
+        except Exception as e:
+            current_app.logger.error(f"Failed to send assessment to director notification: {e}", exc_info=True)
+            pass
 
         db.session.commit()
         response_data = {'status': 'success', 'message': f'ส่งต่อผลการประเมิน {updated_count} รายการให้ผู้อำนวยการเรียบร้อยแล้ว'}
@@ -1905,6 +1994,7 @@ def graduation_approval():
 
 
 # [REVISED] Function to handle submission for director's approval
+# [REVISED] Function to handle submission for director's approval
 @bp.route('/graduation-approval/submit', methods=['POST'])
 @login_required
 # @academic_affair_or_director_required
@@ -1940,15 +2030,7 @@ def submit_graduation_approval():
 
          is_ready, reason = check_graduation_readiness(student.id, current_academic_year_id)
          if is_ready is True:
-              # --- [REVISED ACTION] Instead of changing status, set a flag/status for director ---
-              # Option 1: Add a new field to Student model (e.g., graduation_status)
-              # student.graduation_status = 'Pending Director Approval'
-              # Option 2: Use a separate table (if more complex workflow needed)
-              # graduation_request = GraduationApprovalRequest(student_id=student.id, academic_year_id=..., status='Pending Director')
-              # db.session.add(graduation_request)
-
-              # --- For now, let's just count and flash a message ---
-              # We will add the actual status update/notification later when building Director part
+              # ... (Logic for handling status update/flagging for director) ...
               if student.status == 'กำลังศึกษา': # Only count those who are not already graduated
                    submitted_count += 1
               elif student.status == 'จบการศึกษา':
@@ -1973,8 +2055,22 @@ def submit_graduation_approval():
          #     flash(f'เกิดข้อผิดพลาดในการบันทึก: {e}', 'danger')
          #     return redirect(url_for('academic.graduation_approval'))
 
-         # TODO: Create Notifications for Director
+         # --- [START] Notification Logic ---
+         try:
+            director_role = db.session.query(Role).filter_by(name='Director').first()
+            if director_role:
+                title = "แจ้งเตือนการเสนอชื่อผู้สำเร็จการศึกษา"
+                message = f"ฝ่ายวิชาการ ได้เสนอรายชื่อนักเรียน {submitted_count} คน เพื่อรออนุมัติจบหลักสูตร"
+                url_for_director = url_for('director.graduation_approval', _external=True) # (ต้องสร้าง Route นี้ใน director)
+                for user in director_role.users:
+                    db.session.add(Notification(user_id=user.id, title=title, message=message, url=url_for_director, notification_type='GRADUATION_LIST_SUBMITTED'))
+                db.session.commit()
+         except Exception as e:
+            current_app.logger.error(f"Failed to send graduation list to director notification: {e}", exc_info=True)
+            pass
+         # --- [END] Notification Logic ---
 
+         # [FIXED] Corrected flash message text and indentation
          flash(f'เสนอรายชื่อนักเรียน {submitted_count} คน ให้ผู้อำนวยการอนุมัติจบหลักสูตรเรียบร้อยแล้ว', 'success')
     elif not errors: # No one submitted and no errors
          flash('กรุณาเลือกนักเรียนที่พร้อมจบการศึกษาเพื่อเสนอชื่อ', 'info')
@@ -2037,7 +2133,27 @@ def submit_academic_decision(candidate_id):
             old_value=original_status, new_value={'status': new_status, 'notes': notes}
         )
         db.session.commit()
-        # TODO: Add Notification for Director if approved
+        if decision == 'approve':
+            try:
+                director_role = db.session.query(Role).filter_by(name='Director').first()
+                if director_role:
+                    title = "แจ้งเตือนการพิจารณาเลื่อนชั้น/ซ้ำชั้น"
+                    message = f"ฝ่ายวิชาการ ได้ส่งเรื่องของ {candidate.student.full_name} ({new_status}) เพื่อรอการพิจารณา"
+                    url_for_director = url_for('director.review_repeat_candidates', _external=True)
+
+                    for user in director_role.users:
+                        new_notif = Notification(
+                            user_id=user.id,
+                            title=title,
+                            message=message,
+                            url=url_for_director,
+                            notification_type='REPEAT_CANDIDATE_SUBMITTED_DIRECTOR'
+                        )
+                        db.session.add(new_notif)
+                    db.session.commit()
+            except Exception as e:
+                current_app.logger.error(f"Failed to send repeat candidate (academic) notification: {e}", exc_info=True)
+                pass
         if decision == 'approve':
             flash(f'ส่งเรื่องของ {candidate.student.full_name} ให้ผู้อำนวยการพิจารณาต่อเรียบร้อยแล้ว', 'success')
         else:

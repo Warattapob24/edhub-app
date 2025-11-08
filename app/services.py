@@ -108,7 +108,7 @@ def check_and_create_attendance_warnings(attendance_record: AttendanceRecord):
 
     # 5. เริ่มกระบวนการสร้างการแจ้งเตือน
     recipients = set()
-    title = "แจ้งเตือนการขาดเรียนเกินกำหนด {int(next_threshold_to_trigger)}%"
+    title = f"แจ้งเตือนการขาดเรียนเกินกำหนด {int(next_threshold_to_trigger)}%"
 
     recipients.update(course.teachers)
 

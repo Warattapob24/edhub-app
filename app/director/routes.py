@@ -11,7 +11,7 @@ from app.director import bp
 from app import db
 from app.models import (AdministrativeDepartment, AdvisorAssessmentRecord, AdvisorAssessmentScore, AssessmentTemplate, Classroom, Course, CourseGrade, Enrollment, GradeLevel, LessonPlan, QualitativeScore, RepeatCandidate, Semester, Student, SubjectGroup, User, Role, Subject, LearningUnit, Indicator, 
                         Standard, GradedItem, AssessmentDimension, AssessmentItem, 
-                        AssessmentTopic)
+                        AssessmentTopic, Notification)
 from app.services import calculate_final_grades_for_course, calculate_grade_statistics, log_action
 
 # ==============================================================================
@@ -112,6 +112,18 @@ def approve_all_plans():
             old_value={'old_status': old_status}
         )
         db.session.commit()
+        try:
+            academic_role = db.session.query(Role).filter_by(name='Academic Affairs').first()
+            if academic_role:
+                title = "แผนการสอนได้รับการอนุมัติ (ทั้งหมด)"
+                message = f"ผอ. ({current_user.full_name}) ได้อนุมัติแผนการสอนที่รออนุมัติทั้งหมด {count} รายการ"
+                url_for_academic = url_for('academic.dashboard', _external=True) 
+                for user in academic_role.users:
+                    db.session.add(Notification(user_id=user.id, title=title, message=message, url=url_for_academic, notification_type='PLAN_APPROVED_ALL'))
+                db.session.commit()
+        except Exception as e:
+            current_app.logger.error(f"Failed to send plan approval (all) notification: {e}", exc_info=True)
+            pass
         flash(f'แผนการสอนทั้งหมด {count} รายการ ได้รับการอนุมัติแล้ว', 'success')
         return jsonify({'status': 'success', 'count': count})
     except Exception as e:
@@ -157,6 +169,26 @@ def approve_plans_by_group(group_id):
             old_value={'old_status': old_status}
         )
         db.session.commit()
+        try:
+            recipients = set()
+            # 1. Add Academic Affairs
+            academic_role = db.session.query(Role).filter_by(name='Academic Affairs').first()
+            if academic_role:
+                recipients.update(academic_role.users)
+            # 2. Add Subject Group Head
+            if group.head:
+                recipients.add(group.head)
+
+            title = f"แผนการสอนกลุ่มสาระฯ {group.name} ได้รับการอนุมัติ"
+            message = f"ผอ. ({current_user.full_name}) ได้อนุมัติแผนฯ ของกลุ่มสาระ {group.name} จำนวน {count} รายการ"
+            url_for_notif = url_for('department.dashboard', _external=True) 
+
+            for user in recipients:
+                db.session.add(Notification(user_id=user.id, title=title, message=message, url=url_for_notif, notification_type='PLAN_APPROVED_GROUP'))
+            db.session.commit()
+        except Exception as e:
+            current_app.logger.error(f"Failed to send plan approval (group) notification: {e}", exc_info=True)
+            pass
         flash(f'แผนการสอนของกลุ่มสาระฯ {group.name} จำนวน {count} รายการ ได้รับการอนุมัติแล้ว', 'success')
         return jsonify({'status': 'success', 'count': count})
     except Exception as e:
@@ -239,6 +271,29 @@ def approve_final(plan_id):
             old_value=original_status, new_value=new_status
         )
         db.session.commit()
+        try:
+            recipients = set()
+            # 1. Add Academic Affairs
+            academic_role = db.session.query(Role).filter_by(name='Academic Affairs').first()
+            if academic_role: recipients.update(academic_role.users)
+            # 2. Add Subject Group Head
+            if plan.subject.subject_group and plan.subject.subject_group.head:
+                recipients.add(plan.subject.subject_group.head)
+            # 3. Add Teachers of courses using this plan
+            courses_using_plan = Course.query.filter_by(lesson_plan_id=plan.id).options(selectinload(Course.teachers)).all()
+            for course in courses_using_plan:
+                recipients.update(course.teachers)
+
+            title = f"แผนการสอน {plan.subject.name} ได้รับการอนุมัติ"
+            message = f"ผอ. ({current_user.full_name}) ได้อนุมัติใช้งานแผนการสอนวิชา {plan.subject.name}"
+            url_for_notif = url_for('teacher.dashboard', _external=True) 
+
+            for user in recipients:
+                db.session.add(Notification(user_id=user.id, title=title, message=message, url=url_for_notif, notification_type='PLAN_APPROVED_FINAL'))
+            db.session.commit()
+        except Exception as e:
+            current_app.logger.error(f"Failed to send plan approval (final) notification: {e}", exc_info=True)
+            pass
         flash(f'แผนการสอน "{plan.subject.name}" ได้รับการอนุมัติใช้งานเรียบร้อยแล้ว', 'success')
     except Exception as e:
         db.session.rollback()
@@ -373,6 +428,18 @@ def approve_all_grades():
             old_value={'old_status': old_status}
         )
         db.session.commit()
+        try:
+            academic_role = db.session.query(Role).filter_by(name='Academic Affairs').first()
+            if academic_role:
+                title = "ผลการเรียนได้รับการอนุมัติ (ทั้งหมด)"
+                message = f"ผอ. ({current_user.full_name}) ได้อนุมัติผลการเรียนที่รออนุมัติทั้งหมด {count} รายการ"
+                url_for_academic = url_for('academic.grades_dashboard', _external=True)
+                for user in academic_role.users:
+                    db.session.add(Notification(user_id=user.id, title=title, message=message, url=url_for_academic, notification_type='GRADES_APPROVED_ALL'))
+                db.session.commit()
+        except Exception as e:
+            current_app.logger.error(f"Failed to send grade approval (all) notification: {e}", exc_info=True)
+            pass
         flash(f'อนุมัติผลการเรียน {count} รายการเรียบร้อยแล้ว', 'success')
         return jsonify({'status': 'success', 'count': count})
     except Exception as e:
@@ -401,6 +468,24 @@ def approve_one_grade(course_id):
                 old_value=original_status, new_value=new_status
             )
             db.session.commit()
+            try:
+                recipients = set()
+                # 1. Add Academic Affairs
+                academic_role = db.session.query(Role).filter_by(name='Academic Affairs').first()
+                if academic_role: recipients.update(academic_role.users)
+                # 2. Add Teachers of this course
+                recipients.update(course.teachers)
+
+                title = f"ผลการเรียนวิชา {course.subject.name} ได้รับการอนุมัติ"
+                message = f"ผอ. ({current_user.full_name}) ได้อนุมัติผลการเรียนวิชา {course.subject.name} ({course.classroom.name})"
+                url_for_notif = url_for('teacher.view_course', course_id=course.id, _external=True)
+
+                for user in recipients:
+                    db.session.add(Notification(user_id=user.id, title=title, message=message, url=url_for_notif, notification_type='GRADES_APPROVED_ONE'))
+                db.session.commit()
+            except Exception as e:
+                current_app.logger.error(f"Failed to send grade approval (one) notification: {e}", exc_info=True)
+                pass
             return jsonify({'status': 'success'})
         except Exception as e:
             db.session.rollback()
@@ -522,6 +607,18 @@ def approve_all_remediation():
             old_value={'old_status': old_status}
         )
         db.session.commit()
+        try:
+            academic_role = db.session.query(Role).filter_by(name='Academic Affairs').first()
+            if academic_role:
+                title = "ผลการซ่อมได้รับการอนุมัติ (ทั้งหมด)"
+                message = f"ผอ. ({current_user.full_name}) ได้อนุมัติผลการซ่อมของนักเรียน {count} คนเรียบร้อยแล้ว"
+                url_for_academic = url_for('academic.remediation_approval', _external=True)
+                for user in academic_role.users:
+                    db.session.add(Notification(user_id=user.id, title=title, message=message, url=url_for_academic, notification_type='REMEDIATION_APPROVED_ALL'))
+                db.session.commit()
+        except Exception as e:
+            current_app.logger.error(f"Failed to send remediation approval (all) notification: {e}", exc_info=True)
+            pass
         return jsonify({
             'status': 'success',
             'message': f'อนุมัติผลการซ่อมของนักเรียน {count} คนเรียบร้อยแล้ว'
@@ -685,6 +782,18 @@ def approve_all_assessments():
             old_value={'old_status': old_status}
         )
         db.session.commit()
+        try:
+            academic_role = db.session.query(Role).filter_by(name='Academic Affairs').first()
+            if academic_role:
+                title = "ผลประเมินคุณลักษณะได้รับการอนุมัติ (ทั้งหมด)"
+                message = f"ผอ. ({current_user.full_name}) ได้อนุมัติผลการประเมินคุณลักษณะ {updated_count} รายการ"
+                url_for_academic = url_for('academic.review_advisor_assessments', _external=True)
+                for user in academic_role.users:
+                    db.session.add(Notification(user_id=user.id, title=title, message=message, url=url_for_academic, notification_type='ASSESSMENT_APPROVED_ALL'))
+                db.session.commit()
+        except Exception as e:
+            current_app.logger.error(f"Failed to send assessment approval (all) notification: {e}", exc_info=True)
+            pass
         return jsonify({'status': 'success', 'message': f'อนุมัติผลการประเมิน {updated_count} รายการเรียบร้อยแล้ว'})
     except Exception as e:
         db.session.rollback()
@@ -837,7 +946,26 @@ def submit_director_decision(candidate_id):
             new_value={'status': new_status, 'final_decision': candidate.final_decision, 'notes': notes}
         )
         db.session.commit()
-        # TODO: Add Notification for Academic Affairs
+        try:
+            academic_role = db.session.query(Role).filter_by(name='Academic Affairs').first()
+            if academic_role:
+                title = f"ผลการพิจารณา นร. ซ้ำชั้น/เลื่อนชั้น ({decision})"
+                message = f"ผอ. ได้ {decision} เรื่องของ {candidate.student.full_name} (สถานะ: {new_status})"
+                url_for_academic = url_for('academic.review_repeat_candidates', _external=True)
+
+                for user in academic_role.users:
+                    new_notif = Notification(
+                        user_id=user.id,
+                        title=title,
+                        message=message,
+                        url=url_for_academic,
+                        notification_type='REPEAT_CANDIDATE_FINALIZED'
+                    )
+                    db.session.add(new_notif)
+                db.session.commit()
+        except Exception as e:
+            current_app.logger.error(f"Failed to send repeat candidate finalization notification: {e}", exc_info=True)
+            pass
         flash(f'บันทึกการอนุมัติสำหรับ {candidate.student.full_name} เรียบร้อยแล้ว', 'success')
 
     except Exception as e:

@@ -5,7 +5,7 @@ from flask_login import login_required, current_user
 from app.services import get_student_dashboard_data
 from app.student import bp
 # --- [NEW] Added models and datetime ---
-from app.models import Student, Semester, Classroom, WeeklyScheduleSlot, TimetableEntry, Course, Enrollment # Import Enrollment model
+from app.models import Student, Semester, Classroom, WeeklyScheduleSlot, TimetableEntry, Course, Enrollment, CourseGrade # Import Enrollment model
 from sqlalchemy.orm import selectinload
 from datetime import datetime, date, time
 # --- [END NEW] ---
@@ -251,18 +251,16 @@ def dashboard():
                            assessment_summary=assessment_summary,
                            warnings=warnings)
 
-
-# --- [NEW ROUTE FOR HISTORICAL GRADES] ---
-
 @bp.route('/grade_history')
 @login_required
+# @student_required # Re-enable if needed
 def grade_history():
     """หน้าประวัติผลการเรียนทั้งหมดของนักเรียน"""
     student = current_user.student_profile
     if not student:
         flash('ไม่พบข้อมูลนักเรียนที่เชื่อมโยงกับบัญชีผู้ใช้นี้ กรุณาติดต่อผู้ดูแล', 'danger')
         return redirect(url_for('auth.logout'))
-        
+
     if db is None:
         # Fallback if database object cannot be imported
         flash('ไม่สามารถเชื่อมต่อฐานข้อมูลเพื่อดึงประวัติผลการเรียนได้', 'danger')
@@ -270,91 +268,83 @@ def grade_history():
                                title='ประวัติผลการเรียนทั้งหมด',
                                student=student,
                                sorted_history=[])
-    
-    # 1. Fetch all Enrollment records for the student, loading Classroom and GradeLevel
-    historical_enrollments = db.session.query(Enrollment).filter(
-        Enrollment.student_id == student.id
-    ).options(
-        selectinload(Enrollment.classroom).selectinload(Classroom.grade_level),
-    ).all()
-    
-    # Collect all unique Classroom IDs for the student
-    classroom_ids = [e.classroom_id for e in historical_enrollments]
-    
-    # 2. Fetch all Courses associated with these Classrooms, loading Semester/AcademicYear/Subject
-    all_historical_courses = db.session.query(Course).filter(
-        Course.classroom_id.in_(classroom_ids)
-    ).options(
-        selectinload(Course.subject),
-        selectinload(Course.semester).selectinload(Semester.academic_year)
-    ).all()
-    
-    # 3. Group results by Grade Level (name) and then by Semester (name/year)
-    grade_history_data = {}
-    
-    for course in all_historical_courses:
-        # Find the correct enrollment object to get the GradeLevel name
-        enrollment = next((e for e in historical_enrollments if e.classroom_id == course.classroom_id), None)
-        
-        if not enrollment or not enrollment.classroom.grade_level or not course.semester:
-            continue # Skip if data is incomplete
 
-        grade_name = enrollment.classroom.grade_level.name
-        academic_year = course.semester.academic_year.year if course.semester.academic_year else 'N/A'
-        
-        # --- [FIXED] Use try/except to find the correct attribute for semester number ---
-        try:
-            # Try 'number', a common attribute for semester identifier (e.g., 1 or 2)
-            semester_identifier = course.semester.number 
-        except AttributeError:
-             # Fallback 1: Try 'term'
-             try:
-                 semester_identifier = course.semester.term
-             except AttributeError:
-                 # Fallback 2: If neither exists, use the ID (least desirable but prevents crash)
-                 semester_identifier = course.semester.id
-                 # Notify the user that the system is using the ID
-                 flash(f"คำเตือน: Semester object ไม่มี field 'number' หรือ 'term'. ใช้ ID ({semester_identifier}) แทน (ควรแก้ไข Model Semester)", 'warning')
-        
-        semester_name = semester_identifier
-        # --- [END FIXED] ---
-        
+    # 1. [REVISED] Fetch ALL CourseGrades for this student
+    # This is the "Single Source of Truth" for grades
+    all_grades = db.session.query(CourseGrade).filter_by(
+        student_id=student.id
+    ).options(
+        selectinload(CourseGrade.course).options(
+            selectinload(Course.subject),
+            selectinload(Course.semester).selectinload(Semester.academic_year),
+            selectinload(Course.classroom).selectinload(Classroom.grade_level) # Need classroom for Grade Level
+        )
+    ).all()
+
+    # 2. Group results by Grade Level (name) and then by Semester (key)
+    grade_history_data = {}
+
+    for course_grade in all_grades:
+        course = course_grade.course
+
+        # Skip if data is incomplete (e.g., course deleted but grade remained)
+        if not (course and course.subject and course.semester and 
+                course.semester.academic_year and course.classroom and 
+                course.classroom.grade_level):
+            continue 
+
+        grade_name = course.classroom.grade_level.name
+        academic_year = course.semester.academic_year.year
+        semester_term = course.semester.term
+
         # Sub-key: Semester (e.g., '1/2568')
-        semester_key = f"{semester_name}/{academic_year}"
+        semester_key = f"{semester_term}/{academic_year}"
+
         if grade_name not in grade_history_data:
             grade_history_data[grade_name] = {}
-        
+
         if semester_key not in grade_history_data[grade_name]:
-            grade_history_data[grade_name][semester_key] = []
-            
-        # --- PLACEHOLDER FOR FINAL GRADE ---
-        # NOTE: Final grade logic is missing the Grade Model/Table.
-        # REPLACE 'N/A' with actual query/lookup from your CourseGrade table when implemented.
-        final_grade = "N/A" 
-        
-        grade_history_data[grade_name][semester_key].append({
+            grade_history_data[grade_name][semester_key] = {
+                'semester_name': semester_key,
+                'courses': []
+            }
+
+        # --- [FIXED] Get data directly from the query ---
+        final_grade = course_grade.final_grade
+        credit = course.subject.credit
+
+        grade_history_data[grade_name][semester_key]['courses'].append({
             'course_id': course.id,
-            'subject_name': course.subject.name if course.subject else 'N/A',
-            'subject_code': course.subject.subject_code if course.subject else 'N/A',
-            'final_grade': final_grade, 
-            'credit': course.subject.credit if course.subject and hasattr(course.subject, 'credit') else 'N/A' 
+            'subject_name': course.subject.name,
+            'subject_code': course.subject.subject_code,
+            'final_grade': final_grade if final_grade is not None else '-', 
+            'credit': credit if credit is not None else '-'
         })
-        
-    # 4. Sort structure: 1. Grade Level (M.1, M.2), 2. Semester (1/2568, 2/2568)
+
+    # 3. Sort structure: 1. Grade Level (M.1, M.2), 2. Semester (1/2568, 2/2568)
     sorted_history_list = []
-    for grade_level, semesters in grade_history_data.items():
-        # Sort semesters lexicographically (works for '1/2568' < '2/2568')
-        sorted_semesters = sorted(semesters.items(), key=lambda item: item[0]) 
-        sorted_history_list.append((grade_level, sorted_semesters))
-        
-    # Final sort by Grade Level (assuming 'ม.1' comes before 'ม.2' alphabetically)
-    sorted_history_list.sort(key=lambda item: item[0])
+
+    # Sort Grade Levels (e.g., 'ม.1', 'ม.2', ...)
+    sorted_grade_names = sorted(grade_history_data.keys())
+
+    for grade_name in sorted_grade_names:
+        semesters_dict = grade_history_data[grade_name]
+
+        # Sort Semesters (e.g., '1/2568', '2/2568', '1/2569')
+        sorted_semester_keys = sorted(semesters_dict.keys())
+
+        sorted_semesters_list = [semesters_dict[key] for key in sorted_semester_keys]
+
+        # Sort courses within each semester (e.g., by subject code)
+        for semester_data in sorted_semesters_list:
+            semester_data['courses'].sort(key=lambda x: x['subject_code'])
+
+        sorted_history_list.append((grade_name, sorted_semesters_list))
 
     return render_template('student/grade_history.html',
                            title='ประวัติผลการเรียนทั้งหมด',
                            student=student,
                            sorted_history=sorted_history_list)
-
 
 # Redirect หน้าหลักของ /student ไป dashboard
 @bp.route('/')

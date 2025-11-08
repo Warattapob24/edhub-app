@@ -10,7 +10,7 @@ from sqlalchemy import and_, func, or_
 from app.admin.forms import CurriculumForm, get_all_grade_levels, get_all_semesters
 from app.department import bp
 from app import db
-from app.models import AssessmentItem, AssessmentTopic, Classroom, Course, CourseGrade, Curriculum, AssessmentDimension, Enrollment, GradeLevel, GradedItem, Indicator, LessonPlan, LearningUnit, Program, Semester, Standard, Student, Subject, User, learning_unit_indicators
+from app.models import AssessmentItem, AssessmentTopic, Classroom, Course, CourseGrade, Curriculum, AssessmentDimension, Enrollment, GradeLevel, GradedItem, Indicator, LessonPlan, LearningUnit, Program, Semester, Standard, Student, Subject, User, learning_unit_indicators, Notification, Role
 from app.services import calculate_final_grades_for_course, log_action
 
 @bp.route('/dashboard')
@@ -518,6 +518,18 @@ def approve_plan(plan_id): # Renaming might be clearer, e.g., forward_plan_to_ac
             old_value=original_status, new_value=new_status
         )
         db.session.commit()
+        try:
+            academic_role = db.session.query(Role).filter_by(name='Academic Affairs').first()
+            if academic_role:
+                title = "แจ้งเตือนการส่งแผนการสอน"
+                message = f"หน.กลุ่มสาระฯ {subject_group.name} ได้ส่งต่อแผนฯ วิชา {plan.subject.name} เพื่อรอการตรวจสอบ"
+                url_for_academic = url_for('academic.dashboard', _external=True)
+                for user in academic_role.users:
+                    db.session.add(Notification(user_id=user.id, title=title, message=message, url=url_for_academic, notification_type='PLAN_FORWARDED'))
+                db.session.commit()
+        except Exception as e:
+            current_app.logger.error(f"Failed to send plan forward notification: {e}", exc_info=True)
+            pass
         flash(f'แผนการสอนสำหรับวิชา "{plan.subject.name}" ได้ผ่านการตรวจสอบและส่งต่อให้ฝ่ายวิชาการแล้ว', 'success')
     except Exception as e:
         db.session.rollback()
@@ -552,6 +564,24 @@ def reject_plan(plan_id):
             old_value=original_status, new_value={'status': new_status, 'notes': revision_notes}
         )
         db.session.commit()
+        try:
+            recipients = set()
+            # ค้นหาครูผู้สอนทุกคนที่ใช้แผนนี้
+            courses_using_plan = Course.query.filter_by(lesson_plan_id=plan.id).options(selectinload(Course.teachers)).all()
+            for course in courses_using_plan:
+                recipients.update(course.teachers)
+
+            if recipients:
+                title = f"แผนฯ วิชา {plan.subject.name} ถูกส่งกลับ"
+                message = f"แผนการสอนวิชา {plan.subject.name} ถูกส่งกลับโดย หน.กลุ่มสาระฯ พร้อมหมายเหตุ: '{revision_notes}'"
+                url_for_teacher = url_for('teacher.edit_lesson_plan_unit', plan_id=plan.id, unit_id=0) # ไปที่หน้าแผน
+
+                for user in recipients:
+                    db.session.add(Notification(user_id=user.id, title=title, message=message, url=url_for_teacher, notification_type='PLAN_REJECTED_DEPT'))
+                db.session.commit()
+        except Exception as e:
+            current_app.logger.error(f"Failed to send plan reject (dept) notification: {e}", exc_info=True)
+            pass
         flash(f'แผนการสอนสำหรับวิชา "{plan.subject.name}" ถูกส่งกลับเพื่อแก้ไขเรียบร้อยแล้ว', 'warning')
     except Exception as e:
         db.session.rollback()
@@ -609,7 +639,18 @@ def approve_grades(course_id): # Forwards grades to Academic
                 "Forward Grades to Academic (Dept Head)", model=Course, record_id=course.id,
                 old_value=original_status, new_value=new_status
             )
-            # TODO: Add notification for Academic Affairs
+            try:
+                academic_role = db.session.query(Role).filter_by(name='Academic Affairs').first()
+                if academic_role:
+                    title = "แจ้งเตือนการส่งผลการเรียน"
+                    message = f"หน.กลุ่มสาระฯ {subject_group.name} ได้ส่งต่อผลการเรียนวิชา {course.subject.name} ({course.classroom.name}) เพื่อรอการตรวจสอบ"
+                    url_for_academic = url_for('academic.grades_dashboard', _external=True)
+                    for user in academic_role.users:
+                        db.session.add(Notification(user_id=user.id, title=title, message=message, url=url_for_academic, notification_type='GRADES_FORWARDED'))
+                    db.session.commit() # Commit notification separately
+            except Exception as e:
+                current_app.logger.error(f"Failed to send grades forward notification: {e}", exc_info=True)
+                pass # Don't block the main action
             db.session.commit()
             flash(f'อนุมัติและส่งต่อผลการเรียนวิชา {course.subject.name} ให้ฝ่ายวิชาการเรียบร้อยแล้ว', 'success')
         except Exception as e:
@@ -646,7 +687,17 @@ def return_grades_for_revision(course_id): # Returns grades to Teacher
                 "Return Grades to Teacher (Dept Head)", model=Course, record_id=course.id,
                 old_value=original_status, new_value={'status': new_status, 'notes': notes}
             )
-            # TODO: Add notification for the teacher(s)
+            try:
+                title = f"ผลการเรียนวิชา {course.subject.name} ถูกส่งกลับ"
+                message = f"ผลการเรียนวิชา {course.subject.name} ({course.classroom.name}) ถูกส่งกลับโดย หน.กลุ่มสาระฯ พร้อมหมายเหตุ: '{notes}'"
+                url_for_teacher = url_for('teacher.view_course', course_id=course.id, _external=True)
+
+                for user in course.teachers: # แจ้งครูผู้สอนของวิชานี้
+                    db.session.add(Notification(user_id=user.id, title=title, message=message, url=url_for_teacher, notification_type='GRADES_REJECTED_DEPT'))
+                db.session.commit() # Commit notification separately
+            except Exception as e:
+                current_app.logger.error(f"Failed to send grades reject (dept) notification: {e}", exc_info=True)
+                pass # Don't block the main action
             db.session.commit()
             flash(f'ส่งผลการเรียนวิชา {course.subject.name} กลับเพื่อแก้ไขเรียบร้อยแล้ว', 'warning')
         except Exception as e:
@@ -939,7 +990,18 @@ def submit_level_grades(level_group): # Submits 'รอตรวจสอบ' gr
                     old_value={'old_status': 'รอตรวจสอบ (หน.กลุ่มสาระ)'}
                 )
                 db.session.commit()
-                # TODO: Add notification for Academic Affairs
+                try:
+                    academic_role = db.session.query(Role).filter_by(name='Academic Affairs').first()
+                    if academic_role:
+                        title = f"แจ้งเตือนการส่งผลการเรียน (Bulk {level_group})"
+                        message = f"หน.กลุ่มสาระฯ {subject_group.name} ได้ส่งต่อผลการเรียน {updated_count} รายวิชา (ระดับ {level_group}) เพื่อรอการตรวจสอบ"
+                        url_for_academic = url_for('academic.grades_dashboard', _external=True)
+                        for user in academic_role.users:
+                            db.session.add(Notification(user_id=user.id, title=title, message=message, url=url_for_academic, notification_type='GRADES_FORWARDED_BULK'))
+                        db.session.commit()
+                except Exception as e:
+                    current_app.logger.error(f"Failed to send bulk grades (level) notification: {e}", exc_info=True)
+                    pass
                 flash(f'ส่งต่อผลการเรียน {updated_count} รายวิชา ({level_group}) ให้ฝ่ายวิชาการเรียบร้อยแล้ว', 'success')
             except Exception as e:
                 db.session.rollback()
@@ -974,6 +1036,19 @@ def submit_grade_level_grades(grade_level_id):
             for course in courses_to_submit:
                 course.grade_submission_status = 'เสนอฝ่ายวิชาการ'
             db.session.commit()
+            try:
+                academic_role = db.session.query(Role).filter_by(name='Academic Affairs').first()
+                if academic_role:
+                    grade_level = GradeLevel.query.get(grade_level_id)
+                    title = f"แจ้งเตือนการส่งผลการเรียน (Bulk {grade_level.name})"
+                    message = f"หน.กลุ่มสาระฯ {subject_group.name} ได้ส่งต่อผลการเรียน {len(courses_to_submit)} รายวิชา (ระดับ {grade_level.name}) เพื่อรอการตรวจสอบ"
+                    url_for_academic = url_for('academic.grades_dashboard', _external=True)
+                    for user in academic_role.users:
+                        db.session.add(Notification(user_id=user.id, title=title, message=message, url=url_for_academic, notification_type='GRADES_FORWARDED_BULK'))
+                    db.session.commit()
+            except Exception as e:
+                current_app.logger.error(f"Failed to send bulk grades (grade_level) notification: {e}", exc_info=True)
+                pass
             flash(f'ส่งต่อผลการเรียนจำนวน {len(courses_to_submit)} รายวิชาให้ฝ่ายวิชาการเรียบร้อยแล้ว', 'success')
 
     return redirect(url_for('department.grade_level_detail', grade_level_id=grade_level_id))
@@ -1003,7 +1078,18 @@ def submit_all_grades_to_academic():
             course.grade_submission_status = 'เสนอฝ่ายวิชาการ'
         
         db.session.commit()
-        # TODO: Add notification for Academic Affairs
+        try:
+            academic_role = db.session.query(Role).filter_by(name='Academic Affairs').first()
+            if academic_role:
+                title = "แจ้งเตือนการส่งผลการเรียน (Bulk ทั้งหมด)"
+                message = f"หน.กลุ่มสาระฯ {subject_group.name} ได้ส่งต่อผลการเรียนที่ค้างอยู่ทั้งหมด {len(courses_to_submit)} รายวิชา เพื่อรอการตรวจสอบ"
+                url_for_academic = url_for('academic.grades_dashboard', _external=True)
+                for user in academic_role.users:
+                    db.session.add(Notification(user_id=user.id, title=title, message=message, url=url_for_academic, notification_type='GRADES_FORWARDED_BULK'))
+                db.session.commit()
+        except Exception as e:
+            current_app.logger.error(f"Failed to send bulk grades (all) notification: {e}", exc_info=True)
+            pass
         flash(f'ส่งต่อผลการเรียนจำนวน {len(courses_to_submit)} รายวิชาให้ฝ่ายวิชาการเรียบร้อยแล้ว', 'success')
 
     return redirect(url_for('department.dashboard'))
@@ -1265,7 +1351,18 @@ def forward_remediation_to_academic():
             old_value={'old_status': old_status}
         )
         db.session.commit()
-        # TODO: Add Notification for Academic Affairs
+        try:
+            academic_role = db.session.query(Role).filter_by(name='Academic Affairs').first()
+            if academic_role and updated_count > 0:
+                title = "แจ้งเตือนการส่งผลการซ่อม (Bulk)"
+                message = f"หน.กลุ่มสาระฯ {subject_group.name} ได้ส่งต่อผลการซ่อม {updated_count} รายการ เพื่อรอการตรวจสอบ"
+                url_for_academic = url_for('academic.remediation_approval', _external=True)
+                for user in academic_role.users:
+                    db.session.add(Notification(user_id=user.id, title=title, message=message, url=url_for_academic, notification_type='REMEDIATION_FORWARDED_BULK'))
+                db.session.commit()
+        except Exception as e:
+            current_app.logger.error(f"Failed to send bulk remediation notification: {e}", exc_info=True)
+            pass
         return jsonify({
             'status': 'success',
             'message': f'ส่งต่อผลการซ่อมของนักเรียน {updated_count} คนให้ฝ่ายวิชาการเรียบร้อยแล้ว'

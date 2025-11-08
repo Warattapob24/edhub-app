@@ -33,7 +33,7 @@ def dashboard():
     # ในที่นี้สมมติว่าครูคือบทบาทพื้นฐาน
     return redirect(url_for('teacher.todays_classroom'))
 
-@bp.route('/api/notifications')
+@bp.route('/notifications')
 @login_required
 def get_notifications():
     notifications = Notification.query.filter_by(user_id=current_user.id, is_read=False).order_by(Notification.created_at.desc()).limit(10).all()
@@ -51,7 +51,6 @@ def get_notifications():
 @bp.route('/api/notifications/<int:notification_id>/mark-read', methods=['POST'])
 @login_required
 def mark_notification_as_read(notification_id):
-    from app import db # <-- ADD THIS IMPORT HERE
     
     notification = db.session.get(Notification, notification_id)
     if not notification or notification.user_id != current_user.id:

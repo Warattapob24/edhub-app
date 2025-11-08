@@ -8,9 +8,9 @@ from flask_login import login_required, current_user
 from flask_wtf import FlaskForm
 from sqlalchemy import func
 from app import db
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, contains_eager
 from app.advisor import bp
-from app.models import AdvisorAssessmentRecord, AdvisorAssessmentScore, AssessmentTemplate, AssessmentTopic, AttendanceRecord, Classroom, Course, CourseGrade, GradedItem, LearningUnit, LessonPlan, QualitativeScore, RepeatCandidate, Score, Student, Enrollment, AttendanceWarning, Semester, classroom_advisors
+from app.models import AdvisorAssessmentRecord, AdvisorAssessmentScore, AssessmentTemplate, AssessmentTopic, AttendanceRecord, Classroom, Course, CourseGrade, GradedItem, LearningUnit, LessonPlan, QualitativeScore, RepeatCandidate, Score, Student, Enrollment, AttendanceWarning, Semester, Subject, classroom_advisors, Notification, User
 from app.services import log_action
 
 @bp.route('/dashboard')
@@ -575,7 +575,27 @@ def submit_class_assessment():
         # --- [END LOG] ---
 
         db.session.commit()
-        # TODO: Add Notification for Department Head or relevant reviewer
+        try:
+            # ค้นหา Classroom และ Grade Head
+            classroom = db.session.get(Classroom, int(classroom_id))
+            if classroom and classroom.grade_level and classroom.grade_level.head:
+                grade_head = classroom.grade_level.head
+                title = "แจ้งเตือนการส่งผลประเมินคุณลักษณะ"
+                message = f"ครูที่ปรึกษา {current_user.full_name} ได้ส่งผลการประเมินของห้อง {classroom.name} จำนวน {len(records_to_submit)} คน เพื่อรอการตรวจสอบ"
+                url_for_head = url_for('grade_level_head.review_assessments', grade_level_id=classroom.grade_level_id, _external=True)
+
+                new_notif = Notification(
+                    user_id=grade_head.id,
+                    title=title,
+                    message=message,
+                    url=url_for_head,
+                    notification_type='ASSESSMENT_SUBMITTED'
+                )
+                db.session.add(new_notif)
+                db.session.commit()
+        except Exception as e:
+            current_app.logger.error(f"Failed to send submit assessment notification: {e}", exc_info=True)
+            pass
         return jsonify({'status': 'success', 'message': f'ส่งผลการประเมินจำนวน {len(records_to_submit)} คนเรียบร้อยแล้ว'})
 
     except Exception as e:
@@ -664,7 +684,27 @@ def submit_repeat_decision(candidate_id):
         # --- [END LOG] ---
 
         db.session.commit()
-        # TODO: Add Notification for Grade Level Head
+        try:
+            # ค้นหา Grade Head จาก Classroom ของนักเรียน
+            grade_level = candidate.previous_enrollment.classroom.grade_level
+            if grade_level and grade_level.head:
+                grade_head = grade_level.head
+                title = "แจ้งเตือนการพิจารณาเลื่อนชั้น/ซ้ำชั้น"
+                message = f"ครูที่ปรึกษา {current_user.full_name} ได้ส่งเรื่องของ {candidate.student.full_name} ({final_decision_tentative}) เพื่อรอการพิจารณาต่อ"
+                url_for_head = url_for('grade_level_head.review_repeat_candidates', _external=True)
+
+                new_notif = Notification(
+                    user_id=grade_head.id,
+                    title=title,
+                    message=message,
+                    url=url_for_head,
+                    notification_type='REPEAT_CANDIDATE_SUBMITTED'
+                )
+                db.session.add(new_notif)
+                db.session.commit()
+        except Exception as e:
+            current_app.logger.error(f"Failed to send repeat candidate submission notification: {e}", exc_info=True)
+            pass
         flash(f'ส่งเรื่องของ {candidate.student.first_name} ให้หัวหน้าสายชั้นพิจารณาเรียบร้อยแล้ว', 'success')
     except Exception as e:
         db.session.rollback()
@@ -677,3 +717,236 @@ def submit_repeat_decision(candidate_id):
         flash(f'เกิดข้อผิดพลาด: {e}', 'danger')
 
     return redirect(url_for('advisor.repeat_candidates'))
+
+def _calculate_student_summary(student, semester):
+    """
+    คำนวณข้อมูลเกรดสรุปของนักเรียนสำหรับทุกวิชาในภาคเรียนที่กำหนด
+    """
+    academic_summary = []
+    
+    # 1. ค้นหา Enrollment ของนักเรียนในเทอม/ปี นี้
+    enrollment = student.enrollments.filter(
+        Enrollment.classroom.has(academic_year_id=semester.academic_year_id)
+    ).first()
+    
+    if not enrollment:
+        return [] # นักเรียนไม่ได้ลงทะเบียนในเทอมนี้
+
+    # 2. ค้นหาทุก Course ที่ห้องเรียนนี้ลงทะเบียนในเทอมนี้
+    enrolled_courses = Course.query.filter_by(
+        classroom_id=enrollment.classroom_id, 
+        semester_id=semester.id
+    ).options(
+        joinedload(Course.subject), 
+        joinedload(Course.lesson_plan).selectinload(LessonPlan.learning_units)
+    ).all()
+    
+    if not enrolled_courses:
+        return []
+
+    course_ids = {c.id for c in enrolled_courses}
+    
+    # 3. ดึงเกรดกลางภาค/ปลายภาค (ถ้ามี)
+    student_course_grades = [cg for cg in student.course_grades if cg.course_id in course_ids]
+    grades_map = {cg.course_id: cg for cg in student_course_grades}
+    
+    # 4. ดึงคะแนนเก็บ (Scores) ทั้งหมดของนักเรียนสำหรับคอร์สเหล่านี้
+    item_ids_query = db.session.query(GradedItem.id).join(LearningUnit).join(LessonPlan).filter(
+        LessonPlan.id.in_([c.lesson_plan_id for c in enrolled_courses if c.lesson_plan_id])
+    )
+    scores_list = Score.query.filter(
+        Score.student_id == student.id,
+        Score.graded_item_id.in_(item_ids_query)
+    ).all()
+    scores_map = defaultdict(float)
+    for s in scores_list:
+        scores_map[s.graded_item.learning_unit.lesson_plan_id] += (s.score or 0)
+
+    # 5. ดึงคะแนนเต็มของ GradedItem
+    graded_items_list = GradedItem.query.filter(GradedItem.id.in_(item_ids_query)).all()
+    max_scores_map = defaultdict(float)
+    for i in graded_items_list:
+        max_scores_map[i.learning_unit.lesson_plan_id] += (i.max_score or 0)
+    
+    # 6. ดึงสถานะการขาดเรียน (สำหรับ มส.)
+    active_warnings = set(w.course_id for w in AttendanceWarning.query.filter_by(student_id=student.id, status='ACTIVE'))
+    
+    # ฟังก์ชันแปลงเกรด
+    def map_to_grade(p):
+        if p >= 80: return '4'
+        if p >= 75: return '3.5'
+        if p >= 70: return '3'
+        if p >= 65: return '2.5'
+        if p >= 60: return '2'
+        if p >= 55: return '1.5'
+        if p >= 50: return '1'
+        return '0'
+
+    # 7. วนลูปสร้างสรุปผล
+    for course in enrolled_courses:
+        grade_obj = grades_map.get(course.id)
+        lesson_plan = course.lesson_plan
+        
+        collected_score = scores_map[course.lesson_plan_id]
+        max_collected_score = max_scores_map[course.lesson_plan_id]
+        
+        midterm_score = grade_obj.midterm_score if grade_obj else None
+        final_score = grade_obj.final_score if grade_obj else None
+        
+        total_midterm_max = 0
+        total_final_max = 0
+        has_summative_items = False # (ตรรกะสำหรับ 'ร' - ยังไม่ได้อิมพลีเมนต์)
+
+        if lesson_plan:
+            total_midterm_max = sum(unit.midterm_score for unit in lesson_plan.learning_units if unit.midterm_score)
+            total_final_max = sum(unit.final_score for unit in lesson_plan.learning_units if unit.final_score)
+
+        student_total_score = (collected_score or 0) + (midterm_score or 0) + (final_score or 0)
+        grand_max_score = (max_collected_score or 0) + total_midterm_max + total_final_max
+        
+        percentage = (student_total_score / grand_max_score * 100) if grand_max_score > 0 else 0
+        
+        final_grade = map_to_grade(percentage)
+        
+        # 8. ตรวจสอบ 'มส' (ต้องมีตรรกะการเช็ค 'ร' เพิ่มเติมถ้าต้องการ)
+        if course.id in active_warnings:
+            final_grade = 'มส'
+        # (เพิ่มตรรกะเช็ค 'ร' ที่นี่ ถ้าจำเป็น)
+
+        academic_summary.append({
+            'course': course,
+            'grade': final_grade,
+            'credit': course.subject.credit,
+            'percentage': percentage
+        })
+        
+    return academic_summary
+
+@bp.route('/gradebook-summary')
+@login_required
+def gradebook_summary():
+    # 1. ตรวจสอบสิทธิ์ (เหมือนเดิม)
+    if not current_user.has_role('Advisor'):
+        abort(403)
+
+    # 2. ดึงภาคเรียนทั้งหมด (เหมือนเดิม)
+    all_semesters = Semester.query.options(
+        joinedload(Semester.academic_year)
+    ).order_by(Semester.id.desc()).all()
+    
+    current_semester_obj = next((s for s in all_semesters if s.is_current), None)
+    
+    # 4. หาภาคเรียนที่จะแสดง (เหมือนเดิม)
+    selected_semester_id = request.args.get('semester_id', type=int)
+    semester_to_show = None
+
+    if selected_semester_id:
+        semester_to_show = next((s for s in all_semesters if s.id == selected_semester_id), None)
+    
+    if not semester_to_show:
+        semester_to_show = current_semester_obj
+
+    if not semester_to_show:
+        flash('ไม่พบข้อมูลภาคเรียน (กรุณาติดต่อ Admin เพื่อตั้งค่าภาคเรียนในระบบ)', 'danger')
+        return render_template('advisor/gradebook_summary.html', title='สรุปผลการเรียน', advised_classrooms=[], all_semesters=[])
+
+    # --- [START] 🔽 [ตรรกะใหม่ที่แก้ไขแล้ว] 🔽 ---
+    
+    # 6. ดึง ID ปีการศึกษาจากภาคเรียนที่เลือก (เหมือนเดิม)
+    selected_academic_year_id = semester_to_show.academic_year_id
+
+    # 7. [แก้ไข] Query หาห้องเรียนที่ user นี้เป็นที่ปรึกษา "โดยตรง"
+    # โดยกรองจาก "ปีการศึกษาที่เลือก" ทันที
+    # (เราจะไม่ใช้ current_user.advised_classrooms อีกต่อไป)
+    advised_classrooms_in_year = Classroom.query.join(
+        classroom_advisors
+    ).filter(
+        classroom_advisors.c.user_id == current_user.id,
+        Classroom.academic_year_id == selected_academic_year_id
+    ).order_by(Classroom.name).all()
+    
+    # 9. ตรวจสอบว่ามีห้องเรียนในปีนั้นหรือไม่ (เหมือนเดิม)
+    if not advised_classrooms_in_year:
+        flash(f'คุณไม่ได้เป็นที่ปรึกษาห้องเรียนใดๆ ในปีการศึกษา {semester_to_show.academic_year.year}', 'info')
+        return render_template('advisor/gradebook_summary.html',
+                               title='สรุปผลการเรียน',
+                               advised_classrooms=[], # ส่งลิสต์ว่างไป
+                               all_semesters=all_semesters,
+                               selected_semester_id=semester_to_show.id,
+                               selected_classroom_id=None,
+                               enrollments=None,
+                               courses=None,
+                               gpa_map={},
+                               grade_matrix={})
+
+    # --- [END] 🔼 [ตรรกะใหม่ที่แก้ไขแล้ว] 🔼 ---
+
+    # 10. หาห้องเรียนที่จะแสดง (จากลิสต์ที่กรองแล้ว) (เหมือนเดิม)
+    selected_classroom_id = request.args.get('classroom_id', type=int)
+    classroom_to_show = None
+
+    if selected_classroom_id:
+        classroom_to_show = next((c for c in advised_classrooms_in_year if c.id == selected_classroom_id), None)
+    
+    if not classroom_to_show:
+        classroom_to_show = advised_classrooms_in_year[0]
+
+
+    # 11. ดึงข้อมูลนักเรียนและวิชา (เหมือนเดิม)
+    enrollments = Enrollment.query.filter_by(
+        classroom_id=classroom_to_show.id
+    ).join(Student).options(
+        contains_eager(Enrollment.student)
+    ).order_by(Enrollment.roll_number, Student.student_id).all()
+    
+    courses = Course.query.filter_by(
+        classroom_id=classroom_to_show.id,
+        semester_id=semester_to_show.id
+    ).join(Subject).options(
+        joinedload(Course.subject)
+    ).order_by(Subject.subject_code).all()
+
+    # 12. สร้าง Matrix เกรด (เหมือนเดิม)
+    grade_matrix = {}
+    gpa_map = {}
+    grade_point_map = {
+        '4': 4.0, '3.5': 3.5, '3': 3.0, '2.5': 2.5,
+        '2': 2.0, '1.5': 1.5, '1': 1.0, '0': 0.0
+    }
+
+    for enrollment in enrollments:
+        student = enrollment.student
+        summary_list = _calculate_student_summary(student, semester_to_show)
+        
+        student_grades = {}
+        total_credits = 0.0
+        total_grade_points = 0.0
+        
+        for summary in summary_list:
+            subject_id = summary['course'].subject_id
+            grade_val = summary['grade']
+            credit = summary['credit'] or 0.0
+            
+            student_grades[subject_id] = grade_val
+            
+            grade_point = grade_point_map.get(grade_val)
+            
+            if grade_point is not None:
+                total_credits += credit
+                total_grade_points += (grade_point * credit)
+
+        grade_matrix[student.id] = student_grades
+        gpa_map[student.id] = (total_grade_points / total_credits) if total_credits > 0 else 0.0
+
+    # 13. ส่งตัวแปรที่กรองแล้ว (advised_classrooms_in_year) ไปยัง Template (เหมือนเดิม)
+    return render_template('advisor/gradebook_summary.html',
+                           title=f"สรุปผลการเรียนห้อง {classroom_to_show.name}",
+                           advised_classrooms=advised_classrooms_in_year,
+                           selected_classroom_id=classroom_to_show.id,
+                           all_semesters=all_semesters,
+                           selected_semester_id=semester_to_show.id,
+                           enrollments=enrollments,
+                           courses=courses,
+                           grade_matrix=grade_matrix,
+                           gpa_map=gpa_map
+                           )

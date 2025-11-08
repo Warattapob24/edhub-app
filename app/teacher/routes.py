@@ -18,7 +18,7 @@ from app.models import (AcademicYear, AttendanceRecord, AssessmentDimension, Ass
                         AttendanceWarning, AuditLog, Classroom, CourseGrade, Enrollment, GradedItem, Indicator, LearningStrand,
                         LessonPlanConstraint, PostTeachingLog, Room, RubricLevel, Score, Semester, Course, LearningUnit,
                         LessonPlan, Setting, Standard, Student, StudentGroup, SubUnit, SubjectGroup, TimetableEntry, User,
-                        Subject, QualitativeScore, GroupScore, WeeklyScheduleSlot)
+                        Subject, QualitativeScore, GroupScore, WeeklyScheduleSlot, Notification)
 from app.teacher.forms import LearningUnitForm
 from app.teacher import bp
 from flask_wtf import FlaskForm
@@ -3019,7 +3019,32 @@ def submit_remediated_grades():
 
     if updated_count > 0:
         db.session.commit()
-        # TODO: Add notification logic here for Dept. Head
+        try:
+            # 1. ค้นหาหัวหน้ากลุ่มสาระของวิชานี้
+            subject_group = course.subject.subject_group
+            if subject_group and subject_group.head:
+                head_user = subject_group.head
+
+                # 2. สร้างข้อความและ URL
+                title = "แจ้งเตือนการส่งผลการซ่อม"
+                message = f"ครู {current_user.full_name} ได้ส่งผลการซ่อมของนักเรียน {updated_count} คน สำหรับวิชา {course.subject.name} ({course.classroom.name}) เพื่อรอการตรวจสอบ"
+                # TODO: ต้องสร้าง URL ปลายทางสำหรับ Head (ถ้ามี)
+                # url_for_head = url_for('department.review_remediation', course_id=course.id, _external=True) 
+
+                # 3. สร้าง Notification
+                new_notif = Notification(
+                    user_id=head_user.id,
+                    title=title,
+                    message=message,
+                    url=None, # ใส่ URL ที่ถูกต้องที่นี่
+                    notification_type='REMEDIATION_SUBMIT'
+                )
+                db.session.add(new_notif)
+                db.session.commit()
+        except Exception as e:
+            current_app.logger.error(f"Failed to send remediation notification for course {course_id}: {e}")
+            # ไม่ต้อง rollback เพราะการส่งเกรดหลักสำเร็จไปแล้ว
+            pass
     
     return jsonify({
         'status': 'success', 

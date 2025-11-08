@@ -22,6 +22,13 @@
         <ul class="nav flex-column mb-2">
             <li class="nav-item"><a class="nav-link" href="{{ url_for('advisor.dashboard') }}"><i class="bi bi-journals me-1"></i> <span>หน้าหลัก</span></a></li>
             <li class="nav-item">
+                <a class="nav-link {% if request.endpoint == 'advisor.gradebook_summary' %}active{% endif %}" 
+                href="{{ url_for('advisor.gradebook_summary') }}">
+                    <i class="bi bi-grid-3x3-gap-fill me-2"></i>
+                    <span>สรุปผลการเรียน (ห้อง)</span>
+                </a>
+            </li>            
+            <li class="nav-item">
                 <a class="nav-link" href="{{ url_for('advisor.central_assessment') }}">
                     <i class="bi bi-clipboard2-check-fill me-2"></i>
                     <span>แบบประเมินนักเรียน</span>
