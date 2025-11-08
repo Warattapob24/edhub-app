@@ -3,6 +3,8 @@
 from app import create_app, db
 import click
 
+from app.services import clean_old_notifications
+
 app = create_app()
 
 # This command is now self-contained with its own imports
@@ -291,3 +293,21 @@ def seed_db():
     db.session.commit()
     print("Sample subjects and lesson plans seeded.")
     print("Database seeded successfully!")
+
+@app.cli.command('clean-notifications')
+@click.option('--days', default=30, type=int, help='Delete notifications older than this many days.')
+def clean_notifications_command(days):
+    """
+    [CLI] Deletes old notifications from the database.
+    Run with: flask clean-notifications --days=60
+    """
+    print(f"Starting job: Deleting notifications older than {days} days...")
+    try:
+        deleted_count = clean_old_notifications(days_old=days)
+        if deleted_count is not None:
+            print(f'Success: Successfully deleted {deleted_count} old notifications.')
+        else:
+            print('Error: The cleanup task failed. Check application logs.')
+    except Exception as e:
+        db.session.rollback()
+        print(f'Fatal Error running cleanup command: {e}')

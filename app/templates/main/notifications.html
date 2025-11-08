@@ -1,19 +1,29 @@
 {% extends "base.html" %}
 
-{% block app_content %}
+{# --- [FIX 1] เราต้องเรียก Sidebar เข้ามาใน Block ของมันด้วย --- #}
+{% block sidebar %}
+    {% include '_sidebar.html' %}
+{% endblock sidebar %}
+
+
+{# --- [FIX 2] เปลี่ยนชื่อ Block นี้ให้ถูกต้องเป็น main_content --- #}
+{% block main_content %}
 <div class="container mt-4">
     <div class="row">
-        <div class="col-md-10 col-lg-8 mx-auto">
+        {# --- [FIX 3] ทำให้เนื้อหาไม่ชิดซ้าย (เหมือนหน้าอื่นๆ) --- #}
+        <div class="col-md-11 col-lg-10 mx-auto"> 
             
             <div class="d-flex justify-content-between align-items-center mb-3">
                 <h2 class="mb-0"><i class="bi bi-bell-fill me-2"></i> กล่องข้อความแจ้งเตือน</h2>
-                </div>
+            </div>
 
             <div class="card shadow-sm border-0">
                 <div class="list-group list-group-flush">
                     {% if notifications %}
                         {% for notif in notifications %}
-                        <a href="{{ notif.url or '#' }}" class="list-group-item list-group-item-action py-3 {% if not notif.is_read %}list-group-item-light-custom{% endif %}" data-notif-id="{{ notif.id }}">
+                        {# --- [FIX 4] ตรวจสอบ URL ก่อนสร้าง Link --- #}
+                        {% set notif_url = notif.url or '#' %}
+                        <a href="{{ notif_url }}" class="list-group-item list-group-item-action py-3 {% if not notif.is_read %}list-group-item-light-custom{% endif %}" data-notif-id="{{ notif.id }}">
                             <div class="d-flex w-100 justify-content-between">
                                 <h6 class="mb-1">
                                     {% if notif.notification_type == 'ATTENDANCE' %}
@@ -37,15 +47,14 @@
                         </a>
                         {% endfor %}
                     {% else %}
-                        <div class="list-group-item text-center text-muted py-4">
-                            <i class="bi bi-check2-circle fs-3"></i>
-                            <p class="mb-0 mt-2">ไม่มีการแจ้งเตือน</p>
+                        <div class="list-group-item text-center text-muted py-5">
+                            <i class="bi bi-check2-circle fs-1"></i>
+                            <p class="mb-0 mt-2 fs-5">ไม่มีการแจ้งเตือน</p>
                         </div>
                     {% endif %}
                 </div>
             </div>
-
-            </div>
+        </div>
     </div>
 </div>
 
@@ -56,4 +65,4 @@
     }
 </style>
 
-{% endblock %}
+{% endblock main_content %}

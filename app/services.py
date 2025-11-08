@@ -6,7 +6,7 @@ import statistics
 from flask import current_app, url_for
 from flask_login import current_user
 from sqlalchemy import func
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from app.models import (AssessmentItem, AuditLog, Course, Enrollment, GradeLevel, QualitativeScore, RepeatCandidate, Setting, Student, Score, CourseGrade, GradedItem, 
                         LearningUnit, AttendanceRecord, Subject, TimeSlot, TimetableEntry, Classroom, Semester, AcademicYear, User,
@@ -1795,3 +1795,26 @@ def log_action(action: str, user=None, model=None, record_id: int = None, old_va
         # Avoid db.session.rollback() here as it might interfere with the main transaction
         current_app.logger.error(f"Error creating audit log for action '{action}': {e}", exc_info=True)
 
+def clean_old_notifications(days_old=30):
+    """
+    ลบการแจ้งเตือนทั้งหมด (ทั้งที่อ่านแล้วและยังไม่อ่าน)
+    ที่เก่ากว่าจำนวนวันที่กำหนด
+    """
+    try:
+        # 1. คำนวณวันที่ตัดยอด
+        cutoff_date = datetime.utcnow() - timedelta(days=days_old)
+
+        # 2. ค้นหาและลบ
+        # ใช้ synchronize_session=False เพื่อเพิ่มประสิทธิภาพในการลบข้อมูลจำนวนมาก
+        query = Notification.query.filter(Notification.created_at < cutoff_date)
+        deleted_count = query.delete(synchronize_session=False)
+
+        # 3. ยืนยันการลบ
+        db.session.commit()
+
+        return deleted_count
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error cleaning old notifications: {e}", exc_info=True)
+        return None # คืนค่า None เพื่อบอกว่าเกิดข้อผิดพลาด
