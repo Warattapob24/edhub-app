@@ -21,6 +21,7 @@ csrf = CSRFProtect()
 def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
+    app.config['JSON_AS_ASCII'] = False
     
     # 2. ผูก Extensions กับ app ที่สร้างขึ้น
     db.init_app(app)

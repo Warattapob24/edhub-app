@@ -1,5 +1,5 @@
 # FILE: app/main/routes.py
-from flask import abort, current_app, g, jsonify, redirect, url_for
+from flask import abort, current_app, g, jsonify, redirect, render_template, url_for
 from flask_login import login_required, current_user
 from app.main import bp
 from app.models import Notification, Setting
@@ -59,6 +59,31 @@ def mark_notification_as_read(notification_id):
     notification.is_read = True
     db.session.commit()
     return jsonify({'status': 'success'})
+
+# --- [NEW] หน้าสำหรับแสดงการแจ้งเตือนทั้งหมด ---
+@bp.route('/notifications/all')
+@login_required
+def all_notifications():
+    """
+    แสดงหน้าเว็บที่รวมการแจ้งเตือนทั้งหมด (ทั้งอ่านแล้วและยังไม่อ่าน)
+    """
+    # 1. ดึงการแจ้งเตือนทั้งหมด เรียงจากใหม่ไปเก่า
+    all_notifs = current_user.notifications.order_by(
+        Notification.is_read.asc(), 
+        Notification.created_at.desc()
+    ).all()
+
+    # 2. (ทางเลือก) อัปเดตการแจ้งเตือนที่ยังไม่อ่านในหน้านี้ให้เป็น "อ่านแล้ว"
+    unread_ids = [n.id for n in all_notifs if not n.is_read]
+    if unread_ids:
+        Notification.query.filter(Notification.id.in_(unread_ids)).update(
+            {'is_read': True}, synchronize_session=False
+        )
+        db.session.commit()
+
+    return render_template('main/notifications.html',
+                           title='กล่องข้อความแจ้งเตือน',
+                           notifications=all_notifs)
 
 @bp.before_app_request  # หรือ @main.before_request ขึ้นอยู่กับโครงสร้างของคุณ
 def load_global_settings():

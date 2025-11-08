@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block app_content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-10 col-lg-8 mx-auto">
+            
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h2 class="mb-0"><i class="bi bi-bell-fill me-2"></i> กล่องข้อความแจ้งเตือน</h2>
+                </div>
+
+            <div class="card shadow-sm border-0">
+                <div class="list-group list-group-flush">
+                    {% if notifications %}
+                        {% for notif in notifications %}
+                        <a href="{{ notif.url or '#' }}" class="list-group-item list-group-item-action py-3 {% if not notif.is_read %}list-group-item-light-custom{% endif %}" data-notif-id="{{ notif.id }}">
+                            <div class="d-flex w-100 justify-content-between">
+                                <h6 class="mb-1">
+                                    {% if notif.notification_type == 'ATTENDANCE' %}
+                                        <i class="bi bi-person-x text-danger me-2"></i>
+                                    {% elif notif.notification_type in ['PLAN_SUBMITTED_DIRECTOR', 'GRADES_SUBMITTED_DIRECTOR_ALL', 'REMEDIATION_SUBMITTED_DIRECTOR', 'ASSESSMENT_SUBMITTED_DIRECTOR'] %}
+                                        <i class="bi bi-arrow-up-circle text-primary me-2"></i>
+                                    {% elif notif.notification_type in ['PLAN_APPROVED_FINAL', 'GRADES_APPROVED_ONE', 'REMEDIATION_APPROVED_ALL', 'ASSESSMENT_APPROVED_ALL'] %}
+                                        <i class="bi bi-check-circle text-success me-2"></i>
+                                    {% elif notif.notification_type in ['PLAN_REJECTED_ACADEMIC', 'GRADES_REJECTED_DEPT'] %}
+                                        <i class="bi bi-arrow-return-left text-warning me-2"></i>
+                                    {% else %}
+                                        <i class="bi bi-info-circle text-info me-2"></i>
+                                    {% endif %}
+                                    <strong>{{ notif.title }}</strong>
+                                </h6>
+                                <small class="text-muted">{{ moment(notif.created_at).fromNow() }}</small>
+                            </div>
+                            <p class="mb-0 small text-muted">
+                                {{ notif.message }}
+                            </p>
+                        </a>
+                        {% endfor %}
+                    {% else %}
+                        <div class="list-group-item text-center text-muted py-4">
+                            <i class="bi bi-check2-circle fs-3"></i>
+                            <p class="mb-0 mt-2">ไม่มีการแจ้งเตือน</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            </div>
+    </div>
+</div>
+
+<style>
+    .list-group-item-light-custom {
+        background-color: #f8f9fa;
+        font-weight: 500;
+    }
+</style>
+
+{% endblock %}
