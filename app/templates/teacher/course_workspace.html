@@ -79,18 +79,29 @@
     </div>    
 </div>
 </div>
-{% if plan.status == 'ต้องการการแก้ไข' and plan.revision_notes %}
-<div class="alert alert-danger" role="alert">
-    <h4 class="alert-heading"><i class="bi bi-exclamation-triangle-fill me-2"></i>ข้อเสนอแนะจากผู้ตรวจสอบ</h4>
-    <p style="white-space: pre-wrap;">{{ plan.revision_notes }}</p>
-    <hr>
-    <p class="mb-0">กรุณาแก้ไขแผนการสอนตามข้อเสนอแนะและทำการ "ส่งเพื่อรับการตรวจสอบ" อีกครั้ง</p>
-</div>
-
+{% if plan.status == 'ต้องการการแก้ไข' %}
+    <div class="alert alert-danger" role="alert">
+        <h4 class="alert-heading"><i class="bi bi-exclamation-triangle-fill me-2"></i>ข้อเสนอแนะจากผู้ตรวจสอบ</h4>
+        <p style="white-space: pre-wrap;">{{ plan.revision_notes or 'กรุณาตรวจสอบและแก้ไขแผนการสอน' }}</p>
+        <hr>
+        <p class="mb-0">กรุณาแก้ไขแผนการสอนตามข้อเสนอแนะและทำการ "ส่งเพื่อรับการตรวจสอบ" อีกครั้ง</p>
+    </div>
 {% elif plan.status == 'รอการตรวจสอบ' %}
-<div class="alert alert-info" role="alert">
-    <i class="bi bi-info-circle-fill me-2"></i><strong>สถานะ: รอการตรวจสอบ</strong> แผนการสอนนี้ถูกส่งไปให้หัวหน้ากลุ่มสาระฯ เรียบร้อยแล้ว และไม่สามารถแก้ไขได้ในขณะนี้
-</div>
+    <div class="alert alert-info" role="alert">
+        <i class="bi bi-info-circle-fill me-2"></i><strong>สถานะ: รอตรวจสอบ (หน.กลุ่มสาระ)</strong> แผนการสอนนี้ถูกส่งไปให้หัวหน้ากลุ่มสาระฯ เรียบร้อยแล้ว และไม่สามารถแก้ไขได้ในขณะนี้
+    </div>
+{% elif plan.status == 'เสนอฝ่ายวิชาการ' %}
+    <div class="alert alert-info" role="alert">
+        <i class="bi bi-info-circle-fill me-2"></i><strong>สถานะ: รอตรวจสอบ (ฝ่ายวิชาการ)</strong> แผนการสอนนี้ถูกส่งไปให้ฝ่ายวิชาการเรียบร้อยแล้ว และไม่สามารถแก้ไขได้ในขณะนี้
+    </div>
+{% elif plan.status == 'รอการอนุมัติจากผู้อำนวยการ' %}
+    <div class="alert alert-warning" role="alert">
+        <i class="bi bi-info-circle-fill me-2"></i><strong>สถานะ: รออนุมัติ (ผอ.)</strong> แผนการสอนนี้ถูกส่งไปให้ผู้อำนวยการเรียบร้อยแล้ว และไม่สามารถแก้ไขได้ในขณะนี้
+    </div>
+{% elif plan.status == 'อนุมัติใช้งาน' %}
+    <div class="alert alert-success" role="alert">
+        <i class="bi bi-check-circle-fill me-2"></i><strong>สถานะ: อนุมัติแล้ว</strong> แผนการสอนนี้ได้รับการอนุมัติใช้งานเรียบร้อยแล้ว
+    </div>
 {% endif %}
 
 <div class="row g-4">

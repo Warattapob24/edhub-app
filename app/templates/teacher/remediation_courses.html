@@ -167,8 +167,12 @@
                                 {% set status = grade_obj.remediation_status %}
                                 {% if status == 'Approved' %}
                                     <span class="badge bg-success"><i class="bi bi-check-circle-fill me-1"></i> อนุมัติแล้ว</span>
-                                {% elif status.startswith('Submitted') or status == 'Pending Director Approval' %}
-                                    <span class="badge bg-info-soft text-info"><i class="bi bi-send-check me-1"></i> ส่งผลแล้ว</span>
+                                {% elif status == 'Submitted to Dept. Head' %}
+                                    <span class="badge bg-info-soft text-info"><i class="bi bi-send-check me-1"></i> รอตรวจสอบ (หน.กลุ่มสาระ)</span>
+                                {% elif status == 'Submitted to Academic Affairs' %}
+                                    <span class="badge bg-primary-soft text-primary"><i class="bi bi-send-check me-1"></i> รอตรวจสอบ (ฝ่ายวิชาการ)</span>
+                                {% elif status == 'Pending Director Approval' %}
+                                    <span class="badge bg-warning-soft text-warning"><i class="bi bi-send-check me-1"></i> รออนุมัติ (ผอ.)</span>
                                 {% elif status == 'Completed' %}
                                     <span class="badge bg-success-soft text-success"><i class="bi bi-check2-circle me-1"></i> เสร็จสิ้น</span>
                                 {% elif status == 'In Progress' %}

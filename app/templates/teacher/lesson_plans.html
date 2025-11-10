@@ -48,6 +48,22 @@
                                             <a href="{{ url_for('teacher.workspace', plan_id=data.plan.id) }}" class="btn btn-sm btn-outline-primary me-1">
                                                 <i class="bi bi-pencil-square"></i> เข้าสู่ Workspace
                                             </a>
+                                            {% set plan_status = data.plan.status %}
+                                            {% if plan_status == 'ฉบับร่าง' %}
+                                                <span class="badge bg-light text-dark">ฉบับร่าง</span>
+                                            {% elif plan_status == 'รอการตรวจสอบ' %}
+                                                <span class="badge bg-info text-dark">รอตรวจสอบ (หน.กลุ่มสาระ)</span>
+                                            {% elif plan_status == 'เสนอฝ่ายวิชาการ' %}
+                                                <span class="badge bg-primary">รอตรวจสอบ (ฝ่ายวิชาการ)</span>
+                                            {% elif plan_status == 'รอการอนุมัติจากผู้อำนวยการ' %}
+                                                <span class="badge bg-warning text-dark">รออนุมัติ (ผอ.)</span>
+                                            {% elif plan_status == 'อนุมัติใช้งาน' %}
+                                                <span class="badge bg-success">อนุมัติแล้ว</span>
+                                            {% elif plan_status in ['ต้องการการแก้ไข', 'ตีกลับโดยฝ่ายวิชาการ'] %}
+                                                <span class="badge bg-danger">ตีกลับ (ต้องแก้ไข)</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">{{ plan_status }}</span>
+                                            {% endif %}                                            
                                         {% else %}
                                             {# If no plan exists, show Create/Import button #}
                                             {% if representative_course and current_semester %}

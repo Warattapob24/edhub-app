@@ -35,12 +35,18 @@
                                     {% set status_text = 'ยังไม่ส่ง' %}
                                     {% set status_color = 'secondary' %}
                                 {% elif course.grade_submission_status == 'รอตรวจสอบ (หน.กลุ่มสาระ)' %}
-                                    {% set status_text = 'รอตรวจสอบ' %}
+                                    {% set status_text = 'รอตรวจสอบ (หน.กลุ่มสาระ)' %}
                                     {% set status_color = 'info text-dark' %}
-                                {% elif course.grade_submission_status == 'ต้องการการแก้ไข' %}
-                                    {% set status_text = 'ต้องแก้ไข' %}
+                                {% elif course.grade_submission_status == 'เสนอฝ่ายวิชาการ' %}
+                                    {% set status_text = 'รอตรวจสอบ (ฝ่ายวิชาการ)' %}
+                                    {% set status_color = 'primary' %}
+                                {% elif course.grade_submission_status == 'รอการอนุมัติจากผู้อำนวยการ' %}
+                                    {% set status_text = 'รออนุมัติ (ผอ.)' %}
+                                    {% set status_color = 'warning text-dark' %}
+                                {% elif course.grade_submission_status in ['ต้องการการแก้ไข', 'ตีกลับโดยฝ่ายวิชาการ'] %}
+                                    {% set status_text = 'ตีกลับ (ต้องแก้ไข)' %}
                                     {% set status_color = 'danger' %}
-                                {% elif course.grade_submission_status == 'อนุมัติแล้ว' %}
+                                {% elif course.grade_submission_status == 'อนุมัติใช้งาน' %}
                                     {% set status_text = 'อนุมัติแล้ว' %}
                                     {% set status_color = 'success' %}
                                 {% endif %}
