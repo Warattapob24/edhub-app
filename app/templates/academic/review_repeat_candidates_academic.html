@@ -7,76 +7,158 @@
 
 {% block main_content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
-    <h2 class="h3"><i class="bi bi-person-check-fill me-2"></i>{{ title }}</h2>
+    <h2 class="h3"><i class="bi bi-person-check me-2"></i>{{ title }}</h2>
 </div>
 
-{% if candidates %}
-<div class="card shadow-sm">
-    <div class="card-body">
-        <p class="text-muted">รายชื่อนักเรียนที่รอการพิจารณาเรียนซ้ำชั้น หรือเลื่อนชั้นเป็นกรณีพิเศษ (ผ่านการตรวจสอบจากหัวหน้าสายชั้นแล้ว)</p>
-        <div class="table-responsive">
-            <table class="table table-hover align-middle">
-                <thead class="table-light">
-                    <tr>
-                        <th>ชื่อ-สกุล</th>
-                        <th>สายชั้นเดิม (ปี {{ candidates[0].academic_year.year }})</th>
-                        <th>ข้อเสนอเดิม<br>(ครูที่ปรึกษา)</th>
-                        <th>หมายเหตุ<br>(ครูที่ปรึกษา)</th>
-                        <th>หมายเหตุ<br>(หัวหน้าสายชั้น)</th>
-                        <th style="width: 25%;">การดำเนินการ (ฝ่ายวิชาการ)</th>
-                        <th style="width: 10%;">ส่งเรื่อง</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for candidate in candidates %}
-                    <tr class="{% if 'Reject' in candidate.status %}table-danger{% endif %}">
-                        <td>
-                            {# Link to student profile if available #}
-                            {{ candidate.student.full_name }} {# Assume student has full_name property or adjust #}
-                            <br><small class="text-muted">{{ candidate.student.student_id }}</small>
-                        </td>
-                        <td>{{ candidate.previous_enrollment.classroom.grade_level.name }}</td>
-                        <td>
-                            {% if candidate.final_decision == 'Repeat' %}
-                                <span class="badge bg-warning text-dark">ซ้ำชั้น</span>
-                            {% elif candidate.final_decision == 'Promote (Special Case)' %}
-                                <span class="badge bg-info text-dark">เลื่อนชั้น (พิเศษ)</span>
-                            {% else %}
-                                <span class="badge bg-secondary">N/A</span>
-                            {% endif %}
-                        </td>
-                        <td><small>{{ candidate.advisor_notes or '-' }}</small></td>
-                        <td><small>{{ candidate.grade_head_notes or '-' }}</small></td> {# Display Grade Head notes #}
-                        <td>
-                            <form method="POST" action="{{ url_for('academic.submit_academic_decision', candidate_id=candidate.id) }}" id="form-{{ candidate.id }}">
-                                {{ form.hidden_tag() }} {# CSRF #}
-                                <div class="mb-2">
-                                    <select name="decision" class="form-select form-select-sm" required>
-                                        <option value="" disabled selected>-- เลือกการดำเนินการ --</option>
-                                        <option value="approve">เห็นด้วย (ส่งต่อ ผอ.)</option>
-                                        <option value="reject">ไม่เห็นด้วย (ตีกลับ/สิ้นสุด)</option>
-                                    </select>
-                                </div>
-                                <textarea name="notes" class="form-control form-control-sm" rows="2" placeholder="หมายเหตุ (ถ้ามี)"></textarea>
-                            </form>
-                        </td>
-                        <td class="text-center">
-                            <button type="submit" form="form-{{ candidate.id }}" class="btn btn-primary btn-sm">
-                                <i class="bi bi-send"></i> ส่ง
-                            </button>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+<ul class="nav nav-tabs nav-fill" id="repeat-tabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="pending-tab" data-bs-toggle="tab" data-bs-target="#pending-content" type="button" role="tab">
+            <i class="bi bi-hourglass-split me-2 text-warning"></i>
+            รอพิจารณา
+            {% if candidates_pending|length > 0 %}
+                <span class="badge rounded-pill bg-warning text-dark ms-1">{{ candidates_pending|length }}</span>
+            {% endif %}
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="processed-tab" data-bs-toggle="tab" data-bs-target="#processed-content" type="button" role="tab">
+            <i class="bi bi-check2-circle me-2 text-success"></i>
+            พิจารณาแล้ว (ประวัติ)
+            <span class="badge rounded-pill bg-light text-dark ms-1">{{ candidates_processed|length }}</span>
+        </button>
+    </li>
+</ul>
+
+<div class="tab-content" id="repeat-tabs-content">
+    
+    <div class="tab-pane fade show active" id="pending-content" role="tabpanel">
+        {% if candidates_pending %}
+        <div class="card shadow-sm border-top-0">
+            <div class="card-body">
+                <p class="text-muted">รายชื่อนักเรียนที่ หน.สายชั้น เสนอให้พิจารณา และรอการดำเนินการจากท่าน</p>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>ชื่อ-สกุล</th>
+                                <th>ห้องเรียนเดิม</th>
+                                <th>ข้อเสนอ<br>จาก หน.สายชั้น</th>
+                                <th>หมายเหตุ<br>(ที่ปรึกษา / หน.สายชั้น)</th>
+                                <th style="width: 25%;">การดำเนินการ (ฝ่ายวิชาการ)</th>
+                                <th style="width: 10%;">ส่งเรื่อง</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for candidate in candidates_pending %}
+                            <tr>
+                                <td>
+                                    {{ candidate.student.full_name }}
+                                    <br><small class="text-muted">{{ candidate.student.student_id }}</small>
+                                </td>
+                                <td>{{ candidate.previous_enrollment.classroom.name }} (ปี {{ candidate.academic_year.year }})</td>
+                                <td>
+                                    {% if 'Repeat' in candidate.status %}
+                                        <span class="badge bg-warning text-dark">ซ้ำชั้น</span>
+                                    {% elif 'Promote' in candidate.status %}
+                                        <span class="badge bg-info text-dark">เลื่อนชั้น (พิเศษ)</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">N/A</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <small><strong>ที่ปรึกษา:</strong> {{ candidate.advisor_notes or '-' }}</small><br>
+                                    <small><strong>หน.สายชั้น:</strong> {{ candidate.grade_head_notes or '-' }}</small>
+                                </td>
+                                <td>
+                                    <form method="POST" action="{{ url_for('academic.submit_academic_decision', candidate_id=candidate.id) }}" id="form-{{ candidate.id }}">
+                                        {{ form.hidden_tag() }} {# CSRF #}
+                                        <div class="mb-2">
+                                            <select name="decision" class="form-select form-select-sm" required>
+                                                <option value="" disabled selected>-- เลือกการดำเนินการ --</option>
+                                                <option value="approve">เห็นด้วย (ส่งต่อ ผอ.)</option>
+                                                <option value="reject">ไม่เห็นด้วย (ตีกลับ/สิ้นสุด)</option>
+                                            </select>
+                                        </div>
+                                        <textarea name="notes" class="form-control form-control-sm" rows="2" placeholder="หมายเหตุ (ถ้ามี)"></textarea>
+                                    </form>
+                                </td>
+                                <td class="text-center">
+                                    <button type="submit" form="form-{{ candidate.id }}" class="btn btn-primary btn-sm">
+                                        <i class="bi bi-send"></i> ส่ง
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
+        {% else %}
+        <div class="card card-body border-top-0 text-center text-muted p-5">
+            <i class="bi bi-check2-circle fs-3 text-success"></i><br>
+            ไม่พบนักเรียนที่รอการพิจารณาจากท่านในขณะนี้
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="tab-pane fade" id="processed-content" role="tabpanel">
+        {% if candidates_processed %}
+        <div class="card shadow-sm border-top-0">
+            <div class="card-body">
+                <p class="text-muted">ประวัติการพิจารณาที่ท่านได้ดำเนินการไปแล้ว หรือส่งต่อแล้ว</p>
+                <div class="table-responsive">
+                    <table class="table table-hover table-striped align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>ชื่อ-สกุล</th>
+                                <th>ข้อเสนอเดิม</th>
+                                <th>สถานะปัจจุบัน</th>
+                                <th>หมายเหตุ (ของท่าน)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for candidate in candidates_processed|sort(attribute='status') %}
+                            <tr class_="{{ 'table-danger' if 'Rejected' in candidate.status else 'table-light' }}">
+                                <td>
+                                    {{ candidate.student.full_name }}
+                                    <br><small class="text-muted">{{ candidate.student.student_id }}</small>
+                                </td>
+                                <td>
+                                    {% if 'Repeat' in candidate.status %}
+                                        <span class="badge bg-warning text-dark">ซ้ำชั้น</span>
+                                    {% elif 'Promote' in candidate.status %}
+                                        <span class="badge bg-info text-dark">เลื่อนชั้น (พิเศษ)</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if 'Director Review' in candidate.status %}
+                                        <span class="badge bg-info">ส่งต่อ ผอ. แล้ว</span>
+                                    {% elif 'Approved' in candidate.status %}
+                                        <span class="badge bg-success">อนุมัติแล้ว (โดย ผอ.)</span>
+                                    {% elif 'Rejected by Academic' in candidate.status %}
+                                        <span class="badge bg-danger">ไม่เห็นด้วย (ตีกลับ)</span>
+                                    {% elif 'Rejected by Director' in candidate.status %}
+                                        <span class="badge bg-danger">ไม่อนุมัติ (โดย ผอ.)</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">{{ candidate.status }}</span>
+                                    {% endif %}
+                                </td>
+                                <td><small>{{ candidate.academic_notes or '-' }}</small></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="card card-body border-top-0 text-center text-muted p-5">
+            <i class="bi bi-info-circle fs-3"></i><br>
+            ยังไม่มีประวัติการพิจารณา
+        </div>
+        {% endif %}
     </div>
 </div>
-{% else %}
-<div class="alert alert-success text-center">
-    <i class="bi bi-check-circle-fill fs-3"></i><br>
-    ไม่พบนักเรียนที่รอการพิจารณาจากฝ่ายวิชาการในขณะนี้
-</div>
-{% endif %}
 
 {% endblock %}

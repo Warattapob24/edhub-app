@@ -31,6 +31,16 @@ def dashboard():
         Course.semester_id == current_semester.id,
         Course.grade_submission_status == 'เสนอฝ่ายวิชาการ'
     ).all()
+    grades_processed = Course.query.filter(
+        Course.semester_id == current_semester.id,
+        Course.grade_submission_status.in_([
+            'รอการอนุมัติจากผู้อำนวยการ', 'อนุมัติใช้งาน', 
+            'ตีกลับโดยฝ่ายวิชาการ'
+        ])
+    ).options(
+        joinedload(Course.subject),
+        joinedload(Course.classroom)
+    ).order_by(Course.submitted_at.desc()).all()
     
     # 1. Get the selected group_id from the URL query parameters
     selected_group_id = request.args.get('group_id', type=int)
@@ -39,7 +49,6 @@ def dashboard():
     all_subject_groups = SubjectGroup.query.order_by(SubjectGroup.name).all()
 
     # --- 1. Comprehensive Query for ALL data needed on the page ---
-    # This single query is more efficient as it fetches all related data at once.
     all_plans_in_semester = LessonPlan.query.filter(
         LessonPlan.academic_year_id == current_semester.academic_year_id
     ).options(
@@ -98,9 +107,18 @@ def dashboard():
         plans_for_checklist = all_plans_in_semester
     
     # Apply status filter and sort for checklist
-    relevant_statuses = ['เสนอฝ่ายวิชาการ', 'รอการอนุมัติจากผู้อำวยการ', 'อนุมัติใช้งาน', 'ต้องการการแก้ไข']
-    plans_for_checklist = [p for p in plans_for_checklist if p.status in relevant_statuses]
-    plans_for_checklist.sort(key=lambda p: (
+    # 1. กำหนดสถานะที่ "เกี่ยวข้อง" ทั้งหมด (ไม่รวม 'ฉบับร่าง')
+    relevant_statuses = ['เสนอฝ่ายวิชาการ', 'รอการอนุมัติจากผู้อำวยการ', 'อนุมัติใช้งาน', 'ต้องการการแก้ไข', 'ตีกลับโดยฝ่ายวิชาการ', 'ผ่านการตรวจสอบ']
+    
+    # 2. "กรอง" รายการทั้งหมดก่อน โดยเอาเฉพาะสถานะที่เกี่ยวข้อง
+    plans_for_checklist_filtered = [p for p in plans_for_checklist if p.status in relevant_statuses]
+    
+    # 3. "แยก" รายการที่กรองแล้ว ออกเป็น 2 ส่วนสำหรับ Tabs
+    plans_pending = [p for p in plans_for_checklist_filtered if p.status in ['เสนอฝ่ายวิชาการ', 'ผ่านการตรวจสอบ']]
+    plans_processed = [p for p in plans_for_checklist_filtered if p.status not in ['เสนอฝ่ายวิชาการ', 'ผ่านการตรวจสอบ']]
+    
+    # 4. (คงเดิม) Sort รายการที่กรองแล้ว เพื่อแสดงผล
+    plans_for_checklist_filtered.sort(key=lambda p: (
         relevant_statuses.index(p.status) if p.status in relevant_statuses else 99,
         -p.id
     ))
@@ -174,8 +192,10 @@ def dashboard():
 
     # --- 5. [เพิ่มใหม่] คำนวณความคืบหน้าการส่งแผนฯ แยกตามระดับชั้น ---
     all_grade_levels = GradeLevel.query.all()
-    m_ton_grade_ids = {gl.id for gl in all_grade_levels if gl.level_group == 'm-ton'}
-    m_plai_grade_ids = {gl.id for gl in all_grade_levels if gl.level_group == 'm-plai'}
+    
+    # --- [FIX 3] แก้ไข Bug การนับ ม.ต้น/ม.ปลาย ---
+    m_ton_grade_ids = {gl.id for gl in all_grade_levels if gl.short_name in ['ม.1', 'ม.2', 'ม.3']}
+    m_plai_grade_ids = {gl.id for gl in all_grade_levels if gl.short_name in ['ม.4', 'ม.5', 'ม.6']}
 
     # 2.1 ดึง Course ทั้งหมดที่ส่งเกรดแล้ว และ Course ทั้งหมดในเทอม (Single Source of Truth)
     all_courses_in_semester = Course.query.filter_by(semester_id=current_semester.id).options(
@@ -186,10 +206,7 @@ def dashboard():
     submitted_courses = [c for c in all_courses_in_semester if c.grade_submission_status in ['เสนอฝ่ายวิชาการ', 'อนุมัติใช้งาน', 'รอตรวจสอบ', 'รอการอนุมัติจากผู้อำนวยการ']]
 
     # 2.2 [แก้ไข] คำนวณ Progress Bar ม.ต้น/ม.ปลาย จากการส่งเกรด
-    all_grade_levels = GradeLevel.query.all()
-    m_ton_grade_ids = {gl.id for gl in all_grade_levels if gl.level_group == 'm-ton'}
-    m_plai_grade_ids = {gl.id for gl in all_grade_levels if gl.level_group == 'm-plai'}
-
+    # (ส่วนนี้ใช้ m_ton_grade_ids ที่แก้ไขแล้วจาก [FIX 3])
     total_m_ton, submitted_m_ton = 0, 0
     total_m_plai, submitted_m_plai = 0, 0
 
@@ -236,7 +253,10 @@ def dashboard():
     return render_template(
         'academic/dashboard.html',
         title='ฝ่ายวิชาการ',
-        plans_for_checklist=plans_for_checklist,
+        plans_pending=plans_pending,
+        plans_processed=plans_processed,
+        plans_for_checklist=plans_for_checklist_filtered, # ส่งตัวแปรที่กรองและเรียงลำดับแล้ว
+        
         grouped_workloads=grouped_workloads,
         stats=plan_stats,
         teacher_count=teacher_count,
@@ -251,7 +271,8 @@ def dashboard():
         m_ton_progress=m_ton_progress,
         m_plai_progress=m_plai_progress,        
         form=form,
-        grades_pending_review=grades_pending_review        
+        grades_processed=grades_processed,
+        grades_pending_review=grades_pending_review
     )
 
 @bp.route('/plan/<int:plan_id>/approve', methods=['POST'])
@@ -1133,7 +1154,13 @@ def level_overview(level_group):
     form = FlaskForm()
 
     # 1. Single Source of Truth & Setup
-    grade_levels_in_group = GradeLevel.query.filter_by(level_group=level_group).order_by(GradeLevel.id).all()
+    # --- [FIX] เปลี่ยนมาตรวจสอบ short_name แทน level_group ---
+    if level_group == 'm-ton':
+        short_names_to_find = ['ม.1', 'ม.2', 'ม.3']
+    else: # m-plai
+        short_names_to_find = ['ม.4', 'ม.5', 'ม.6']
+
+    grade_levels_in_group = [gl for gl in GradeLevel.query.order_by(GradeLevel.id).all() if gl.short_name in short_names_to_find]
     grade_level_ids = {gl.id for gl in grade_levels_in_group}
     grade_level_map = {gl.id: gl for gl in grade_levels_in_group}
 
@@ -1148,7 +1175,8 @@ def level_overview(level_group):
     # 2. Filter data and perform calculations in a single pass
     submitted_courses = [c for c in all_courses_in_level if c.grade_submission_status in ['เสนอฝ่ายวิชาการ', 'อนุมัติใช้งาน', 'รอตรวจสอบ', 'รอการอนุมัติจากผู้อำนวยการ']]
     grades_pending_review = [c for c in submitted_courses if c.grade_submission_status == 'เสนอฝ่ายวิชาการ']
-    
+    grades_processed = [c for c in submitted_courses if c.grade_submission_status != 'เสนอฝ่ายวิชาการ']
+
     all_student_grades_data = []
     grades_by_grade_level = defaultdict(list)
     grades_by_group = defaultdict(list)
@@ -1204,6 +1232,7 @@ def level_overview(level_group):
                            overall_stats=overall_stats,
                            chart_data=chart_data,
                            grades_pending_review=grades_pending_review,
+                           grades_processed=grades_processed,
                            progress_cards_data=progress_cards_data,
                            grade_level_summary_stats=grade_level_summary_stats,
                            group_summary_stats=group_summary_stats,
@@ -1298,7 +1327,8 @@ def grade_level_detail(grade_level_id):
 
     submitted_courses = [c for c in all_courses_in_level if c.grade_submission_status in ['เสนอฝ่ายวิชาการ', 'อนุมัติใช้งาน', 'รอตรวจสอบ', 'รอการอนุมัติจากผู้อำนวยการ']]
     grades_pending_review = [c for c in submitted_courses if c.grade_submission_status == 'เสนอฝ่ายวิชาการ']
-    
+    grades_processed = [c for c in submitted_courses if c.grade_submission_status != 'เสนอฝ่ายวิชาการ']
+
     # 2. จัดกลุ่มข้อมูลตามรายวิชา
     all_student_grades_data = []
     grades_by_subject = defaultdict(list)
@@ -1335,6 +1365,7 @@ def grade_level_detail(grade_level_id):
                            overall_stats=overall_stats,
                            subject_summary_stats=subject_summary_stats,
                            grades_pending_review=grades_pending_review,
+                           grades_processed=grades_processed,
                            chart_data=chart_data,
                            semester=semester)
 
@@ -1992,8 +2023,6 @@ def graduation_approval():
                            academic_year=current_academic_year,
                            students_data=graduating_students_data)
 
-
-# [REVISED] Function to handle submission for director's approval
 # [REVISED] Function to handle submission for director's approval
 @bp.route('/graduation-approval/submit', methods=['POST'])
 @login_required
@@ -2085,18 +2114,26 @@ def review_repeat_candidates_academic():
     """Displays candidates pending Academic Affairs review."""
     form = FlaskForm() # For CSRF
 
-    # Find candidates whose status is pending Academic review
-    candidates = db.session.query(RepeatCandidate).filter(
-        RepeatCandidate.status.like('Pending Academic Review%') # Match both 'Repeat' and 'Promote' pending
+    # --- [FIX] ดึง "ทุก" สถานะที่เกี่ยวข้องกับฝ่ายวิชาการ ---
+    all_candidates = db.session.query(RepeatCandidate).filter(
+        or_(
+            RepeatCandidate.status.like('Pending Academic Review%'),
+            RepeatCandidate.status.like('Pending Director Review%'),
+            RepeatCandidate.status.like('Approved by Director%'),
+            RepeatCandidate.status.like('Rejected by Director%'),
+            RepeatCandidate.status.like('Rejected by Academic%')
+        )
     ).options(
         joinedload(RepeatCandidate.student),
         joinedload(RepeatCandidate.previous_enrollment).joinedload(Enrollment.classroom).joinedload(Classroom.grade_level), # Load grade level too
         joinedload(RepeatCandidate.academic_year) # Year failed
     ).order_by(RepeatCandidate.updated_at.asc()).all() # Show oldest first
-
+    candidates_pending = [c for c in all_candidates if c.status.startswith('Pending Academic Review')]
+    candidates_processed = [c for c in all_candidates if not c.status.startswith('Pending Academic Review')]
     return render_template('academic/review_repeat_candidates_academic.html',
                            title='พิจารณานักเรียนซ้ำชั้น/เลื่อนชั้นพิเศษ (ฝ่ายวิชาการ)',
-                           candidates=candidates,
+                           candidates_pending=candidates_pending,     # <-- [FIX]
+                           candidates_processed=candidates_processed, # <-- [FIX]   
                            form=form)
 
 @bp.route('/review-repeat-candidates/submit/<int:candidate_id>', methods=['POST'])
@@ -2424,3 +2461,33 @@ def get_academic_assignments_data():
         'teachers_by_group': teachers_by_group_dict, # <-- ส่งครูทั้งหมดที่จัดกลุ่มแล้ว
         'assignments': assignments
     })
+
+@bp.route('/review-course-grades/<int:course_id>')
+@login_required
+def review_course_grades(course_id):
+    """
+    [NEW] หน้าสำหรับฝ่ายวิชาการ เพื่อตรวจสอบผลการเรียนรายวิชา
+    (ใช้ Template ร่วมกับ Department แต่มี Logic การอนุมัติต่างกัน)
+    """
+    if not current_user.has_role('Academic'):
+        abort(403)
+
+    course = Course.query.options(
+        joinedload(Course.subject),
+        joinedload(Course.classroom),
+        joinedload(Course.teachers)
+    ).get_or_404(course_id)
+
+    # ใช้ Service กลางในการคำนวณเกรด
+    student_grades, max_scores = calculate_final_grades_for_course(course)
+
+    # เราจะใช้ Template ของ Department ซ้ำ แต่ส่ง Flag ไปบอกว่าเป็น Academic
+    return render_template('department/review_course_grades.html',
+                           title=f"ตรวจสอบผลการเรียน: {course.subject.name}",
+                           course=course,
+                           student_grades=student_grades,
+                           max_scores=max_scores,
+                           form=FlaskForm(),
+                           # --- [CONTEXT SWITCH] ---
+                           is_academic_review=True,
+                           is_department_review=False)

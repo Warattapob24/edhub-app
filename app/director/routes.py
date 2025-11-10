@@ -4,7 +4,7 @@ from statistics import StatisticsError, mode
 from flask import current_app, jsonify, render_template, abort, flash, redirect, request, url_for
 from flask_login import login_required, current_user
 from flask_wtf import FlaskForm
-from sqlalchemy import and_, func
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import joinedload, selectinload
 from collections import defaultdict
 from app.director import bp
@@ -319,7 +319,9 @@ def grades_dashboard():
     current_semester = Semester.query.filter_by(is_current=True).first_or_404()
     form = FlaskForm()
 
-    # --- ส่วนที่ 1: ดึงข้อมูลที่รออนุมัติสำหรับ "เทอมปัจจุบัน" ---
+    # --- [FIX 1] ดึงข้อมูล "ทุกสถานะ" ที่เกี่ยวข้องกับ ผอ. ---
+    
+    # 1.1 ดึงรายการ "รออนุมัติ"
     pending_courses = Course.query.join(Subject).filter(
         Course.semester_id == current_semester.id,
         Course.grade_submission_status == 'รอการอนุมัติจากผู้อำนวยการ'
@@ -328,10 +330,23 @@ def grades_dashboard():
         joinedload(Course.classroom).joinedload(Classroom.grade_level)
     ).order_by(Subject.subject_code).all()
 
-    # --- ส่วนที่ 2: ประมวลผลข้อมูลของ "เทอมปัจจุบัน" เพื่อสร้างสถิติหลัก ---
+    # 1.2 ดึงรายการ "อนุมัติแล้ว" (ประวัติ)
+    processed_courses = Course.query.join(Subject).filter(
+        Course.semester_id == current_semester.id,
+        Course.grade_submission_status == 'อนุมัติใช้งาน' # <-- [FIX] ใช้สถานะที่ถูกต้อง
+    ).options(
+        joinedload(Course.subject).joinedload(Subject.subject_group),
+        joinedload(Course.classroom).joinedload(Classroom.grade_level)
+    ).order_by(Course.submitted_at.desc()).all() # <-- [FIX] เรียงตามเวลาที่ส่ง
+    # --- [END FIX 1] ---
+
+
+    # --- [FIX 2] คำนวณสถิติจาก "ทั้งหมด" (ทั้งที่รอและอนุมัติแล้ว) ---
+    all_courses_for_stats = pending_courses + processed_courses
+    
     all_student_grades_data = []
     grades_by_group = defaultdict(list)
-    for course in pending_courses:
+    for course in all_courses_for_stats: # <-- [FIX] ใช้ 'all_courses_for_stats'
         calculated_data, _ = calculate_final_grades_for_course(course)
         all_student_grades_data.extend(calculated_data)
         grades_by_group[course.subject.subject_group].extend(calculated_data)
@@ -342,40 +357,41 @@ def grades_dashboard():
     for group in sorted(grades_by_group.keys(), key=lambda g: g.name):
         if stats := calculate_grade_statistics(grades_by_group[group]):
             group_summary_stats.append({'group': group, 'stats': stats})
+    # --- [END FIX 2] ---
 
-    # --- ส่วนที่ 3: [ปรับปรุง] เตรียมข้อมูลสำหรับกราฟทั้งหมด ---
+
+    # --- ส่วนที่ 3: (คงเดิม) เตรียมข้อมูลสำหรับกราฟทั้งหมด ---
     chart_data = {}
     if overall_stats:
-        # กราฟ 1: การกระจายผลการเรียน (ข้อมูลพร้อม, สีจะถูกเปลี่ยนที่ Frontend)
         labels = ['4', '3.5', '3', '2.5', '2', '1.5', '1', '0', 'ร', 'มส']
         chart_data['main_grade_dist'] = {'labels': labels, 'data': [overall_stats['grade_distribution'].get(l, 0) for l in labels]}
         
-        # กราฟ 2: [ปรับปรุง] คำนวณองค์ประกอบ 3 ส่วนสำหรับ Stacked Bar Chart
         chart_data['group_comparison'] = {
             'labels': [item['group'].name for item in group_summary_stats],
             'good_excellent_data': [item['stats']['good_excellent_percent'] for item in group_summary_stats],
-            'passed_data': [item['stats']['passed_percent'] for item in group_summary_stats], # ใช้ % ผ่านทั้งหมด
+            'passed_data': [item['stats']['passed_percent'] for item in group_summary_stats],
             'failed_data': [item['stats']['failed_percent'] for item in group_summary_stats]
         }
         
-    # --- ส่วนที่ 4: [ปรับปรุง] ดึงข้อมูลย้อนหลัง "รายภาคเรียน" ---
+    # --- ส่วนที่ 4: (คงเดิม) ดึงข้อมูลย้อนหลัง "รายภาคเรียน" ---
     from app.models import AcademicYear
-    # ดึงข้อมูล 6 เทอมล่าสุด
     semesters_to_compare = Semester.query.join(AcademicYear).filter(
-        Semester.end_date < date.today() # กรองเฉพาะเทอมที่สิ้นสุดแล้ว
+        Semester.end_date < date.today()
     ).order_by(AcademicYear.year.desc(), Semester.term.desc()).limit(6).all()
     
     semester_comparison_data = {'labels': [], 'm_ton_passed': [], 'm_plai_passed': []}
-    m_ton_ids = {gl.id for gl in GradeLevel.query.filter_by(level_group='m-ton').all()}
-    m_plai_ids = {gl.id for gl in GradeLevel.query.filter_by(level_group='m-plai').all()}
+    
+    # --- [FIX 3] แก้ไข Bug การนับ ม.ต้น/ม.ปลาย ---
+    all_grade_levels = GradeLevel.query.all()
+    m_ton_ids = {gl.id for gl in all_grade_levels if gl.short_name in ['ม.1', 'ม.2', 'ม.3']}
+    m_plai_ids = {gl.id for gl in all_grade_levels if gl.short_name in ['ม.4', 'ม.5', 'ม.6']}
 
     for semester in sorted(semesters_to_compare, key=lambda s: (s.academic_year.year, s.term)):
         semester_comparison_data['labels'].append(f"{semester.term}/{semester.academic_year.year}")
         
-        # ดึง Course ที่อนุมัติแล้วทั้งหมดในเทอมนั้นๆ
         approved_courses = Course.query.filter(
             Course.semester_id == semester.id,
-            Course.grade_submission_status == 'อนุมัติใช้งาน'
+            Course.grade_submission_status == 'อนุมัติใช้งาน' # <-- [FIX] ใช้สถานะที่ถูกต้อง
         ).options(joinedload(Course.classroom)).all()
 
         all_grades_in_semester = [grade for c in approved_courses for grade in calculate_final_grades_for_course(c)[0]]
@@ -392,14 +408,16 @@ def grades_dashboard():
 
     chart_data['semester_comparison'] = semester_comparison_data
 
+    # --- [FIX 4] ส่งข้อมูลที่อัปเดตแล้วทั้งหมดไปที่ Template ---
     return render_template('director/grades_dashboard.html',
                            title='พิจารณาผลการเรียน',
                            form=form,
-                           semester=semester,
+                           semester=current_semester,
                            pending_courses=pending_courses,
                            pending_courses_count=len(pending_courses),
-                           overall_stats=overall_stats,
-                           chart_data=chart_data)
+                           processed_courses=processed_courses, # <-- ส่ง "ประวัติ"
+                           overall_stats=overall_stats,           # <-- ส่ง "สถิติ" (ที่คำนวณใหม่)
+                           chart_data=chart_data)                 # <-- ส่ง "กราฟ" (ที่คำนวณใหม่)
 
 @bp.route('/grades/approve-all', methods=['POST'])
 @login_required
@@ -892,18 +910,26 @@ def review_repeat_candidates_director():
     """Displays candidates pending Director approval."""
     form = FlaskForm() # For CSRF
 
-    # Find candidates whose status is pending Director approval
-    candidates = db.session.query(RepeatCandidate).filter(
-        RepeatCandidate.status.like('Pending Director Approval%') # Match both 'Repeat' and 'Promote' pending
+    # --- [FIX] ดึง "ทุก" สถานะที่เกี่ยวข้องกับ ผอ. ---
+    all_candidates = db.session.query(RepeatCandidate).filter(
+        or_(
+            RepeatCandidate.status.like('Pending Director Approval%'),
+            RepeatCandidate.status.like('Approved%'),
+            RepeatCandidate.status.like('Rejected by Director%')
+        )
     ).options(
         joinedload(RepeatCandidate.student),
         joinedload(RepeatCandidate.previous_enrollment).joinedload(Enrollment.classroom).joinedload(Classroom.grade_level),
         joinedload(RepeatCandidate.academic_year) # Year failed
     ).order_by(RepeatCandidate.updated_at.asc()).all()
 
+    candidates_pending = [c for c in all_candidates if c.status.startswith('Pending Director Approval')]
+    candidates_processed = [c for c in all_candidates if not c.status.startswith('Pending Director Approval')]
+
     return render_template('director/review_repeat_candidates_director.html',
                            title='อนุมัตินักเรียนซ้ำชั้น/เลื่อนชั้นพิเศษ (ผอ.)',
-                           candidates=candidates,
+                           candidates_pending=candidates_pending,     # <-- [FIX]
+                           candidates_processed=candidates_processed,
                            form=form)
 
 @bp.route('/review-repeat-candidates/submit/<int:candidate_id>', methods=['POST'])

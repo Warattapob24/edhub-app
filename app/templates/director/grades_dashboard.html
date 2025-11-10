@@ -14,7 +14,7 @@
     <p class="lead text-muted">ภาพรวมผลการเรียนทั้งหมดที่รอการพิจารณาเพื่ออนุมัติ</p>
 <hr>
 
-{% if pending_courses_count > 0 and overall_stats %}
+{% if overall_stats %}
     <div class="row row-cols-1 row-cols-md-3 row-cols-xl-5 g-4">
         <div class="col">
             <div class="card text-center h-100 shadow-sm">
@@ -119,6 +119,7 @@
                     </tbody>
                 </table>
             </div>
+           
         </div>
     </div>
     {% else %}
@@ -127,6 +128,30 @@
         <p class="mb-0">ไม่มีผลการเรียนที่รอการอนุมัติในขณะนี้</p>
     </div>
     {% endif %}
+    <hr>
+    <div class="px-3 py-2">
+        <h5 class="mb-0"><i class="bi bi-check2-circle me-2 text-success"></i>ประวัติการอนุมัติผลการเรียน</h5>
+    </div>
+    {% if processed_courses %}
+        <div class="list-group list-group-flush" style="max-height: 300px; overflow-y: auto;">
+            {% for course in processed_courses %}
+            <div class="list-group-item list-group-item-action list-group-item-light">
+                <div class="d-flex w-100 justify-content-between">
+                    <h6 class="mb-1">{{ course.subject.name }} ({{ course.classroom.name }})</h6>
+                    <span class="badge bg-success">อนุมัติแล้ว</span>
+                </div>
+                <small class="text-muted">{{ course.subject.subject_group.name }}</small>
+            </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="card-body text-center">
+            <div class="alert alert-light mb-0">
+                <i class="bi bi-info-circle me-2"></i> ไม่มีประวัติการอนุมัติผลการเรียน
+            </div>
+        </div>
+    {% endif %}
+    </div>
 </div>
 {% endblock %}
 

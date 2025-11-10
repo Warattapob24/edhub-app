@@ -24,12 +24,8 @@ def dashboard():
     form = FlaskForm()
 
     all_grade_levels = GradeLevel.query.all()
-    m_ton_grade_ids = [gl.id for gl in all_grade_levels if gl.level_group == 'm-ton']
-    m_plai_grade_ids = [gl.id for gl in all_grade_levels if gl.level_group == 'm-plai']
-
-    all_grade_levels = GradeLevel.query.all()
-    m_ton_grade_ids = {gl.id for gl in all_grade_levels if gl.level_group == 'm-ton'}
-    m_plai_grade_ids = {gl.id for gl in all_grade_levels if gl.level_group == 'm-plai'}
+    m_ton_grade_ids = [gl.id for gl in all_grade_levels if gl.short_name in ['ม.1', 'ม.2', 'ม.3']]
+    m_plai_grade_ids = [gl.id for gl in all_grade_levels if gl.short_name in ['ม.4', 'ม.5', 'ม.6']]
 
     # 1. Get ALL courses for the subject group in the current semester to use as a single source of truth
     all_courses_in_group = Course.query.join(Subject).join(Classroom).filter(
@@ -135,7 +131,7 @@ def dashboard():
     # --- ส่วนเดิม: Logic สำหรับ Tab "ภาพรวมแผนการสอน" (จากโค้ดของท่าน) ---
     plans_for_checklist = (
         LessonPlan.query.join(LessonPlan.subject).filter(
-            LessonPlan.status.in_(['รอการตรวจสอบ', 'เสนอฝ่ายวิชาการ', 'ผ่านการตรวจสอบ', 'รอการอนุมัติจากผู้อำนวยการ', 'อนุมัติใช้งาน']),
+            LessonPlan.status.in_(['รอการตรวจสอบ', 'เสนอฝ่ายวิชาการ', 'ผ่านการตรวจสอบ', 'รอการอนุมัติจากผู้อำนวยการ', 'อนุมัติใช้งาน', 'ต้องการการแก้ไข', 'ตีกลับโดยฝ่ายวิชาการ']),
             Subject.subject_group_id == subject_group.id,
             LessonPlan.academic_year_id == current_semester.academic_year_id
         ).order_by(
@@ -158,6 +154,17 @@ def dashboard():
         joinedload(Course.classroom),
         joinedload(Course.submitted_by)
     ).order_by(Course.submitted_at.asc()).all()
+    grades_processed = Course.query.join(Subject).filter(
+        Course.semester_id == current_semester.id,
+        Subject.subject_group_id == subject_group.id,
+        Course.grade_submission_status.in_([
+            'เสนอฝ่ายวิชาการ', 'รอการอนุมัติจากผู้อำนวยการ', 'อนุมัติใช้งาน', 
+            'ต้องการการแก้ไข', 'ตีกลับโดยฝ่ายวิชาการ'
+        ])
+    ).options(
+        joinedload(Course.subject),
+        joinedload(Course.classroom)
+    ).order_by(Course.submitted_at.desc()).all() # เรียงตามเวลาที่ส่งล่าสุด
 
     for plan in plans_for_checklist:
         report = {'components_status': {}}
@@ -214,7 +221,8 @@ def dashboard():
         teacher_count=len(teachers_in_group),
         teacher_workloads=teacher_workloads,
         grades_pending_review=grades_pending_review,
-        used_indicators={}, 
+        grades_processed=grades_processed,           # <-- [1] เพิ่ม
+        used_indicators={},
         used_assessment_topics={}
     )
 
@@ -728,7 +736,13 @@ def level_overview(level_group):
         abort(404)
 
     # 1. Get all grade levels for this specific level group
-    grade_levels_in_group = [gl for gl in GradeLevel.query.order_by(GradeLevel.id).all() if gl.level_group == level_group]
+    # --- [FIX] เปลี่ยนมาตรวจสอบ short_name แทน level_group ---
+    if level_group == 'm-ton':
+        short_names_to_find = ['ม.1', 'ม.2', 'ม.3']
+    else: # m-plai
+        short_names_to_find = ['ม.4', 'ม.5', 'ม.6']
+
+    grade_levels_in_group = [gl for gl in GradeLevel.query.order_by(GradeLevel.id).all() if gl.short_name in short_names_to_find]
     grade_level_ids = [gl.id for gl in grade_levels_in_group]
 
     # 2. Fetch ALL courses for the level group as the single source of truth
@@ -842,7 +856,7 @@ def level_overview(level_group):
 
     form = FlaskForm()
     grades_pending_review = [c for c in all_courses_in_level_group if c.grade_submission_status == 'รอตรวจสอบ (หน.กลุ่มสาระ)']        
-
+    grades_processed = [c for c in all_courses_in_level_group if c.grade_submission_status not in ['ยังไม่ส่ง', 'pending', 'รอตรวจสอบ (หน.กลุ่มสาระ)']]
     return render_template('department/level_overview.html',
                            title=title,
                            form=form,
@@ -853,24 +867,42 @@ def level_overview(level_group):
                            overall_stats=overall_stats,
                            chart_data=chart_data,
                            grade_level_summary_stats=grade_level_summary_stats,
-                           subject_group=subject_group)
+                           subject_group=subject_group,
+                           grades_processed=grades_processed)
 
 @bp.route('/grade-level-detail/<int:grade_level_id>')
 @login_required
 def grade_level_detail(grade_level_id):
     subject_group = current_user.led_subject_group
     grade_level = GradeLevel.query.get_or_404(grade_level_id)
-    if not subject_group or grade_level.level_group not in ['m-ton', 'm-plai'] or subject_group.id != Course.query.join(Subject).join(Classroom).filter(Classroom.grade_level_id == grade_level_id).first().subject.subject_group_id:
+    current_semester = Semester.query.filter_by(is_current=True).first_or_404()
+    if not subject_group:
+        abort(403) # ต้องเป็นหัวหน้ากลุ่มสาระฯ
+
+    # 1. ตรวจสอบว่า Grade Level ถูกต้อง (ใช้ short_name ที่ถูกต้อง)
+    valid_short_names = ['ม.1', 'ม.2', 'ม.3', 'ม.4', 'ม.5', 'ม.6']
+    if grade_level.short_name not in valid_short_names:
+         abort(403) # ไม่ใช่ระดับชั้นที่ถูกต้อง
+
+    # 2. ตรวจสอบว่าหัวหน้ากลุ่มสาระฯ นี้ "มีสิทธิ์" ในระดับชั้นนี้หรือไม่
+    # (โดยเช็คว่ามี Course อย่างน้อย 1 รายการในระดับชั้นนี้หรือไม่)
+    has_courses_in_grade = db.session.query(Course.id).join(Subject).join(Classroom).filter(
+        Subject.subject_group_id == subject_group.id,
+        Classroom.grade_level_id == grade_level_id,
+        Course.semester_id == current_semester.id # <-- [FIX] ใช้ ID ของเทอมปัจจุบันที่ถูกต้อง
+    ).first() # .first() เพื่อการค้นหาที่รวดเร็ว (EXISTS)
+
+    if not has_courses_in_grade:
+        # ถ้าไม่มี Course ในระดับชั้นนี้เลย ก็ไม่มีสิทธิ์ดู
         abort(403)
 
-    current_semester = Semester.query.filter_by(is_current=True).first_or_404()
     title = f"ภาพรวมระดับชั้น {grade_level.name}"
 
     submitted_courses = Course.query.join(Subject).join(Classroom).filter(
         Course.semester_id == current_semester.id,
         Subject.subject_group_id == subject_group.id,
         Classroom.grade_level_id == grade_level_id,
-        Course.grade_submission_status.notin_(['ยังไม่ส่ง', 'pending'])
+        Course.grade_submission_status.notin_(['ยังไม่ส่ง', 'pending']) # <-- [FIX] นี่คือตรรกะที่ถูกต้อง
     ).options(
         joinedload(Course.subject),
         joinedload(Course.classroom),
@@ -943,12 +975,21 @@ def grade_level_detail(grade_level_id):
         chart_data = {'labels': chart_labels, 'data': chart_values}
 
     form = FlaskForm()
-    grades_pending_review = [c for c in submitted_courses if c.grade_submission_status == 'รอตรวจสอบ (หน.กลุ่มสาระ)']
+    all_courses_in_grade = Course.query.join(Subject).join(Classroom).filter(
+        Course.semester_id == current_semester.id,
+        Subject.subject_group_id == subject_group.id,
+        Classroom.grade_level_id == grade_level_id
+    ).all()
+
+    # แล้วจึงกรอง
+    grades_pending_review = [c for c in all_courses_in_grade if c.grade_submission_status == 'รอตรวจสอบ (หน.กลุ่มสาระ)']
+    grades_processed = [c for c in all_courses_in_grade if c.grade_submission_status not in ['ยังไม่ส่ง', 'pending', 'รอตรวจสอบ (หน.กลุ่มสาระ)']]
 
     return render_template('department/grade_level_detail.html',
                            title=title,
                            form=form,
                            grades_pending_review=grades_pending_review,
+                           grades_processed=grades_processed,
                            grade_level=grade_level,
                            subject_summary_stats=subject_summary_stats,
                            overall_stats=overall_stats,

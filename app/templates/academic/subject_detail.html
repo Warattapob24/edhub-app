@@ -11,7 +11,7 @@
     <nav aria-label="breadcrumb">
         <ol class="breadcrumb">
             <li class="breadcrumb-item"><a href="{{ url_for('academic.dashboard') }}">ภาพรวมฝ่ายวิชาการ</a></li>
-            <li class="breadcrumb-item"><a href="{{ url_for('academic.level_overview', level_group=grade_level.level_group) }}">ภาพรวม {{ 'มัธยมศึกษาตอนต้น' if grade_level.level_group == 'm-ton' else 'มัธยมศึกษาตอนปลาย' }}</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('academic.level_overview', level_group='m-ton' if grade_level.short_name in ['ม.1', 'ม.2', 'ม.3'] else 'm-plai') }}">ภาพรวม {{ 'มัธยมศึกษาตอนต้น' if grade_level.short_name in ['ม.1', 'ม.2', 'ม.3'] else 'มัธยมศึกษาตอนปลาย' }}</a></li>
             <li class="breadcrumb-item"><a href="{{ url_for('academic.grade_level_detail', grade_level_id=grade_level.id) }}">{{ grade_level.name }}</a></li>
             <li class="breadcrumb-item"><a href="{{ url_for('academic.subject_summary', subject_id=subject.id, grade_level_id=grade_level.id) }}">สรุปผลการเรียน</a></li>
             <li class="breadcrumb-item active" aria-current="page">ผลการเรียนรายบุคคล</li>

@@ -42,8 +42,8 @@ def resolve_active_attendance_warning(attendance_record: AttendanceRecord):
         
 def check_and_create_attendance_warnings(attendance_record: AttendanceRecord):
     """
-    Checks student's attendance and creates smart notifications.
-    Now features Per-Student throttling and tiered thresholds.
+    [FIXED v2] Checks attendance, creates warnings with correct f-string title
+    and relative URLs.
     """
     student = attendance_record.student
     triggering_entry = attendance_record.timetable_entry
@@ -62,29 +62,26 @@ def check_and_create_attendance_warnings(attendance_record: AttendanceRecord):
         AttendanceRecord.status == 'ABSENT',
         AttendanceRecord.timetable_entry.has(course_id=course.id)
     ).count()
-    
+
     absence_percentage = (absent_count / total_teaching_periods) * 100
 
     # --- [REVISED] Logic: ตรวจสอบ Threshold เป็นลำดับขั้น ---
-    # หา Threshold สูงสุดที่นักเรียนคนนี้เคยถูกเตือนไปแล้ว (ไม่ว่าวิชาใดก็ตาม)
     last_triggered_threshold = db.session.query(func.max(AttendanceWarning.threshold_percent)).filter_by(
         student_id=student.id
     ).scalar() or 0
 
-    # หา Threshold ขั้นต่อไปที่ต้องแจ้งเตือน
     next_threshold_to_trigger = None
     for t in WARNING_THRESHOLDS:
         if absence_percentage >= t and t > last_triggered_threshold:
             next_threshold_to_trigger = t
-            break # เจอขั้นที่ต้องเตือนแล้ว ออกจาก loop
+            break 
 
-    # ถ้าไม่ถึงเกณฑ์ขั้นต่อไป หรือไม่มีเกณฑ์เหลือแล้ว ก็ไม่ต้องทำอะไร
     if not next_threshold_to_trigger:
         return
 
     is_skipping_class = False
     day_of_week = triggering_entry.slot.day_of_week
-    
+
     other_entries_today = TimetableEntry.query.join(
         WeeklyScheduleSlot
     ).join(
@@ -106,30 +103,25 @@ def check_and_create_attendance_warnings(attendance_record: AttendanceRecord):
         if other_attendance:
             is_skipping_class = True
 
-    # 5. เริ่มกระบวนการสร้างการแจ้งเตือน
     recipients = set()
+
+    # --- [FIX #1] ใช้ f-string ที่นี่ ---
     title = f"แจ้งเตือนการขาดเรียนเกินกำหนด {int(next_threshold_to_trigger)}%"
 
     recipients.update(course.teachers)
-
-    # 5.1) เพิ่มครูผู้สอนรายวิชา
     for teacher in course.teachers:
         recipients.add(teacher)
 
-    # 5.2) เพิ่มครูที่ปรึกษา
-    # หาห้องเรียนปัจจุบันของนักเรียน
     current_enrollment = student.enrollments.filter(
         Enrollment.classroom.has(academic_year_id=course.semester.academic_year_id)
     ).first()
     if current_enrollment:
         recipients.update(current_enrollment.classroom.advisors)
-    
-    # 5.3) เพิ่มฝ่ายกิจการนักเรียน (สมมติว่ามี Role ชื่อ 'Student Affairs')
+
     student_affairs_role = db.session.query(Role).filter_by(name='Student Affairs').first()
     if student_affairs_role:
         recipients.update(student_affairs_role.users)
 
-    # 6. สร้าง Notification และ AttendanceWarning
     if is_skipping_class:
         message = (f"นักเรียน {student.first_name} {student.last_name} "
                     f"มีพฤติกรรมหนีเรียนวิชา {course.subject.name} (ขาด {absent_count} ครั้ง) "
@@ -141,7 +133,8 @@ def check_and_create_attendance_warnings(attendance_record: AttendanceRecord):
                     f"ขาดเรียนวิชา {course.subject.name} แล้ว {absent_count} ครั้ง "
                     f"(คิดเป็น {absence_percentage:.2f}%) และไม่พบข้อมูลเข้าเรียนวิชาอื่นในวันนี้")
 
-    url = url_for('teacher.check_attendance', entry_id=triggering_entry.id, _external=True)
+    # --- [FIX #2] ลบ _external=True เพื่อสร้างลิงก์ภายใน ---
+    url = url_for('teacher.check_attendance', entry_id=triggering_entry.id)
 
     for user in recipients:
         db.session.add(Notification(user_id=user.id, title=title, message=message, url=url, notification_type='ATTENDANCE'))

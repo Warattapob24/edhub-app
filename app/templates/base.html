@@ -231,7 +231,7 @@
                     const notifications = await response.json();
 
                     if (!notifications.length) {
-                        menu.innerHTML = `<li><a class="dropdown-item text-muted" href="#">ไม่มีการแจ้งเตือนใหม่</a></li>`;
+                        menu.innerHTML = `<li><a class="dropdown-item text-muted" href="{{ url_for('main.all_notifications') }}">ไม่มีการแจ้งเตือนใหม่</a></li>`;
                         return;
                     }
 

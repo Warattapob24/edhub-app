@@ -438,24 +438,35 @@ def review_repeat_candidates():
 
     # ค้นหา Candidates ที่ห้องเรียน *เดิม* อยู่ในสายชั้นที่ดูแล
     # และมีสถานะรอการพิจารณาจากหัวหน้าสายชั้น
-    candidates = db.session.query(RepeatCandidate).join(
+    all_candidates = db.session.query(RepeatCandidate).join(
         Enrollment, RepeatCandidate.previous_enrollment_id == Enrollment.id
     ).join(
         Classroom, Enrollment.classroom_id == Classroom.id
     ).filter(
         Classroom.grade_level_id == grade_level_led.id,
-        RepeatCandidate.status.like('Pending Grade Head Review%') # ดึงทั้งเคส Repeat และ Promote
+        RepeatCandidate.status.in_([
+            'Pending Grade Head Review (Repeat)', 
+            'Pending Grade Head Review (Promote)',
+            'Pending Academic Review (Repeat)',      # สถานะที่อนุมัติแล้ว
+            'Pending Academic Review (Promote)',     # สถานะที่อนุมัติแล้ว
+            'Rejected by Grade Head'                 # สถานะที่ตีกลับ
+        ])
     ).options(
         joinedload(RepeatCandidate.student),
         joinedload(RepeatCandidate.previous_enrollment).joinedload(Enrollment.classroom),
         joinedload(RepeatCandidate.academic_year) # ปีที่ซ้ำชั้น
     ).order_by(RepeatCandidate.updated_at.asc()).all() # แสดงรายการที่ส่งมาก่อน
 
+    # --- [FIX] แยกรายการสำหรับ Tabs ---
+    candidates_pending = [c for c in all_candidates if c.status.startswith('Pending Grade Head Review')]
+    candidates_processed = [c for c in all_candidates if not c.status.startswith('Pending Grade Head Review')]
+
     return render_template('grade_level_head/review_repeat_candidates.html',
-                           title='พิจารณานักเรียนซ้ำชั้น/เลื่อนชั้นพิเศษ',
-                           candidates=candidates,
-                           grade_level_name=grade_level_led.name,
-                           form=form)
+                        title='พิจารณานักเรียนซ้ำชั้น/เลื่อนชั้นพิเศษ',
+                        candidates_pending=candidates_pending,     # <-- [FIX]
+                        candidates_processed=candidates_processed, # <-- [FIX]
+                        grade_level_name=grade_level_led.name,
+                        form=form)
 
 
 @bp.route('/review-repeat-candidates/submit/<int:candidate_id>', methods=['POST'])

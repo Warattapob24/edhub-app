@@ -65,6 +65,43 @@
                         {% endif %}
                         </div>
                     </div>
+                    <div class="card mt-3" id="gradesProcessedReview">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">
+                                <i class="bi bi-check2-circle me-2"></i>ประวัติการตรวจสอบผลการเรียน
+                            </h5>
+                            {% if grades_processed %}
+                                <span class="badge bg-light text-dark rounded-pill fs-6">{{ grades_processed|length }} รายการ</span>
+                            {% endif %}
+                        </div>
+                        {% if grades_processed %}
+                            <div class="list-group list-group-flush" style="max-height: 250px; overflow-y: auto;">
+                                {% for course in grades_processed %}
+                                <a href="{{ url_for('department.review_course_grades', course_id=course.id) }}" class="list-group-item list-group-item-action list-group-item-light">
+                                    <div class="d-flex w-100 justify-content-between">
+                                        <h6 class="mb-1">{{ course.subject.name }} ({{ course.classroom.name }})</h6>
+
+                                        {% if course.grade_submission_status == 'เสนอฝ่ายวิชาการ' %}
+                                            <span class="badge bg-info">เสนอวิชาการแล้ว</span>
+                                        {% elif course.grade_submission_status == 'อนุมัติใช้งาน' %}
+                                            <span class="badge bg-success">อนุมัติแล้ว</span>
+                                        {% elif course.grade_submission_status in ['ต้องการการแก้ไข', 'ตีกลับโดยฝ่ายวิชาการ'] %}
+                                            <span class="badge bg-danger">ตีกลับ (ต้องแก้ไข)</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">{{ course.grade_submission_status }}</span>
+                                        {% endif %}
+                                    </div>
+                                </a>
+                                {% endfor %}
+                            </div>
+                        {% else %}
+                            <div class="card-body text-center">
+                                <div class="alert alert-light mb-0">
+                                    <i class="bi bi-info-circle me-2"></i> ไม่มีประวัติการตรวจสอบผลการเรียน
+                                </div>
+                            </div>
+                        {% endif %}
+                    </div>                    
                 </div>
             </div>
         </div>

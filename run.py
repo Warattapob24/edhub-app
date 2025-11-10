@@ -311,3 +311,21 @@ def clean_notifications_command(days):
     except Exception as e:
         db.session.rollback()
         print(f'Fatal Error running cleanup command: {e}')
+
+@app.cli.command('nuke-notifications')
+def nuke_notifications_command():
+    """
+    [CLI] Deletes ALL notifications from the database.
+    Run with: flask nuke-notifications
+    """
+    # Imports are moved inside the function
+    from app.models import Notification
+
+    print("Starting job: Deleting ALL notifications...")
+    try:
+        deleted_count = db.session.query(Notification).delete(synchronize_session=False)
+        db.session.commit()
+        print(f'Success: Successfully deleted {deleted_count} notifications.')
+    except Exception as e:
+        db.session.rollback()
+        print(f'Fatal Error running nuke command: {e}')        

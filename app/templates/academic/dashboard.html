@@ -26,7 +26,9 @@
                                 <div class="col-lg-7">
                                     <canvas id="gradeDistributionChart"></canvas>
                                 </div>
+                                
                                 <div class="col-lg-5">
+                                    
                                     <div class="card-body">
                                         <h5 class="mb-0"><i class="bi bi-bar-chart-line-fill me-2"></i>สรุปสถิติภาพรวม</h5>
                                         <ul class="list-group list-group-flush">
@@ -39,6 +41,7 @@
                                         <p class="card-text"><i class="bi bi-award-fill text-primary"></i> นักเรียนที่ได้ระดับผลการเรียน <strong>"3" ขึ้นไป</strong> (ดี-ดีเยี่ยม) มีจำนวน <strong>{{ overall_stats.good_excellent_count }}</strong> คน (คิดเป็นร้อยละ <strong>{{ '%.2f'|format(overall_stats.good_excellent_percent) }}</strong>)</p>
                                         <p class="card-text"><i class="bi bi-exclamation-triangle-fill text-danger"></i> นักเรียนที่มีผลการเรียน <strong>0, ร, มส</strong> มีจำนวน <strong class="text-danger">{{ overall_stats.failed_count }}</strong> คน (คิดเป็นร้อยละ <strong>{{ '%.2f'|format(overall_stats.failed_percent) }}</strong>)</p>
                                     </div>
+                                    
                                     <div class="card mt-3">
                                         <div class="card-header d-flex justify-content-between align-items-center"><h5 class="mb-0"><i class="bi bi-inbox-fill me-2"></i>ผลการเรียนรอตรวจสอบ</h5>{% if grades_pending_review %}<span class="badge bg-danger rounded-pill fs-6">{{ grades_pending_review|length }} รายการ</span>{% endif %}</div>
                                         <div class="card-body text-center">
@@ -53,8 +56,46 @@
                                         {% endif %}
                                         </div>
                                     </div>
-                                </div>
-                            </div>
+                                    
+                                    <div class="card mt-3" id="gradesProcessedReview">
+                                        <div class="card-header d-flex justify-content-between align-items-center">
+                                            <h5 class="mb-0">
+                                                <i class="bi bi-check2-circle me-2"></i>ประวัติการตรวจสอบผลการเรียน
+                                            </h5>
+                                            {% if grades_processed %}
+                                                <span class="badge bg-light text-dark rounded-pill fs-6">{{ grades_processed|length }} รายการ</span>
+                                            {% endif %}
+                                        </div>
+                                        {% if grades_processed %}
+                                            <div class="list-group list-group-flush" style="max-height: 250px; overflow-y: auto;">
+                                                {% for course in grades_processed %}
+                                                <a href="{{ url_for('academic.review_course_grades', course_id=course.id) }}" class="list-group-item list-group-item-action list-group-item-light">
+                                                    <div class="d-flex w-100 justify-content-between">
+                                                        <h6 class="mb-1">{{ course.subject.name }} ({{ course.classroom.name }})</h6>
+    
+                                                        {% if course.grade_submission_status == 'รอการอนุมัติจากผู้อำนวยการ' %}
+                                                            <span class="badge bg-info">ส่งต่อ ผอ. แล้ว</span>
+                                                        {% elif course.grade_submission_status == 'อนุมัติใช้งาน' %}
+                                                            <span class="badge bg-success">อนุมัติแล้ว</span>
+                                                        {% elif course.grade_submission_status == 'ตีกลับโดยฝ่ายวิชาการ' %}
+                                                            <span class="badge bg-danger">ตีกลับ (ต้องแก้ไข)</span>
+                                                        {% else %}
+                                                            <span class="badge bg-secondary">{{ course.grade_submission_status }}</span>
+                                                        {% endif %}
+                                                    </div>
+                                                </a>
+                                                {% endfor %}
+                                            </div>
+                                        {% else %}
+                                            <div class="card-body text-center">
+                                                <div class="alert alert-light mb-0">
+                                                    <i class="bi bi-info-circle me-2"></i> ไม่มีประวัติการตรวจสอบผลการเรียน
+                                                </div>
+                                            </div>
+                                        {% endif %}
+                                    </div>                                
+
+                                </div> </div>
                         </div>
                     </div>
                 </div>
@@ -177,9 +218,9 @@
                 </div>
             </div>
         </div>
-
+        
         <div class="tab-pane fade" id="plan-summary-content" role="tabpanel">
-             <div class="row g-4">
+            <div class="row g-4">
                 <div class="col-12">
                     <div class="card">
                         <div class="card-header"><h5 class="mb-0"><i class="bi bi-bar-chart-line-fill me-2"></i>ภาพรวมข้อมูล</h5></div>
@@ -195,7 +236,7 @@
                 </div>
 
                 <div class="col-12">
-                    <div class="card">
+                    <div class="card shadow-sm border-0">
                         <div class="card-header d-flex justify-content-between align-items-center">
                             <h5 class="mb-0"><i class="bi bi-clipboard2-check-fill me-2"></i>รายการแผนการสอนที่ต้องดำเนินการ</h5>
                             <form method="GET" action="{{ url_for('academic.dashboard') }}">
@@ -209,34 +250,126 @@
                                 </div>
                             </form>
                         </div>
-                        <div class="card-body">
-                            {% if plans_for_checklist %}
-                                <div class="row">
-                                {% for plan in plans_for_checklist %}
-                                <div class="col-lg-6 mb-4">
-                                    <div class="card h-100 shadow-sm">
-                                        <div class="card-body">
-                                            <div class="d-flex justify-content-between align-items-start mb-2">
-                                                <h5 class="card-title mb-0">{{ plan.subject.subject_code }} - <strong>{{ plan.subject.name }}</strong></h5>
-                                                {% if plan.status == 'เสนอฝ่ายวิชาการ' %}<span class="badge bg-primary">เสนอฝ่ายวิชาการ</span>
-                                                {% elif plan.status == 'รอการอนุมัติจากผู้อำวยการ' %}<span class="badge bg-warning text-dark">รออนุมัติ</span>
-                                                {% elif plan.status == 'อนุมัติใช้งาน' %}<span class="badge bg-success">อนุมัติใช้งาน</span>
-                                                {% elif plan.status == 'ต้องการการแก้ไข' %}<span class="badge bg-danger">ต้องแก้ไข</span>
-                                                {% else %}<span class="badge bg-secondary">{{ plan.status }}</span>{% endif %}
-                                            </div>
-                                            </div>
-                                        <div class="card-footer bg-transparent border-0 text-end">
-                                             <a href="{{ url_for('academic.review_plan', plan_id=plan.id) }}" class="btn btn-primary"><i class="bi bi-search me-1"></i> ตรวจสอบรายละเอียด</a>
-                                        </div>
+                        <div class="card-body p-0">
+                            <ul class="nav nav-tabs nav-fill" id="plan-sub-tabs" role="tablist">
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link active" id="plan-pending-tab" data-bs-toggle="tab" data-bs-target="#plan-pending-content" type="button" role="tab">
+                                        <i class="bi bi-hourglass-split me-1 text-warning"></i>
+                                        รอตรวจสอบ
+                                        {% if plans_pending|length > 0 %}
+                                            <span class="badge rounded-pill bg-warning text-dark ms-1">{{ plans_pending|length }}</span>
+                                        {% endif %}
+                                    </button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link" id="plan-processed-tab" data-bs-toggle="tab" data-bs-target="#plan-processed-content" type="button" role="tab">
+                                        <i class="bi bi-check2-circle me-1 text-success"></i>
+                                        ตรวจสอบแล้ว (ประวัติ)
+                                        <span class="badge rounded-pill bg-light text-dark ms-1">{{ plans_processed|length }}</span>
+                                    </button>
+                                </li>
+                            </ul>
+                            
+                            <div class="tab-content" id="plan-sub-tabs-content">
+                                
+                                <div class="tab-pane fade show active" id="plan-pending-content" role="tabpanel">
+                                    {% if plans_pending %}
+                                    <div class="table-responsive">
+                                        <table class="table table-hover align-middle mb-0">
+                                            <thead class="table-light">
+                                                <tr>
+                                                    <th>กลุ่มสาระฯ / รายวิชา</th>
+                                                    <th>สถานะ</th>
+                                                    <th>ผู้สอน</th>
+                                                    <th class="text-center">ความสมบูรณ์</th>
+                                                    <th class="text-center">ตรวจสอบ</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for plan in plans_pending %}
+                                                    {% set report = plan.completeness_report %}
+                                                    <tr>
+                                                        <td>
+                                                            <small class="text-muted">{{ plan.subject.subject_group.name }}</small>
+                                                            <br><strong>{{ plan.subject.subject_code }}</strong> - {{ plan.subject.name }}
+                                                        </td>
+                                                        <td>
+                                                            <span class="badge bg-warning text-dark">{{ plan.status }}</span>
+                                                        </td>
+                                                        <td>
+                                                            <small>
+                                                            {% for course in plan.courses %}
+                                                                {{ course.teachers|map(attribute='full_name')|join(', ') }}
+                                                            {% endfor %}
+                                                            </small>
+                                                        </td>
+                                                        <td class="text-center">
+                                                            <div class="d-flex justify-content-center small" style="gap: 10px;">
+                                                                <span class="badge {{ 'bg-success' if report.formative_score.status else 'bg-danger' }}" title="คะแนนระหว่างภาค: {{ report.formative_score.value }}">KPA</span>
+                                                                <span class="badge {{ 'bg-success' if report.final_score.status else 'bg-danger' }}" title="คะแนนปลายภาค: {{ report.final_score.value }}">Final</span>
+                                                                <span class="badge {{ 'bg-success' if report.total_periods.status else 'bg-danger' }}" title="ชั่วโมงสอน: {{ report.total_periods.value }}">คาบ</span>
+                                                            </div>
+                                                        </td>
+                                                        <td class="text-center">
+                                                            <a href="{{ url_for('academic.review_plan', plan_id=plan.id) }}" class="btn btn-primary btn-sm">
+                                                                <i class="bi bi-search"></i> ตรวจสอบ
+                                                            </a>
+                                                        </td>
+                                                    </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
                                     </div>
+                                    {% else %}
+                                    <div class="alert alert-success text-center mb-0 border-0 rounded-0">
+                                        <i class="bi bi-check-circle-fill me-2"></i> ไม่มีแผนการสอนรอการตรวจสอบ
+                                    </div>
+                                    {% endif %}
                                 </div>
-                                {% endfor %}
+                                
+                                <div class="tab-pane fade" id="plan-processed-content" role="tabpanel">
+                                    {% if plans_processed %}
+                                    <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                                        <table class="table table-hover table-striped align-middle mb-0">
+                                            <thead class="table-light">
+                                                <tr>
+                                                    <th>กลุ่มสาระฯ / รายวิชา</th>
+                                                    <th>สถานะ</th>
+                                                    <th class="text-center">ตรวจสอบ</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for plan in plans_processed %}
+                                                    <tr>
+                                                        <td>
+                                                            <small class="text-muted">{{ plan.subject.subject_group.name }}</small>
+                                                            <br><strong>{{ plan.subject.subject_code }}</strong> - {{ plan.subject.name }}
+                                                        </td>
+                                                        <td>
+                                                            {% if plan.status == 'รอการอนุมัติจากผู้อำนวยการ' %}<span class="badge bg-info">ส่งต่อ ผอ. แล้ว</span>
+                                                            {% elif plan.status == 'อนุมัติใช้งาน' %}<span class="badge bg-success">อนุมัติแล้ว</span>
+                                                            {% elif plan.status in ['ต้องการการแก้ไข', 'ตีกลับโดยฝ่ายวิชาการ'] %}<span class="badge bg-danger">ตีกลับ (ต้องแก้ไข)</span>
+                                                            {% else %}<span class="badge bg-secondary">{{ plan.status }}</span>
+                                                            {% endif %}
+                                                        </td>
+                                                        <td class="text-center">
+                                                            <a href="{{ url_for('academic.review_plan', plan_id=plan.id) }}" class="btn btn-outline-secondary btn-sm">
+                                                                <i class="bi bi-eye"></i> ดูประวัติ
+                                                            </a>
+                                                        </td>
+                                                    </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    {% else %}
+                                    <div class="alert alert-light text-center mb-0 border-0 rounded-0">
+                                        <i class="bi bi-info-circle me-2"></i> ยังไม่มีประวัติแผนการสอนที่ตรวจสอบแล้ว
+                                    </div>
+                                    {% endif %}
                                 </div>
-                            {% else %}
-                                <div class="alert alert-success text-center">
-                                    <i class="bi bi-check-circle-fill me-2"></i> ไม่มีแผนการสอนที่ต้องดำเนินการในขณะนี้
-                                </div>
-                            {% endif %}
+                                
+                            </div>
                         </div>
                     </div>
                 </div>
