@@ -216,45 +216,72 @@ def assessment_approval():
             records_by_classroom[classroom_name]['forwarded'].append(item_tuple)
 
     total_pending = len(all_pending_records)
-    chart_labels = []
-    chart_datasets = []
-    stats_data = defaultdict(lambda: defaultdict(int)) 
-    templates = AssessmentTemplate.query.options(joinedload(AssessmentTemplate.rubric_levels)).all()
-    rubric_map = {}
-    
-    if templates and templates[0].rubric_levels:
-        first_template_rubrics = templates[0].rubric_levels
-        rubric_map = {r.value: r.label for r in first_template_rubrics}
-        chart_labels = sorted(list(rubric_map.values()), key=lambda x: [k for k,v in rubric_map.items() if v==x][0], reverse=True)
+    assessment_stats_by_template = {}
 
-    if all_pending_records:
-        pending_record_ids = [r.id for r in all_pending_records]
-        all_pending_scores = db.session.query(AdvisorAssessmentScore).options(joinedload(AdvisorAssessmentScore.topic)).filter(
-            AdvisorAssessmentScore.record_id.in_(pending_record_ids)
+    templates = AssessmentTemplate.query.options(
+        joinedload(AssessmentTemplate.rubric_levels),
+        joinedload(AssessmentTemplate.topics)
+    ).all()
+
+    for template in templates:
+        assessment_stats_by_template[template.id] = {
+            'id': template.id,
+            'name': template.name,
+            'topic_labels': [],
+            'datasets': []
+        }
+
+    # ใช้ 'records_in_process' (ซึ่งมีทั้ง pending และ forwarded)
+    # เพื่อคำนวณกราฟภาพรวมทั้งหมดของสายชั้น
+    if records_in_process:
+        all_record_ids = [r.id for r, e in records_in_process]
+        all_scores = db.session.query(AdvisorAssessmentScore).options(
+            joinedload(AdvisorAssessmentScore.topic)
+        ).filter(
+            AdvisorAssessmentScore.record_id.in_(all_record_ids)
         ).all()
-        topic_scores = defaultdict(list)
-        for score in all_pending_scores:
-            if score.topic and score.topic.parent_id is None: 
-                topic_scores[score.topic.name].append(score.score_value)
-        for topic_name, scores in topic_scores.items():
-            for s in scores:
-                stats_data[topic_name][rubric_map.get(s, 'N/A')] += 1
-        dataset_data = []
-        colors = {'ดีเยี่ยม': 'rgba(40, 167, 69, 0.7)', 'ดี': 'rgba(0, 123, 255, 0.7)', 'ผ่าน': 'rgba(255, 193, 7, 0.7)', 'ไม่ผ่าน': 'rgba(220, 53, 69, 0.7)'}
-        for label in chart_labels:
-            count = 0
-            for topic_data in stats_data.values():
-                count += topic_data.get(label, 0)
-            dataset_data.append(count)
-        chart_datasets = [{'label': 'จำนวนนักเรียน', 'data': dataset_data, 'backgroundColor': [colors.get(label, 'rgba(108, 117, 125, 0.7)') for label in chart_labels]}]
+
+        scores_by_template = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
+
+        for score in all_scores:
+            if score.topic and score.topic.template_id and score.topic.parent_id is None:
+                scores_by_template[score.topic.template_id][score.topic.name][score.score_value] += 1
+        
+        for template_obj in templates:
+            if not template_obj.rubric_levels:
+                continue
+            rubric_map_local = {r.value: r.label for r in template_obj.rubric_levels}
+            topic_labels = sorted(scores_by_template[template_obj.id].keys())
+            rubric_values_sorted = sorted(rubric_map_local.keys(), reverse=True)
+            datasets = []
+
+            colors = {
+                'ดีเยี่ยม': 'rgba(40, 167, 69, 0.7)',
+                'ดี': 'rgba(0, 123, 255, 0.7)',
+                'ผ่าน': 'rgba(255, 193, 7, 0.7)',
+                'ไม่ผ่าน': 'rgba(220, 53, 69, 0.7)'
+            }
+
+            for rubric_value in rubric_values_sorted:
+                label = rubric_map_local[rubric_value]
+                data = [
+                    int(scores_by_template[template_obj.id][topic].get(rubric_value, 0))
+                    for topic in topic_labels
+                ]
+                datasets.append({
+                    'label': label,
+                    'data': data,
+                    'backgroundColor': colors.get(label, 'rgba(108, 117, 125, 0.7)')
+                })
+
+            assessment_stats_by_template[template_obj.id]['topic_labels'] = topic_labels
+            assessment_stats_by_template[template_obj.id]['datasets'] = datasets
     
     return render_template('grade_level_head/assessment_approval.html',
                            title=f'ตรวจสอบผลประเมิน (สายชั้น {grade_level.name})',
                            total_pending=total_pending,
                            records_by_classroom=dict(records_by_classroom),
-                           stats_data=stats_data, 
-                           chart_labels=chart_labels, 
-                           chart_datasets=chart_datasets) 
+                           assessment_stats=assessment_stats_by_template)
 
 # ==========================================================
 # [3] API สำหรับ MODAL (เวอร์ชันอัปเกรด)

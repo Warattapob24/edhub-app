@@ -117,8 +117,8 @@
                     </select>
                     {% endif %}
                 </div>
-                <div class="card-body" style="min-height: 430px;">
-                    <canvas id="assessmentChart"></canvas>
+                <div class="card-body" style="min-height: 400px; max-height: 50vh;">
+                <canvas id="assessmentChart"></canvas>
                 </div>
             </div>
 
@@ -151,16 +151,19 @@
                     <div id="collapse-{{ classroom_name|replace('/', '-') }}" class="accordion-collapse collapse" data-bs-parent="#classroomAccordion">
                         <div class="accordion-body p-0">
                             <div class="table-responsive">
-                                <table class="table table-hover align-middle mb-0">
-                                    {% if data.pending %}
-                                    <thead class="table-light">
-                                        <tr>
-                                            <th class="ps-3">นักเรียน</th>
-                                            <th style="width: 40%;">สรุปผล</th>
-                                            <th class="text-end pe-3">การกระทำ</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
+                            <table class="table table-hover align-middle mb-0">
+
+                                <colgroup>
+                                    <col> <col style="width: 40%;"> <col> </colgroup>
+                                {% if data.pending %}
+                                <thead class="table-light">
+                                    <tr>
+                                        <th class="ps-3">นักเรียน</th>
+                                        <th>สรุปผล</th>
+                                        <th class="text-end pe-3">การกระทำ</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
                                         {% for record, enrollment, summary in data.pending %}
                                         <tr>
                                             <td class="ps-3">{{ enrollment.roll_number }}. {{ enrollment.student.first_name }} {{ enrollment.student.last_name }}</td>
