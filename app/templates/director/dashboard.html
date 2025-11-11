@@ -205,6 +205,7 @@ document.addEventListener('DOMContentLoaded', function () {
         
         // Filter logic
         const filterInput = document.getElementById('plan-filter');
+    if (filterInput) {
         filterInput.addEventListener('keyup', function() {
             const filterValue = this.value.toLowerCase();
             document.querySelectorAll('.plan-group-item').forEach(groupItem => {
@@ -222,6 +223,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 groupItem.style.display = groupHasVisibleItems ? 'block' : 'none';
             });
         });
+    }
 
         // Approval Actions Logic
         approvalSection.addEventListener('click', function(e) {
