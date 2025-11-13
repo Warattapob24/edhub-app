@@ -86,6 +86,13 @@ class User(UserMixin, db.Model):
     job_title = db.Column(db.String(100), nullable=True)
     must_change_username = db.Column(db.Boolean, default=True, nullable=False)
     must_change_password = db.Column(db.Boolean, default=True, nullable=False)
+    # สำหรับเก็บ ID เฉพาะตัวจาก Google
+    google_id = db.Column(db.String(255), unique=True, index=True, nullable=True)
+    google_credentials_json = db.Column(db.Text, nullable=True)
+    
+    # Flag ใหม่สำหรับตรวจสอบว่ากรอกข้อมูลส่วนตัว (job_title, groups) แล้วหรือยัง
+    # เราจะใช้ Flag นี้แทน must_change_password/username เพื่อบังคับไปหน้า setup
+    initial_setup_complete = db.Column(db.Boolean, default=False, nullable=False)
 
     roles = db.relationship('Role', secondary=user_roles, back_populates='users')
     advised_classrooms = db.relationship('Classroom', secondary=classroom_advisors, back_populates='advisors')
@@ -124,7 +131,7 @@ class User(UserMixin, db.Model):
         return any(role.name == role_name for role in self.roles)
 
     def __repr__(self):
-        return f'<User {self.username}>'
+        return f'<User {self.username} (ID: {self.id})>'
 
 class Role(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -279,6 +286,10 @@ class Course(db.Model):
     grade_submission_notes = db.Column(db.Text, nullable=True) # สำหรับหมายเหตุการส่งกลับ
     submitted_by_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
     submitted_at = db.Column(db.DateTime, nullable=True)
+    midterm_google_form_id = db.Column(db.String(255), nullable=True)
+    midterm_google_sheet_id = db.Column(db.String(255), nullable=True)
+    final_google_form_id = db.Column(db.String(255), nullable=True)
+    final_google_sheet_id = db.Column(db.String(255), nullable=True)
 
     # Relationships
     subject = db.relationship('Subject', backref=db.backref('courses', lazy='dynamic'))
@@ -546,6 +557,8 @@ class GradedItem(db.Model):
     learning_unit_id = db.Column(db.Integer, db.ForeignKey('learning_unit.id'), nullable=False)
     assessment_dimension_id = db.Column(db.Integer, db.ForeignKey('assessment_dimension.id'), nullable=False)
     is_group_assignment = db.Column(db.Boolean, default=False, nullable=False) # <-- ตรวจสอบว่ามีบรรทัดนี้
+    google_form_id = db.Column(db.String(255), nullable=True, index=True)
+    google_sheet_id = db.Column(db.String(255), nullable=True)
 
     # Relationships
     learning_unit = db.relationship('LearningUnit', back_populates='graded_items') 

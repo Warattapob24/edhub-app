@@ -1,0 +1,19 @@
+# Python
+venv/
+*.pyc
+__pycache__/
+
+# Database
+app.db
+*.sqlite
+*.sqlite3
+
+# Environment
+.env
+
+# Google Credentials
+credentials.json
+
+# IDE
+.vscode/
+.idea/

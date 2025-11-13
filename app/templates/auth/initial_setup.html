@@ -1,4 +1,4 @@
-{% extends "admin/layout_standalone.html" %} {# ใช้ layout พิเศษที่ไม่มี Sidebar #}
+{% extends "admin/layout_standalone.html" %}
 
 {% block content %}
 <div class="container">
@@ -9,10 +9,16 @@
                     <h3 class="text-center font-weight-light my-4">{{ title }}</h3>
                 </div>
                 <div class="card-body">
+                    
+                    {% if password_required %}
                     <p class="text-muted text-center">ยินดีต้อนรับ! เพื่อความปลอดภัย กรุณาตั้งค่าบัญชีของคุณให้เสร็จสมบูรณ์</p>
+                    {% else %}
+                    <p class="text-muted text-center">ยินดีต้อนรับ! บัญชี Google ของคุณเชื่อมต่อแล้ว กรุณากรอกข้อมูลส่วนตัวเพื่อเริ่มใช้งาน</p>
+                    {% endif %}
                     <form method="POST" action="">
                         {{ form.hidden_tag() }}
 
+                        {% if password_required %}
                         <fieldset class="border p-3 rounded-3 mb-4">
                             <legend class="fs-6 fw-bold">ส่วนที่ 1: ตั้งค่าการเข้าสู่ระบบ</legend>
                             <div class="form-floating mb-3">
@@ -31,7 +37,7 @@
                                 {% for error in form.password2.errors %}<small class="text-danger">{{ error }}</small>{% endfor %}
                             </div>
                         </fieldset>
-
+                        {% endif %}
                         <fieldset class="border p-3 rounded-3 mb-4">
                             <legend class="fs-6 fw-bold">ส่วนที่ 2: ข้อมูลส่วนตัวและการมอบหมายหน้าที่</legend>
                             <div class="form-floating mb-3">

@@ -1,5 +1,7 @@
 # FILE: app/auth/routes.py
-from flask import current_app, render_template, flash, redirect, url_for, request
+import os
+import requests
+from flask import current_app, render_template, flash, redirect, session, url_for, request
 from flask_login import current_user, login_required, login_user, logout_user
 from app import db
 from app.auth import bp
@@ -10,31 +12,18 @@ from app.models import Role, User, Student
 from app.services import log_action
 from urllib.parse import urlparse
 # --- สิ้นสุดการแก้ไข Import ---
+from google_auth_oauthlib.flow import Flow
+from google.oauth2 import id_token
+from google.auth.transport.requests import Request as GoogleRequest
 
 @bp.route('/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
-        # --- ลำดับการ Redirect สำหรับผู้ใช้ที่ Login อยู่แล้ว ---
-        if current_user.has_role('Admin'):
-            return redirect(url_for('admin.index'))
-        elif current_user.has_role('Director'):
-            return redirect(url_for('director.dashboard'))
-        elif current_user.has_role('Academic Affair'):
-            return redirect(url_for('academic.dashboard'))
-        elif current_user.has_role('Department Head'): # หรือเช็ค current_user.led_subject_group
-            return redirect(url_for('department.dashboard'))
-        # อาจจะเพิ่ม Grade Level Head
-        # elif current_user.led_grade_level: # หรือ current_user.has_role('Grade Level Head')
-        #     return redirect(url_for('grade_level_head.dashboard'))
-        elif current_user.has_role('Advisor'):
-            return redirect(url_for('advisor.dashboard'))
-        elif current_user.has_role('Teacher'):
-            return redirect(url_for('teacher.dashboard'))
-        elif current_user.has_role('Student'): # หรือเช็ค current_user.student_profile
-             return redirect(url_for('student.dashboard'))
-        else:
-            return redirect(url_for('main.index')) # Default redirect
-        # --- สิ้นสุดลำดับการ Redirect ---
+        # [MODIFY] ตรวจสอบ setup ก่อน
+        if not current_user.initial_setup_complete:
+             flash('กรุณาตั้งค่าบัญชีของคุณให้เสร็จสมบูรณ์', 'warning')
+             return redirect(url_for('auth.initial_setup'))
+        return redirect(get_redirect_target(current_user))
 
     form = LoginForm()
     if form.validate_on_submit():
@@ -43,10 +32,8 @@ def login():
         user = None
         is_student_login = False
 
-        # 1. Try finding a User by username first (standard login)
         user = User.query.filter_by(username=username_input).first()
-
-        # --- ปรับปรุง Logic การเช็ค Password ---
+        
         login_successful = False
         potential_student = Student.query.filter_by(student_id=username_input).first()
 
@@ -54,13 +41,12 @@ def login():
             # Standard user login
             login_successful = True
         elif potential_student and potential_student.student_id == password_input:
-            # Student login attempt using student_id for both username and password
+            # (ตรรกะการ Login ของนักเรียน ... เหมือนเดิม)
             if potential_student.user:
                 user = potential_student.user
                 is_student_login = True
-                login_successful = True # Found existing user linked to student
+                login_successful = True 
             else:
-                # Auto-create user for student
                 try:
                     new_user = User(
                         username=f"student_{potential_student.student_id}",
@@ -68,7 +54,8 @@ def login():
                         last_name=potential_student.last_name,
                         name_prefix=potential_student.name_prefix,
                         must_change_username=False,
-                        must_change_password=False
+                        must_change_password=False,
+                        initial_setup_complete=True # 👈 [NEW] นักเรียนไม่ต้อง setup
                     )
                     student_role = Role.query.filter_by(name='Student').first()
                     if not student_role:
@@ -81,7 +68,7 @@ def login():
                     db.session.flush()
 
                     potential_student.user_id = new_user.id
-                    db.session.flush() # Ensure user_id is associated before logging
+                    db.session.flush()
 
                     log_action(
                         "Auto-Create Student User", user=None, model=User,
@@ -100,64 +87,34 @@ def login():
                     log_action(f"Auto-Create Student User Failed: {type(e).__name__}", user=None, model=User)
                     try: db.session.commit()
                     except: db.session.rollback()
-                    user = None # Ensure login fails if auto-create fails
+                    user = None
                     login_successful = False
-        # --- สิ้นสุดการปรับปรุง Logic เช็ค Password ---
 
-        if not login_successful: # Check the flag instead of user is None
+        if not login_successful:
             log_action("Login Failed", user=None, new_value={'username': username_input})
-            try:
-                db.session.commit()
+            try: db.session.commit()
             except Exception as log_err:
                 db.session.rollback()
                 current_app.logger.error(f"Failed to commit login failure log: {log_err}")
             flash('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง', 'danger')
             return redirect(url_for('auth.login'))
 
-        # If login is successful
+        # Login สำเร็จ
         login_user(user, remember=form.remember_me.data)
         log_action("Login Success", user=user)
-        try:
-            db.session.commit()
+        try: db.session.commit()
         except Exception as log_err:
             db.session.rollback()
             current_app.logger.error(f"Failed to commit login success log: {log_err}")
 
-        # Handle redirection
-        next_page = request.args.get('next')
-        if not next_page or urlparse(next_page).netloc != '':
-            # --- ลำดับการ Redirect หลัง Login สำเร็จ ---
-            if user.has_role('Admin'):
-                next_page = url_for('admin.index')
-            elif user.has_role('Director'):
-                next_page = url_for('director.dashboard')
-            elif user.has_role('Academic Affair'):
-                next_page = url_for('academic.dashboard')
-            elif user.has_role('Department Head'): # หรือเช็ค user.led_subject_group
-                next_page = url_for('department.dashboard')
-            elif user.led_grade_level: # หรือ user.has_role('Grade Level Head')
-                next_page = url_for('grade_level_head.dashboard')
-            elif user.has_role('Advisor'):
-                next_page = url_for('advisor.dashboard')
-            elif user.has_role('Teacher'):
-                next_page = url_for('teacher.dashboard')
-            elif user.has_role('Student'): # หรือเช็ค user.student_profile
-                 next_page = url_for('student.dashboard')
-            else:
-                 next_page = url_for('main.index') # Default
-            # --- สิ้นสุดลำดับการ Redirect ---
-
-        # Check if non-student user needs initial setup
-        if not is_student_login and (user.must_change_username or user.must_change_password):
-            flash('กรุณาเปลี่ยนชื่อผู้ใช้หรือรหัสผ่าน', 'warning')
-            # Redirect to initial_setup regardless of 'next_page' if setup is required
+        # [MODIFY] ตรวจสอบ setup สำหรับครู
+        if not is_student_login and not user.initial_setup_complete:
+            flash('กรุณาตั้งค่าบัญชีของคุณให้เสร็จสมบูรณ์', 'warning')
             return redirect(url_for('auth.initial_setup'))
 
-        return redirect(next_page)
+        return redirect(get_redirect_target(user))
 
-    # For GET request or failed form validation
     return render_template('auth/login.html', title='เข้าสู่ระบบ', form=form)
-
 
 # --- Route นี้อาจจะไม่จำเป็นแล้ว ถ้า Default Redirect คือ main.index หรือ login ---
 # @bp.route('/dashboard')
@@ -191,106 +148,269 @@ def logout():
 @bp.route('/initial-setup', methods=['GET', 'POST'])
 @login_required
 def initial_setup():
-    # ถ้าตั้งค่าเรียบร้อยแล้ว ไม่ควรเข้ามาหน้านี้ได้อีก
-    if not current_user.must_change_username and not current_user.must_change_password:
-        # --- Redirect ไปยัง Dashboard ที่ถูกต้อง ไม่ใช่แค่ teacher ---
-        if current_user.has_role('Admin'):
-             return redirect(url_for('admin.index'))
-        elif current_user.has_role('Director'):
-             return redirect(url_for('director.dashboard'))
-        elif current_user.has_role('Academic Affair'):
-             return redirect(url_for('academic.dashboard'))
-        elif current_user.has_role('Department Head'):
-             return redirect(url_for('department.dashboard'))
-        elif current_user.led_grade_level:
-             return redirect(url_for('grade_level_head.dashboard'))
-        elif current_user.has_role('Advisor'):
-             return redirect(url_for('advisor.dashboard'))
-        elif current_user.has_role('Teacher'):
-             return redirect(url_for('teacher.dashboard'))
-        elif current_user.has_role('Student'): # Student shouldn't reach here normally
-             return redirect(url_for('student.dashboard'))
-        else:
-             return redirect(url_for('main.index'))
-        # --- สิ้นสุดการ Redirect ---
+    # --- [MODIFY] ใช้ Flag ใหม่ในการตรวจสอบ ---
+    if current_user.initial_setup_complete:
+        flash('บัญชีของคุณตั้งค่าเรียบร้อยแล้ว', 'info')
+        return redirect(get_redirect_target(current_user))
+    # --- สิ้นสุด [MODIFY] ---
 
     form = InitialSetupForm()
-    # ส่ง user_id เข้าไปใน form เพื่อใช้ในการ validate email
-    form.user_id = current_user.id
+    form.user_id = current_user.id # สำหรับ validate email
+    
+    # --- [NEW] บอก Form ว่าต้อง validate รหัสผ่านหรือไม่ ---
+    # เราจะใช้ 'must_change_password' เป็นตัวบอกว่าต้องโชว์และ validate ช่องรหัสผ่าน
+    password_required = current_user.must_change_password
+    # --- สิ้นสุด [NEW] ---
 
     if form.validate_on_submit():
-        # เก็บค่าเก่าบางส่วน (เผื่อใช้ Log)
         old_username = current_user.username
         old_email = current_user.email
 
-        # อัปเดตข้อมูลผู้ใช้
-        current_user.username = form.username.data
-        current_user.set_password(form.password.data)
+        # อัปเดตข้อมูลส่วนตัว (ทุกคนต้องทำ)
         current_user.job_title = form.job_title.data
         current_user.email = form.email.data
-
-        # อัปเดต relationships (ควรทำหลังจาก commit หลัก หรือแยก session)
-        # การกำหนด .data โดยตรงอาจไม่ใช่วิธีที่ SQLAlchemy ชอบที่สุดสำหรับ many-to-many
-        # อาจจะต้อง clear แล้ว append ใหม่ หรือใช้ synchronize_session=False
         current_user.member_of_groups = form.member_of_groups.data
         current_user.advised_classrooms = form.advised_classrooms.data
+        
+        # อัปเดตข้อมูล Login (เฉพาะคนที่ต้องเปลี่ยน)
+        if password_required:
+            current_user.username = form.username.data
+            current_user.set_password(form.password.data)
+            current_user.must_change_username = False
+            current_user.must_change_password = False
 
-        # ปรับ Flag
-        current_user.must_change_username = False
-        current_user.must_change_password = False
+        # --- [MODIFY] ตั้ง Flag ใหม่ ---
+        current_user.initial_setup_complete = True
+        # --- สิ้นสุด [MODIFY] ---
 
         try:
             db.session.commit()
             flash('ตั้งค่าบัญชีของคุณเรียบร้อยแล้ว ยินดีต้อนรับ!', 'success')
 
-            # --- 👇👇👇 แทนที่ด้วยโค้ด Redirect ที่ตรวจสอบ Role 👇👇👇 ---
-            # Determine the correct dashboard based on roles AFTER setup
-            if current_user.has_role('Admin'):
-                next_page = url_for('admin.index')
-            elif current_user.has_role('Director'):
-                 next_page = url_for('director.dashboard')
-            elif current_user.has_role('Academic Affair'):
-                 next_page = url_for('academic.dashboard')
-            elif current_user.has_role('Department Head'):
-                 next_page = url_for('department.dashboard')
-            elif current_user.led_grade_level:
-                 next_page = url_for('grade_level_head.dashboard')
-            elif current_user.has_role('Advisor'):
-                 next_page = url_for('advisor.dashboard')
-            elif current_user.has_role('Teacher'):
-                next_page = url_for('teacher.dashboard')
-            elif current_user.has_role('Student'): # Should not happen here
-                next_page = url_for('student.dashboard')
-            else:
-                next_page = url_for('main.index')
-
-            # Log action for initial setup completion
             log_action("Initial Setup Complete", user=current_user,
                        old_value={'username': old_username, 'email': old_email},
                        new_value={'username': current_user.username, 'email': current_user.email})
-            try:
-                db.session.commit() # Commit the log
+            try: db.session.commit()
             except Exception as log_err:
                 db.session.rollback()
                 current_app.logger.error(f"Failed to commit initial setup log: {log_err}")
-
-            return redirect(next_page)
-            # --- สิ้นสุดส่วนที่แทนที่ ---
+            
+            return redirect(get_redirect_target(current_user))
 
         except Exception as e:
              db.session.rollback()
              flash(f'เกิดข้อผิดพลาดในการบันทึกข้อมูล: {e}', 'danger')
              current_app.logger.error(f"Error during initial setup save for user {current_user.id}: {e}")
-             # Log failure?
-             return redirect(url_for('auth.initial_setup')) # Redirect back to setup on error
+             return redirect(url_for('auth.initial_setup'))
 
-
-    # สำหรับ GET request, เติมข้อมูลที่มีอยู่แล้วลงในฟอร์ม
     elif request.method == 'GET':
-        form.username.data = current_user.username # Pre-fill username for editing
+        form.username.data = current_user.username
         form.job_title.data = current_user.job_title
         form.email.data = current_user.email
         form.member_of_groups.data = current_user.member_of_groups
         form.advised_classrooms.data = current_user.advised_classrooms
 
-    return render_template('auth/initial_setup.html', title='ตั้งค่าบัญชีครั้งแรก', form=form)
+    return render_template('auth/initial_setup.html', 
+                           title='ตั้งค่าบัญชีครั้งแรก', 
+                           form=form,
+                           # [NEW] ส่งตัวแปรนี้ไปให้ Template
+                           password_required=password_required)
+
+# --- [FIX] เพิ่มบรรทัดนี้เพื่ออนุญาต HTTP (สำหรับ Local Development) ---
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+
+# --- [NEW] ฟังก์ชันสำหรับสร้าง OAuth Flow (เวอร์ชันปลอดภัย) ---
+def get_google_flow():
+    """สร้าง instance ของ Google OAuth Flow จาก Config."""
+    
+    # [FIX] สร้าง client_config dictionary จาก Config แทนการอ่านไฟล์
+    client_config = {
+        "web": {
+            "client_id": current_app.config['GOOGLE_CLIENT_ID'],
+            "client_secret": current_app.config['GOOGLE_CLIENT_SECRET'],
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+            "redirect_uris": [
+                "http://127.0.0.1:5000/auth/google-callback",
+                "http://localhost:5000/auth/google-callback"
+            ]
+        }
+    }
+
+    flow = Flow.from_client_config(
+        client_config=client_config, # 👈 [FIX] เปลี่ยนจาก .from_client_secrets_file
+        scopes=[
+            "https://www.googleapis.com/auth/userinfo.profile",
+            "https://www.googleapis.com/auth/userinfo.email",
+            "openid",
+            "https://www.googleapis.com/auth/drive.file",
+            "https://www.googleapis.com/auth/forms.body",
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/script.projects"
+        ],
+        redirect_uri='http://127.0.0.1:5000/auth/google-callback'
+    )
+    return flow
+
+# --- [NEW] Route สำหรับเริ่ม Google Login ---
+@bp.route('/google-login')
+def google_login():
+    """
+    Redirect ไปยังหน้า Google Consent Screen.
+    """
+    flow = get_google_flow()
+    authorization_url, state = flow.authorization_url(
+        access_type='offline',
+        include_granted_scopes='true'
+    )
+    session['state'] = state # เก็บ state ไว้ตรวจสอบการโจมตี CSRF
+    return redirect(authorization_url)
+# --- สิ้นสุด [NEW] ---
+
+
+# --- [NEW] Route สำหรับรับ Callback จาก Google ---
+@bp.route('/google-callback')
+def google_callback():
+    """
+    จัดการ Callback หลังจาก Google Authenticate สำเร็จ.
+    """
+    # ตรวจสอบ State เพื่อป้องกัน CSRF
+    if request.args.get('state') != session.get('state'):
+        flash('เกิดข้อผิดพลาดในการยืนยันตัวตน (Invalid state)', 'danger')
+        return redirect(url_for('auth.login'))
+
+    flow = get_google_flow()
+    try:
+        # แลกเปลี่ยน Code ที่ได้มาเป็น Access Token
+        flow.fetch_token(authorization_response=request.url)
+    except Exception as e:
+        flash(f'เกิดข้อผิดพลาดในการเชื่อมต่อ Google: {e}', 'danger')
+        return redirect(url_for('auth.login'))
+
+    credentials = flow.credentials
+    
+    try:
+        # ดึงข้อมูลโปรไฟล์ผู้ใช้ (ID Token)
+        id_info = id_token.verify_oauth2_token(
+            credentials.id_token,
+            GoogleRequest(),
+            current_app.config['GOOGLE_CLIENT_ID']
+        )
+    except ValueError as e:
+        flash(f'เกิดข้อผิดพลาดในการดึงข้อมูลผู้ใช้: {e}', 'danger')
+        return redirect(url_for('auth.login'))
+
+    # --- นี่คือข้อมูลโปรไฟล์จาก Google ---
+    google_id = id_info.get('sub')
+    user_email = id_info.get('email')
+    user_first_name = id_info.get('given_name')
+    user_last_name = id_info.get('family_name')
+
+    if not google_id or not user_email:
+        flash('ไม่สามารถดึงข้อมูล Google ID หรือ Email ได้', 'danger')
+        return redirect(url_for('auth.login'))
+
+    # --- ตรรกะการ Login/Register ---
+    
+    # 1. ค้นหาผู้ใช้ด้วย Google ID (เคย Login ด้วย Google แล้ว)
+    user = User.query.filter_by(google_id=google_id).first()
+    if user:
+        # ✅ Case 1: พบผู้ใช้, Login ได้เลย
+        user.google_credentials_json = credentials.to_json()
+        login_user(user, remember=True)
+        log_action("Login Success (Google)", user=user)
+        db.session.commit()
+        
+        # ตรวจสอบว่ากรอกข้อมูลส่วนตัวหรือยัง
+        if not user.initial_setup_complete:
+            flash('ยินดีต้อนรับ! กรุณากรอกข้อมูลส่วนตัวให้ครบถ้วน', 'info')
+            return redirect(url_for('auth.initial_setup'))
+            
+        return redirect(get_redirect_target(user))
+
+    # 2. ค้นหาผู้ใช้ด้วย Email (เคยมีบัญชี password แต่อยากเชื่อม Google)
+    user = User.query.filter_by(email=user_email).first()
+    if user:
+        # ✅ Case 2: พบ Email, ทำการเชื่อมบัญชี
+        user.google_id = google_id
+        user.google_credentials_json = credentials.to_json()
+        db.session.add(user)
+        log_action("Link Google Account", user=user, new_value={'google_id': google_id})
+        db.session.commit()
+        
+        login_user(user, remember=True)
+        
+        # ตรวจสอบว่ากรอกข้อมูลส่วนตัวหรือยัง
+        if not user.initial_setup_complete:
+            flash('เชื่อมต่อบัญชี Google สำเร็จ! กรุณากรอกข้อมูลส่วนตัว', 'info')
+            return redirect(url_for('auth.initial_setup'))
+
+        return redirect(get_redirect_target(user))
+
+    # 3. ไม่พบผู้ใช้ (นี่คือการสมัครใหม่ด้วย Google)
+    try:
+        # ✅ Case 3: สร้างผู้ใช้ใหม่
+        new_user = User(
+            google_id=google_id,
+            email=user_email,
+            first_name=user_first_name,
+            last_name=user_last_name,
+            username=user_email, # ตั้ง username เริ่มต้นเป็น email
+            password_hash=None, # ไม่มีรหัสผ่าน
+            must_change_username=False, # ไม่ต้องเปลี่ยน username
+            must_change_password=False, # ไม่มีรหัสผ่านให้เปลี่ยน
+            initial_setup_complete=False, # 👈 [IMPORTANT] บังคับไปหน้า setup
+            google_credentials_json=credentials.to_json()
+        )
+        
+        # กำหนด Role พื้นฐาน (เช่น Teacher) - หากมี
+        # teacher_role = Role.query.filter_by(name='Teacher').first()
+        # if teacher_role:
+        #     new_user.roles.append(teacher_role)
+            
+        db.session.add(new_user)
+        db.session.commit()
+        
+        log_action("Auto-Create User (Google)", user=new_user, new_value={'email': user_email, 'google_id': google_id})
+        db.session.commit()
+
+        login_user(new_user, remember=True)
+        flash('สร้างบัญชีผู้ใช้ผ่าน Google สำเร็จ! กรุณาตั้งค่าบัญชีของคุณ', 'success')
+        return redirect(url_for('auth.initial_setup'))
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error creating user from Google: {e}")
+        flash(f'เกิดข้อผิดพลาดในการสร้างบัญชี: {e}', 'danger')
+        return redirect(url_for('auth.login'))
+    
+# --- [NEW] ฟังก์ชันสำหรับหา Dashboard ที่ถูกต้อง ---
+def get_redirect_target(user):
+    """
+    หา Dashboard ที่ถูกต้องสำหรับ User.
+    """
+    next_page = request.args.get('next')
+    if next_page and urlparse(next_page).netloc == '':
+        return next_page # ถ้ามี 'next' ที่ปลอดภัย
+        
+    # ลำดับการ Redirect
+    if user.has_role('Admin'):
+        return url_for('admin.index')
+    elif user.has_role('Director'):
+        return url_for('director.dashboard')
+    elif user.has_role('Academic Affair'):
+        return url_for('academic.dashboard')
+    elif user.has_role('Department Head'):
+        return url_for('department.dashboard')
+    elif user.led_grade_level:
+        return url_for('grade_level_head.dashboard')
+    elif user.has_role('Advisor'):
+        return url_for('advisor.dashboard')
+    elif user.has_role('Teacher'):
+        return url_for('teacher.dashboard')
+    elif user.has_role('Student'):
+         return url_for('student.dashboard')
+    else:
+         return url_for('main.index')
+

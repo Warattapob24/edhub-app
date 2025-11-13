@@ -38,6 +38,13 @@
                             {{ form.submit(class="btn btn-primary btn-block") }}
                         </div>
                     </form>
+                    
+                    <hr class="my-4">
+                    <div class="d-grid">
+                        <a href="{{ url_for('auth.google_login') }}" class="btn btn-danger btn-block">
+                            <i class="bi bi-google me-2"></i> เข้าสู่ระบบด้วย Google
+                        </a>
+                    </div>
                 </div>
                 <div class="card-footer text-center py-3">
                     {# <div class="small"><a href="#">ลืมรหัสผ่าน?</a></div> #}
