@@ -1,4 +1,5 @@
 # app/auth/forms.py
+from flask_login import current_user
 from flask_wtf import FlaskForm
 from wtforms import StringField, PasswordField, BooleanField, SubmitField, ValidationError
 from wtforms.validators import DataRequired, EqualTo, Length, Email, ValidationError
@@ -38,17 +39,25 @@ class InitialSetupForm(FlaskForm):
 
     submit = SubmitField('บันทึกและเริ่มต้นใช้งาน')
 
-    def validate_username(self, username):
-        # Checks if the username exists and does not belong to the current user
-        user = User.query.filter(User.username == username.data, User.id != self.user_id).first()
-        if user:
-            raise ValidationError('ชื่อผู้ใช้นี้มีคนใช้แล้ว กรุณาเลือกชื่ออื่น')
+def validate_username(self, username):
+        # ตรวจสอบว่า username ไม่ได้เปลี่ยน
+        if username.data == current_user.username:
+            return  # ถ้าเป็นชื่อเดิมของตัวเอง ไม่ต้องเช็ค
 
-    def validate_email(self, email):
-        # Checks if the email exists and does not belong to the current user
-        user = User.query.filter(User.email == email.data, User.id != self.user_id).first()
+        # ถ้าเปลี่ยนชื่อใหม่ ค่อยเช็คว่าซ้ำหรือไม่
+        user = User.query.filter_by(username=username.data).first()
         if user:
-             raise ValidationError('อีเมลนี้ถูกใช้ในระบบแล้ว กรุณาใช้อีเมลอื่น')
+            raise ValidationError('ชื่อผู้ใช้นี้มีผู้ใช้งานแล้ว')
+
+def validate_email(self, email):
+        # ตรวจสอบว่า email ไม่ได้เปลี่ยน
+        if email.data == current_user.email:
+            return  # ถ้าเป็นอีเมลเดิมของตัวเอง ไม่ต้องเช็ค
+
+        # ถ้าเปลี่ยนอีเมลใหม่ ค่อยเช็คว่าซ้ำหรือไม่
+        user = User.query.filter_by(email=email.data).first()
+        if user:
+            raise ValidationError('Email นี้มีผู้ใช้งานแล้ว')
         
 class ChangePasswordForm(FlaskForm):
     password = PasswordField('รหัสผ่านใหม่', validators=[DataRequired()])

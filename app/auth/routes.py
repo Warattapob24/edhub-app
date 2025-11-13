@@ -270,21 +270,20 @@ def google_login():
     return redirect(authorization_url)
 # --- สิ้นสุด [NEW] ---
 
-
-# --- [NEW] Route สำหรับรับ Callback จาก Google ---
+# --- [REVISED] Route สำหรับรับ Callback จาก Google (แก้ไข Case 3) ---
 @bp.route('/google-callback')
 def google_callback():
     """
     จัดการ Callback หลังจาก Google Authenticate สำเร็จ.
     """
-    # ตรวจสอบ State เพื่อป้องกัน CSRF
+    # (โค้ดส่วน flow.fetch_token() และ id_token.verify_oauth2_token() เหมือนเดิม)
+    # ...
     if request.args.get('state') != session.get('state'):
         flash('เกิดข้อผิดพลาดในการยืนยันตัวตน (Invalid state)', 'danger')
         return redirect(url_for('auth.login'))
 
     flow = get_google_flow()
     try:
-        # แลกเปลี่ยน Code ที่ได้มาเป็น Access Token
         flow.fetch_token(authorization_response=request.url)
     except Exception as e:
         flash(f'เกิดข้อผิดพลาดในการเชื่อมต่อ Google: {e}', 'danger')
@@ -293,7 +292,6 @@ def google_callback():
     credentials = flow.credentials
     
     try:
-        # ดึงข้อมูลโปรไฟล์ผู้ใช้ (ID Token)
         id_info = id_token.verify_oauth2_token(
             credentials.id_token,
             GoogleRequest(),
@@ -303,7 +301,6 @@ def google_callback():
         flash(f'เกิดข้อผิดพลาดในการดึงข้อมูลผู้ใช้: {e}', 'danger')
         return redirect(url_for('auth.login'))
 
-    # --- นี่คือข้อมูลโปรไฟล์จาก Google ---
     google_id = id_info.get('sub')
     user_email = id_info.get('email')
     user_first_name = id_info.get('given_name')
@@ -313,25 +310,25 @@ def google_callback():
         flash('ไม่สามารถดึงข้อมูล Google ID หรือ Email ได้', 'danger')
         return redirect(url_for('auth.login'))
 
-    # --- ตรรกะการ Login/Register ---
+    # --- ตรรกะการ Login/Register (ปรับปรุงแล้ว) ---
     
     # 1. ค้นหาผู้ใช้ด้วย Google ID (เคย Login ด้วย Google แล้ว)
     user = User.query.filter_by(google_id=google_id).first()
     if user:
         # ✅ Case 1: พบผู้ใช้, Login ได้เลย
-        user.google_credentials_json = credentials.to_json()
+        user.google_credentials_json = credentials.to_json() 
         login_user(user, remember=True)
         log_action("Login Success (Google)", user=user)
         db.session.commit()
         
-        # ตรวจสอบว่ากรอกข้อมูลส่วนตัวหรือยัง
+        # (ตรรกะนี้ถูกต้องตามที่ท่านต้องการ)
         if not user.initial_setup_complete:
             flash('ยินดีต้อนรับ! กรุณากรอกข้อมูลส่วนตัวให้ครบถ้วน', 'info')
-            return redirect(url_for('auth.initial_setup'))
+            return redirect(url_for('auth.initial-setup'))
             
         return redirect(get_redirect_target(user))
 
-    # 2. ค้นหาผู้ใช้ด้วย Email (เคยมีบัญชี password แต่อยากเชื่อม Google)
+    # 2. ค้นหาผู้ใช้ด้วย Email (บัญชีที่ Admin สร้างไว้ หรือบัญชีเก่า)
     user = User.query.filter_by(email=user_email).first()
     if user:
         # ✅ Case 2: พบ Email, ทำการเชื่อมบัญชี
@@ -343,14 +340,19 @@ def google_callback():
         
         login_user(user, remember=True)
         
-        # ตรวจสอบว่ากรอกข้อมูลส่วนตัวหรือยัง
+        # (ตรรกะนี้ถูกต้อง และเป็นสาเหตุที่ท่านเจอ)
         if not user.initial_setup_complete:
             flash('เชื่อมต่อบัญชี Google สำเร็จ! กรุณากรอกข้อมูลส่วนตัว', 'info')
-            return redirect(url_for('auth.initial_setup'))
+            return redirect(url_for('auth.initial-setup'))
 
         return redirect(get_redirect_target(user))
 
-    # 3. ไม่พบผู้ใช้ (นี่คือการสมัครใหม่ด้วย Google)
+    # 3. --- [FIX] ตรรกะการสร้างผู้ใช้ใหม่ (สำหรับครูสมัครเอง) ---
+    # ตรวจสอบอีกครั้งว่า Username (จาก Email) ซ้ำหรือไม่
+    if User.query.filter_by(username=user_email).first():
+        flash(f'ไม่สามารถสร้างบัญชีได้: ชื่อผู้ใช้ (Username) "{user_email}" นี้ถูกใช้ไปแล้ว', 'danger')
+        return redirect(url_for('auth.login'))
+
     try:
         # ✅ Case 3: สร้างผู้ใช้ใหม่
         new_user = User(
@@ -359,14 +361,14 @@ def google_callback():
             first_name=user_first_name,
             last_name=user_last_name,
             username=user_email, # ตั้ง username เริ่มต้นเป็น email
-            password_hash=None, # ไม่มีรหัสผ่าน
-            must_change_username=False, # ไม่ต้องเปลี่ยน username
-            must_change_password=False, # ไม่มีรหัสผ่านให้เปลี่ยน
-            initial_setup_complete=False, # 👈 [IMPORTANT] บังคับไปหน้า setup
-            google_credentials_json=credentials.to_json()
+            password_hash=None, 
+            must_change_username=False,
+            must_change_password=False,
+            initial_setup_complete=False, # 👈 บังคับไปหน้า setup (ถูกต้องสำหรับผู้ใช้ใหม่)
+            google_credentials_json = credentials.to_json()
         )
         
-        # กำหนด Role พื้นฐาน (เช่น Teacher) - หากมี
+        # (ท่านสามารถกำหนด Role เริ่มต้นให้ครูใหม่ที่นี่)
         # teacher_role = Role.query.filter_by(name='Teacher').first()
         # if teacher_role:
         #     new_user.roles.append(teacher_role)
@@ -379,11 +381,12 @@ def google_callback():
 
         login_user(new_user, remember=True)
         flash('สร้างบัญชีผู้ใช้ผ่าน Google สำเร็จ! กรุณาตั้งค่าบัญชีของคุณ', 'success')
-        return redirect(url_for('auth.initial_setup'))
+        return redirect(url_for('auth.initial-setup')) # 👈 ส่งไปหน้า Setup (ถูกต้องสำหรับผู้ใช้ใหม่)
 
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Error creating user from Google: {e}")
+        # (ถ้าเกิด Error ซ้ำซ้อน เช่น Email ซ้ำ แม้เราจะเช็คไปแล้ว)
         flash(f'เกิดข้อผิดพลาดในการสร้างบัญชี: {e}', 'danger')
         return redirect(url_for('auth.login'))
     
