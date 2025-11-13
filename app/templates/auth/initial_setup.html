@@ -1,4 +1,4 @@
-{% extends "admin/layout_standalone.html" %}
+{% extends "admin/layout_standalone.html" %} {# ใช้ layout พิเศษที่ไม่มี Sidebar #}
 
 {% block content %}
 <div class="container">
@@ -10,11 +10,13 @@
                 </div>
                 <div class="card-body">
                     
+                    <h4 class="text-center">สวัสดี, {{ current_user.full_name or current_user.username }}</h4>
                     {% if password_required %}
                     <p class="text-muted text-center">ยินดีต้อนรับ! เพื่อความปลอดภัย กรุณาตั้งค่าบัญชีของคุณให้เสร็จสมบูรณ์</p>
                     {% else %}
                     <p class="text-muted text-center">ยินดีต้อนรับ! บัญชี Google ของคุณเชื่อมต่อแล้ว กรุณากรอกข้อมูลส่วนตัวเพื่อเริ่มใช้งาน</p>
                     {% endif %}
+                    
                     <form method="POST" action="">
                         {{ form.hidden_tag() }}
 
@@ -40,6 +42,23 @@
                         {% endif %}
                         <fieldset class="border p-3 rounded-3 mb-4">
                             <legend class="fs-6 fw-bold">ส่วนที่ 2: ข้อมูลส่วนตัวและการมอบหมายหน้าที่</legend>
+                            
+                            <div class="row g-2 mb-3">
+                                <div class="col-md">
+                                    <div class="form-floating">
+                                        {{ form.first_name(class="form-control", placeholder="ชื่อจริง") }}
+                                        {{ form.first_name.label() }}
+                                        {% for error in form.first_name.errors %}<small class="text-danger">{{ error }}</small>{% endfor %}
+                                    </div>
+                                </div>
+                                <div class="col-md">
+                                    <div class="form-floating">
+                                        {{ form.last_name(class="form-control", placeholder="นามสกุล") }}
+                                        {{ form.last_name.label() }}
+                                        {% for error in form.last_name.errors %}<small class="text-danger">{{ error }}</small>{% endfor %}
+                                    </div>
+                                </div>
+                            </div>
                             <div class="form-floating mb-3">
                                 {{ form.job_title(class="form-control", placeholder="Job Title") }}
                                 {{ form.job_title.label() }}

@@ -26,6 +26,9 @@ class InitialSetupForm(FlaskForm):
     password = PasswordField('รหัสผ่านใหม่', validators=[DataRequired(), Length(min=6)])
     password2 = PasswordField('ยืนยันรหัสผ่านใหม่', validators=[DataRequired(), EqualTo('password', message='รหัสผ่านต้องตรงกัน')])
 
+    first_name = StringField('ชื่อจริง', validators=[DataRequired(), Length(max=64)])
+    last_name = StringField('นามสกุล', validators=[DataRequired(), Length(max=64)])
+    
     # Part 2: Personal and assignment info
     job_title = StringField('ตำแหน่ง (เช่น ครูชำนาญการ)', validators=[DataRequired()])
     email = StringField('อีเมล', validators=[DataRequired(), Email()])

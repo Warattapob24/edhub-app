@@ -154,23 +154,21 @@ def logout():
 @bp.route('/initial-setup', methods=['GET', 'POST'])
 @login_required
 def initial_setup():
-    # --- [MODIFY] ใช้ Flag ใหม่ในการตรวจสอบ ---
-    if current_user.initial_setup_complete:
+    # 1. ถ้าต้องเปลี่ยนรหัส (Admin สร้าง) -> ให้ทำต่อ
+    # 2. ถ้ามาจาก Google (ยังไม่กรอกข้อมูล) -> ให้ทำต่อ
+    if not current_user.must_change_password and current_user.initial_setup_complete:
         flash('บัญชีของคุณตั้งค่าเรียบร้อยแล้ว', 'info')
         return redirect(get_redirect_target(current_user))
-    # --- สิ้นสุด [MODIFY] ---
 
     form = InitialSetupForm()
-    form.user_id = current_user.id # สำหรับ validate email
-    
-    # --- [NEW] บอก Form ว่าต้อง validate รหัสผ่านหรือไม่ ---
-    # เราจะใช้ 'must_change_password' เป็นตัวบอกว่าต้องโชว์และ validate ช่องรหัสผ่าน
     password_required = current_user.must_change_password
-    # --- สิ้นสุด [NEW] ---
-
+    
     if form.validate_on_submit():
         old_username = current_user.username
         old_email = current_user.email
+
+        current_user.first_name = form.first_name.data
+        current_user.last_name = form.last_name.data
 
         # อัปเดตข้อมูลส่วนตัว (ทุกคนต้องทำ)
         current_user.job_title = form.job_title.data
@@ -210,6 +208,8 @@ def initial_setup():
              return redirect(url_for('auth.initial_setup'))
 
     elif request.method == 'GET':
+        form.first_name.data = current_user.first_name
+        form.last_name.data = current_user.last_name
         form.username.data = current_user.username
         form.job_title.data = current_user.job_title
         form.email.data = current_user.email
@@ -219,7 +219,6 @@ def initial_setup():
     return render_template('auth/initial_setup.html', 
                            title='ตั้งค่าบัญชีครั้งแรก', 
                            form=form,
-                           # [NEW] ส่งตัวแปรนี้ไปให้ Template
                            password_required=password_required)
 
 # --- [FIX] เพิ่มบรรทัดนี้เพื่ออนุญาต HTTP (สำหรับ Local Development) ---
