@@ -217,7 +217,8 @@ def initial_setup():
                            password_required=password_required)
 
 # --- [FIX] เพิ่มบรรทัดนี้เพื่ออนุญาต HTTP (สำหรับ Local Development) ---
-os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+if not os.environ.get('RENDER'):
+    os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
 # --- [NEW] ฟังก์ชันสำหรับสร้าง OAuth Flow (เวอร์ชันปลอดภัย) ---
 def get_google_flow():
@@ -249,7 +250,7 @@ def get_google_flow():
             "https://www.googleapis.com/auth/spreadsheets",
             "https://www.googleapis.com/auth/script.projects"
         ],
-        redirect_uri='http://127.0.0.1:5000/auth/google-callback'
+        redirect_uri=url_for('auth.google_callback', _external=True)
     )
     return flow
 
