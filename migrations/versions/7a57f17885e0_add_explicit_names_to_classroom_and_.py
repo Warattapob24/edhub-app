@@ -37,8 +37,9 @@ def upgrade():
 
     with op.batch_alter_table('curriculum', schema=None) as batch_op:
         #batch_op.drop_constraint(batch_op.f('_semester_grade_subject_uc'), type_='unique')
-        batch_op.create_unique_constraint('_semester_grade_program_subject_uc', ['semester_id', 'grade_level_id', 'program_id', 'subject_id'])
+        #batch_op.create_unique_constraint('_semester_grade_program_subject_uc', ['semester_id', 'grade_level_id', 'program_id', 'subject_id'])
         batch_op.create_foreign_key('fk_curriculum_program', 'program', ['program_id'], ['id'])
+        pass # ใส่ pass ไว้เผื่อคอมเมนต์หมด
 
     # ### end Alembic commands ###
 
@@ -52,9 +53,10 @@ def downgrade():
 
     with op.batch_alter_table('classroom', schema=None) as batch_op:
         batch_op.drop_constraint('fk_classroom_room', type_='foreignkey')
-        batch_op.drop_constraint('fk_classroom_program', type_='foreignkey')
+        #batch_op.drop_constraint('fk_classroom_program', type_='foreignkey')
         #batch_op.drop_index(batch_op.f('ix_classroom_program_id'))
-
+        pass # ใส่ pass ไว้เผื่อคอมเมนต์หมด
+    
     with op.batch_alter_table('audit_log', schema=None) as batch_op:
         batch_op.alter_column('record_id',
                existing_type=sa.String(length=50),
