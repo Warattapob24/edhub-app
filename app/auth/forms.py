@@ -39,7 +39,7 @@ class InitialSetupForm(FlaskForm):
 
     submit = SubmitField('บันทึกและเริ่มต้นใช้งาน')
 
-def validate_username(self, username):
+    def validate_username(self, username):
         # ตรวจสอบว่า username ไม่ได้เปลี่ยน
         if username.data == current_user.username:
             return  # ถ้าเป็นชื่อเดิมของตัวเอง ไม่ต้องเช็ค
@@ -48,8 +48,8 @@ def validate_username(self, username):
         user = User.query.filter_by(username=username.data).first()
         if user:
             raise ValidationError('ชื่อผู้ใช้นี้มีผู้ใช้งานแล้ว')
-
-def validate_email(self, email):
+        
+    def validate_email(self, email):
         # ตรวจสอบว่า email ไม่ได้เปลี่ยน
         if email.data == current_user.email:
             return  # ถ้าเป็นอีเมลเดิมของตัวเอง ไม่ต้องเช็ค
