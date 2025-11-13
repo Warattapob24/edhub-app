@@ -36,7 +36,7 @@ def upgrade():
         batch_op.create_foreign_key('fk_classroom_room', 'room', ['room_id'], ['id'])
 
     with op.batch_alter_table('curriculum', schema=None) as batch_op:
-        batch_op.drop_constraint(batch_op.f('_semester_grade_subject_uc'), type_='unique')
+        #batch_op.drop_constraint(batch_op.f('_semester_grade_subject_uc'), type_='unique')
         batch_op.create_unique_constraint('_semester_grade_program_subject_uc', ['semester_id', 'grade_level_id', 'program_id', 'subject_id'])
         batch_op.create_foreign_key('fk_curriculum_program', 'program', ['program_id'], ['id'])
 
@@ -48,7 +48,7 @@ def downgrade():
     with op.batch_alter_table('curriculum', schema=None) as batch_op:
         batch_op.drop_constraint('fk_curriculum_program', type_='foreignkey')
         batch_op.drop_constraint('_semester_grade_program_subject_uc', type_='unique')
-        batch_op.create_unique_constraint(batch_op.f('_semester_grade_subject_uc'), ['semester_id', 'grade_level_id', 'subject_id'])
+        #batch_op.create_unique_constraint(batch_op.f('_semester_grade_subject_uc'), ['semester_id', 'grade_level_id', 'subject_id'])
 
     with op.batch_alter_table('classroom', schema=None) as batch_op:
         batch_op.drop_constraint('fk_classroom_room', type_='foreignkey')
