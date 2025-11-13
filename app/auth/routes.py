@@ -234,7 +234,8 @@ def get_google_flow():
             "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
             "redirect_uris": [
                 "http://127.0.0.1:5000/auth/google-callback",
-                "http://localhost:5000/auth/google-callback"
+                "http://localhost:5000/auth/google-callback",
+                "https://edhub-app.onrender.com/auth/google-callback"
             ]
         }
     }
