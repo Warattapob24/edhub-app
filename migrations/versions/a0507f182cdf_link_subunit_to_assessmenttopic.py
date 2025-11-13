@@ -25,7 +25,7 @@ def upgrade():
     sa.ForeignKeyConstraint(['topic_id'], ['assessment_topic.id'], ),
     sa.PrimaryKeyConstraint('subunit_id', 'topic_id')
     )
-    op.drop_table('_alembic_tmp_administrative_department')
+    # op.drop_table('_alembic_tmp_administrative_department')
     with op.batch_alter_table('administrative_department', schema=None) as batch_op:
         batch_op.create_foreign_key(None, 'role', ['vice_role_id'], ['id'])
         batch_op.create_foreign_key(None, 'role', ['member_role_id'], ['id'])
@@ -73,21 +73,21 @@ def downgrade():
         batch_op.drop_constraint(None, type_='foreignkey')
         batch_op.drop_constraint(None, type_='foreignkey')
 
-    op.create_table('_alembic_tmp_administrative_department',
-    sa.Column('id', sa.INTEGER(), nullable=False),
-    sa.Column('name', sa.VARCHAR(length=150), nullable=False),
-    sa.Column('head_id', sa.INTEGER(), nullable=True),
-    sa.Column('vice_director_id', sa.INTEGER(), nullable=True),
-    sa.Column('head_role_id', sa.INTEGER(), nullable=True),
-    sa.Column('vice_role_id', sa.INTEGER(), nullable=True),
-    sa.Column('member_role_id', sa.INTEGER(), nullable=True),
-    sa.ForeignKeyConstraint(['head_id'], ['user.id'], ),
-    sa.ForeignKeyConstraint(['head_role_id'], ['role.id'], name=op.f('fk_admin_dept_head_role_id')),
-    sa.ForeignKeyConstraint(['member_role_id'], ['role.id'], name=op.f('fk_admin_dept_member_role_id')),
-    sa.ForeignKeyConstraint(['vice_director_id'], ['user.id'], ),
-    sa.ForeignKeyConstraint(['vice_role_id'], ['role.id'], name=op.f('fk_admin_dept_vice_role_id')),
-    sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('name')
-    )
+    #op.create_table('_alembic_tmp_administrative_department',
+    #sa.Column('id', sa.INTEGER(), nullable=False),
+    #sa.Column('name', sa.VARCHAR(length=150), nullable=False),
+    #sa.Column('head_id', sa.INTEGER(), nullable=True),
+    #sa.Column('vice_director_id', sa.INTEGER(), nullable=True),
+    #sa.Column('head_role_id', sa.INTEGER(), nullable=True),
+    #sa.Column('vice_role_id', sa.INTEGER(), nullable=True),
+    #sa.Column('member_role_id', sa.INTEGER(), nullable=True),
+    #sa.ForeignKeyConstraint(['head_id'], ['user.id'], ),
+    #sa.ForeignKeyConstraint(['head_role_id'], ['role.id'], name=op.f('fk_admin_dept_head_role_id')),
+    #sa.ForeignKeyConstraint(['member_role_id'], ['role.id'], name=op.f('fk_admin_dept_member_role_id')),
+    #sa.ForeignKeyConstraint(['vice_director_id'], ['user.id'], ),
+    #sa.ForeignKeyConstraint(['vice_role_id'], ['role.id'], name=op.f('fk_admin_dept_vice_role_id')),
+    #sa.PrimaryKeyConstraint('id'),
+    #sa.UniqueConstraint('name')
+    #)
     op.drop_table('subunit_topics')
     # ### end Alembic commands ###
