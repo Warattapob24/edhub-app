@@ -21,7 +21,7 @@ def upgrade():
         batch_op.add_column(sa.Column('initial_setup_complete', sa.Boolean(), nullable=True))
 
     # ตั้งค่า default สำหรับ record เดิม
-    op.execute('UPDATE "user" SET initial_setup_complete = 0')
+    op.execute('UPDATE "user" SET initial_setup_complete = false')
 
     # เปลี่ยนคอลัมน์ให้เป็น NOT NULL หลังจากอัปเดตค่าแล้ว
     with op.batch_alter_table('user', schema=None) as batch_op:
