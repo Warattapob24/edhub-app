@@ -1,47 +1,28 @@
-{% extends "admin/layout_standalone.html" %} {# ใช้ layout พิเศษที่ไม่มี Sidebar #}
+{% extends "base.html" %} {# 👈 [FIX] ใช้ base.html (ที่มี Sidebar) #}
 
-{% block content %}
-<div class="container">
+{% block title %}EdHub - {{ title }}{% endblock %}
+
+{% block main_content %}
+<div class="container mt-4 mb-5">
     <div class="row justify-content-center">
         <div class="col-md-8 col-lg-7">
-            <div class="card shadow-lg border-0 rounded-lg mt-5 mb-5">
+            <div class="card shadow-lg border-0 rounded-lg">
                 <div class="card-header">
                     <h3 class="text-center font-weight-light my-4">{{ title }}</h3>
                 </div>
                 <div class="card-body">
                     
-                    <h4 class="text-center">สวัสดี, {{ current_user.full_name or current_user.username }}</h4>
-                    {% if password_required %}
-                    <p class="text-muted text-center">ยินดีต้อนรับ! เพื่อความปลอดภัย กรุณาตั้งค่าบัญชีของคุณให้เสร็จสมบูรณ์</p>
-                    {% else %}
-                    <p class="text-muted text-center">ยินดีต้อนรับ! บัญชี Google ของคุณเชื่อมต่อแล้ว กรุณากรอกข้อมูลส่วนตัวเพื่อเริ่มใช้งาน</p>
-                    {% endif %}
-                    
                     <form method="POST" action="">
                         {{ form.hidden_tag() }}
 
-                        {% if password_required %}
                         <fieldset class="border p-3 rounded-3 mb-4">
-                            <legend class="fs-6 fw-bold">ส่วนที่ 1: ตั้งค่าการเข้าสู่ระบบ</legend>
+                            <legend class="fs-6 fw-bold">ส่วนที่ 1: ข้อมูลส่วนตัว และการเข้าสู่ระบบ</legend>
+
                             <div class="form-floating mb-3">
                                 {{ form.username(class="form-control", placeholder="Username") }}
                                 {{ form.username.label() }}
                                 {% for error in form.username.errors %}<small class="text-danger">{{ error }}</small>{% endfor %}
                             </div>
-                             <div class="form-floating mb-3">
-                                {{ form.password(class="form-control", placeholder="Password") }}
-                                {{ form.password.label() }}
-                                {% for error in form.password.errors %}<small class="text-danger">{{ error }}</small>{% endfor %}
-                            </div>
-                             <div class="form-floating mb-3">
-                                {{ form.password2(class="form-control", placeholder="Confirm Password") }}
-                                {{ form.password2.label() }}
-                                {% for error in form.password2.errors %}<small class="text-danger">{{ error }}</small>{% endfor %}
-                            </div>
-                        </fieldset>
-                        {% endif %}
-                        <fieldset class="border p-3 rounded-3 mb-4">
-                            <legend class="fs-6 fw-bold">ส่วนที่ 2: ข้อมูลส่วนตัวและการมอบหมายหน้าที่</legend>
                             
                             <div class="row g-2 mb-3">
                                 <div class="col-md">
@@ -59,14 +40,33 @@
                                     </div>
                                 </div>
                             </div>
-                            <div class="form-floating mb-3">
-                                {{ form.job_title(class="form-control", placeholder="Job Title") }}
-                                {{ form.job_title.label() }}
-                            </div>
+                            
                             <div class="form-floating mb-3">
                                 {{ form.email(class="form-control", placeholder="Email") }}
                                 {{ form.email.label() }}
                                 {% for error in form.email.errors %}<small class="text-danger">{{ error }}</small>{% endfor %}
+                            </div>
+                        </fieldset>
+
+                        <fieldset class="border p-3 rounded-3 mb-4">
+                            <legend class="fs-6 fw-bold">ส่วนที่ 2: เปลี่ยนรหัสผ่าน (กรอกเฉพาะเมื่อต้องการเปลี่ยน)</legend>
+                             <div class="form-floating mb-3">
+                                {{ form.password(class="form-control", placeholder="Password") }}
+                                {{ form.password.label() }}
+                                {% for error in form.password.errors %}<small class="text-danger">{{ error }}</small>{% endfor %}
+                            </div>
+                             <div class="form-floating mb-3">
+                                {{ form.password2(class="form-control", placeholder="Confirm Password") }}
+                                {{ form.password2.label() }}
+                                {% for error in form.password2.errors %}<small class="text-danger">{{ error }}</small>{% endfor %}
+                            </div>
+                        </fieldset>
+
+                        <fieldset class="border p-3 rounded-3 mb-4">
+                            <legend class="fs-6 fw-bold">ส่วนที่ 3: การมอบหมายหน้าที่</legend>
+                            <div class="form-floating mb-3">
+                                {{ form.job_title(class="form-control", placeholder="Job Title") }}
+                                {{ form.job_title.label() }}
                             </div>
                             <div class="mb-3">
                                 {{ form.member_of_groups.label(class="form-label") }}
@@ -83,20 +83,14 @@
                         </div>
                     </form>
                 </div>
-                
-                <div class="card-footer text-center py-3">
-                    <div class="small">
-                        พบปัญหา หรือต้องการสลับบัญชี? 
-                        <a href="{{ url_for('auth.logout') }}">ออกจากระบบ</a>
-                    </div>
-                </div>
-                </div>
+            </div>
         </div>
     </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
+{{ super() }} {# 👈 [FIX] ต้องเรียก super() เพื่อโหลด Tom-Select จาก base.html (ถ้ามี) #}
 <link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
 <script>

@@ -5,7 +5,7 @@ from app.main import bp
 from app.models import Notification, Setting
 from app import db 
 
-@bp.route('/')
+#@bp.route('/')
 @bp.route('/index')
 @login_required
 def index():

@@ -127,6 +127,8 @@
                     <span class="d-none d-sm-inline">{{ current_user.first_name or current_user.username }}</span>
                 </a>
                 <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end shadow-lg">
+                    <li><a class="dropdown-item" href="{{ url_for('auth.edit_profile') }}"><i class="bi bi-person-fill-gear me-2"></i> แก้ไขข้อมูลส่วนตัว</a></li>
+                    <li><hr class="dropdown-divider"></li>
                     <li><a class="dropdown-item" href="{{ url_for('auth.logout') }}">ออกจากระบบ</a></li>
                 </ul>
             </div>

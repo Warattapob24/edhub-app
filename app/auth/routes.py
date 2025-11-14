@@ -1,12 +1,13 @@
 # FILE: app/auth/routes.py
 import os
 import requests
+import certifi
 from flask import current_app, render_template, flash, redirect, session, url_for, request
 from flask_login import current_user, login_required, login_user, logout_user
 from app import db
 from app.auth import bp
 from app.auth.decorators import initial_setup_required
-from app.auth.forms import LoginForm, InitialSetupForm
+from app.auth.forms import EditProfileForm, LoginForm, InitialSetupForm
 # --- แก้ไข Import ให้ครบถ้วน ---
 from app.models import Role, User, Student
 from app.services import log_action
@@ -162,7 +163,8 @@ def initial_setup():
 
     form = InitialSetupForm()
     password_required = current_user.must_change_password
-    
+    form.user_id = current_user.id
+
     if form.validate_on_submit():
         old_username = current_user.username
         old_email = current_user.email
@@ -220,6 +222,64 @@ def initial_setup():
                            title='ตั้งค่าบัญชีครั้งแรก', 
                            form=form,
                            password_required=password_required)
+
+# --- [NEW] เพิ่ม Route ใหม่สำหรับ Edit Profile ---
+@bp.route('/edit-profile', methods=['GET', 'POST'])
+@login_required
+def edit_profile():
+    # ผู้ใช้ที่ยังตั้งค่าไม่เสร็จ จะถูกบังคับไปหน้า initial_setup ก่อน
+    if not current_user.initial_setup_complete or current_user.must_change_password:
+        flash('กรุณาตั้งค่าบัญชีครั้งแรกให้เสร็จสมบูรณ์ก่อน', 'warning')
+        return redirect(url_for('auth.initial_setup'))
+        
+    form = EditProfileForm()
+
+    if form.validate_on_submit():
+        # บันทึกข้อมูลส่วนตัว (บังคับ)
+        current_user.username = form.username.data
+        current_user.first_name = form.first_name.data
+        current_user.last_name = form.last_name.data
+        current_user.job_title = form.job_title.data
+        current_user.email = form.email.data
+        current_user.member_of_groups = form.member_of_groups.data
+        current_user.advised_classrooms = form.advised_classrooms.data
+        
+        # บันทึกรหัสผ่าน (ถ้ามีการกรอก)
+        if form.password.data:
+            current_user.set_password(form.password.data)
+            flash('บันทึกรหัสผ่านใหม่เรียบร้อยแล้ว', 'success')
+
+        try:
+            db.session.commit()
+            flash('บันทึกข้อมูลส่วนตัวเรียบร้อยแล้ว', 'success')
+            
+            # (Optional: Log)
+            log_action("Profile Edited", user=current_user)
+            try: db.session.commit()
+            except Exception as log_err:
+                db.session.rollback()
+                current_app.logger.error(f"Failed to commit profile edit log: {log_err}")
+
+            return redirect(url_for('auth.edit_profile'))
+        
+        except Exception as e:
+             db.session.rollback()
+             flash(f'เกิดข้อผิดพลาดในการบันทึกข้อมูล: {e}', 'danger')
+             current_app.logger.error(f"Error during profile edit for user {current_user.id}: {e}")
+
+    elif request.method == 'GET':
+        # เติมข้อมูลปัจจุบันลงในฟอร์ม
+        form.username.data = current_user.username
+        form.first_name.data = current_user.first_name
+        form.last_name.data = current_user.last_name
+        form.job_title.data = current_user.job_title
+        form.email.data = current_user.email
+        form.member_of_groups.data = current_user.member_of_groups
+        form.advised_classrooms.data = current_user.advised_classrooms
+
+    return render_template('auth/edit_profile.html', 
+                           title='แก้ไขข้อมูลส่วนตัว', 
+                           form=form)
 
 # --- [FIX] เพิ่มบรรทัดนี้เพื่ออนุญาต HTTP (สำหรับ Local Development) ---
 if not os.environ.get('RENDER'):
@@ -281,28 +341,38 @@ def google_callback():
     """
     จัดการ Callback หลังจาก Google Authenticate สำเร็จ.
     """
-    # (โค้ดส่วน flow.fetch_token() และ id_token.verify_oauth2_token() เหมือนเดิม)
-    # ...
     if request.args.get('state') != session.get('state'):
         flash('เกิดข้อผิดพลาดในการยืนยันตัวตน (Invalid state)', 'danger')
         return redirect(url_for('auth.login'))
 
     flow = get_google_flow()
+    
     try:
-        flow.fetch_token(authorization_response=request.url)
+        # นี่คือวิธีที่ปลอดภัยในการแก้ปัญหา SSLError
+        flow.fetch_token(
+            authorization_response=request.url,
+            verify=certifi.where()
+        )
     except Exception as e:
-        flash(f'เกิดข้อผิดพลาดในการเชื่อมต่อ Google: {e}', 'danger')
+        current_app.logger.error(f"Error fetching Google token: {e}")
+        flash(f'เกิดข้อผิดพลาดในการเชื่อมต่อ Google (SSL): {e}', 'danger')
         return redirect(url_for('auth.login'))
 
     credentials = flow.credentials
     
     try:
+        # --- [FIX 2] ปิดการตรวจสอบที่นี่ด้วย (เผื่อไว้) ---
+        authed_session = requests.Session()
+        authed_session.verify = certifi.where()
+        google_request = GoogleRequest(session=authed_session)
+
         id_info = id_token.verify_oauth2_token(
             credentials.id_token,
-            GoogleRequest(),
+            google_request, 
             current_app.config['GOOGLE_CLIENT_ID']
         )
     except ValueError as e:
+        current_app.logger.error(f"Error verifying Google ID token: {e}")
         flash(f'เกิดข้อผิดพลาดในการดึงข้อมูลผู้ใช้: {e}', 'danger')
         return redirect(url_for('auth.login'))
 
@@ -315,83 +385,58 @@ def google_callback():
         flash('ไม่สามารถดึงข้อมูล Google ID หรือ Email ได้', 'danger')
         return redirect(url_for('auth.login'))
 
-    # --- ตรรกะการ Login/Register (ปรับปรุงแล้ว) ---
-    
-    # 1. ค้นหาผู้ใช้ด้วย Google ID (เคย Login ด้วย Google แล้ว)
+    # (ตรรกะ Login/Register เหมือนเดิม)
     user = User.query.filter_by(google_id=google_id).first()
     if user:
-        # ✅ Case 1: พบผู้ใช้, Login ได้เลย
         user.google_credentials_json = credentials.to_json() 
         login_user(user, remember=True)
         log_action("Login Success (Google)", user=user)
         db.session.commit()
-        
-        # (ตรรกะนี้ถูกต้องตามที่ท่านต้องการ)
         if not user.initial_setup_complete:
             flash('ยินดีต้อนรับ! กรุณากรอกข้อมูลส่วนตัวให้ครบถ้วน', 'info')
             return redirect(url_for('auth.initial_setup'))
-            
         return redirect(get_redirect_target(user))
 
-    # 2. ค้นหาผู้ใช้ด้วย Email (บัญชีที่ Admin สร้างไว้ หรือบัญชีเก่า)
     user = User.query.filter_by(email=user_email).first()
     if user:
-        # ✅ Case 2: พบ Email, ทำการเชื่อมบัญชี
         user.google_id = google_id
         user.google_credentials_json = credentials.to_json()
         db.session.add(user)
         log_action("Link Google Account", user=user, new_value={'google_id': google_id})
         db.session.commit()
-        
         login_user(user, remember=True)
-        
-        # (ตรรกะนี้ถูกต้อง และเป็นสาเหตุที่ท่านเจอ)
         if not user.initial_setup_complete:
             flash('เชื่อมต่อบัญชี Google สำเร็จ! กรุณากรอกข้อมูลส่วนตัว', 'info')
             return redirect(url_for('auth.initial_setup'))
-
         return redirect(get_redirect_target(user))
 
-    # 3. --- [FIX] ตรรกะการสร้างผู้ใช้ใหม่ (สำหรับครูสมัครเอง) ---
-    # ตรวจสอบอีกครั้งว่า Username (จาก Email) ซ้ำหรือไม่
     if User.query.filter_by(username=user_email).first():
         flash(f'ไม่สามารถสร้างบัญชีได้: ชื่อผู้ใช้ (Username) "{user_email}" นี้ถูกใช้ไปแล้ว', 'danger')
         return redirect(url_for('auth.login'))
 
     try:
-        # ✅ Case 3: สร้างผู้ใช้ใหม่
         new_user = User(
             google_id=google_id,
             email=user_email,
             first_name=user_first_name,
             last_name=user_last_name,
-            username=user_email, # ตั้ง username เริ่มต้นเป็น email
+            username=user_email,
             password_hash=None, 
             must_change_username=False,
             must_change_password=False,
-            initial_setup_complete=False, # 👈 บังคับไปหน้า setup (ถูกต้องสำหรับผู้ใช้ใหม่)
+            initial_setup_complete=False,
             google_credentials_json = credentials.to_json()
         )
-        
-        # (ท่านสามารถกำหนด Role เริ่มต้นให้ครูใหม่ที่นี่)
-        # teacher_role = Role.query.filter_by(name='Teacher').first()
-        # if teacher_role:
-        #     new_user.roles.append(teacher_role)
-            
         db.session.add(new_user)
         db.session.commit()
-        
         log_action("Auto-Create User (Google)", user=new_user, new_value={'email': user_email, 'google_id': google_id})
         db.session.commit()
-
         login_user(new_user, remember=True)
         flash('สร้างบัญชีผู้ใช้ผ่าน Google สำเร็จ! กรุณาตั้งค่าบัญชีของคุณ', 'success')
-        return redirect(url_for('auth.initial_setup')) # 👈 ส่งไปหน้า Setup (ถูกต้องสำหรับผู้ใช้ใหม่)
-
+        return redirect(url_for('auth.initial_setup'))
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Error creating user from Google: {e}")
-        # (ถ้าเกิด Error ซ้ำซ้อน เช่น Email ซ้ำ แม้เราจะเช็คไปแล้ว)
         flash(f'เกิดข้อผิดพลาดในการสร้างบัญชี: {e}', 'danger')
         return redirect(url_for('auth.login'))
     
