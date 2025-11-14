@@ -4252,7 +4252,7 @@ def mobile_entry(entry_id):
     
     existing_scores_list = Score.query.filter(
         Score.graded_item_id.in_([item.id for item in graded_items]),
-        Score.student_id.in_(student_ids)
+        Score.student_id.in_([e.student_id for e in enrollments]) # 👈 [FIX] ใช้ student_ids
     ).all()
     scores = {f"{s.student_id}-{s.graded_item_id}": s.score for s in existing_scores_list}
 
@@ -4431,6 +4431,11 @@ def mobile_entry(entry_id):
 
     qualitative_assessment_data_json = json.dumps(qualitative_assessment_data)
 
+    # --- [THE FIX] ---
+    # 8. สร้าง Form เปล่าเพื่อส่ง CSRF Token
+    form = FlaskForm()
+    # --- [END FIX] ---
+
     # --- 8. Render Template (ส่งข้อมูลใหม่ทั้งหมด) ---
     return render_template('teacher/mobile_entry.html',
                            entry=entry,
@@ -4438,18 +4443,19 @@ def mobile_entry(entry_id):
                            classroom=classroom,
                            enrollments=enrollments,
                            attendance_records=attendance_records,
-                           graded_items=graded_items, # 👈 [FIXED]
+                           graded_items=graded_items, 
                            scores=scores,
                            date_iso=date_iso,
                            attendance_date=attendance_date,
                            
                            # --- ข้อมูลที่อัปเดต ---
                            assessment_topics_json=assessment_topics_json,
-                           qualitative_assessment_data_json=qualitative_assessment_data_json, # 👈 [FIXED]
+                           qualitative_assessment_data_json=qualitative_assessment_data_json, 
                            suggested_unit_id=suggested_unit_id,
                            student_group_map_json=student_group_map_json,
                            lesson_plan=lesson_plan, 
-                           classroom_id_js=classroom.id 
+                           classroom_id_js=classroom.id,
+                           form=form # 👈 [THE FIX] ส่ง form ไปยัง template
                            )
 
 # --- [ V28.2 START: เพิ่ม API 1 ] ---
