@@ -1,5 +1,4 @@
 # FILE: app/__init__.py
-
 import re
 from markupsafe import Markup
 from flask import Flask, redirect, url_for
@@ -110,4 +109,15 @@ def create_app(config_class=Config):
             return dict(g_unread_notifications_count=count)
         return dict(g_unread_notifications_count=0)
     
+    # --- [THE FIX] ---
+    # นี่คือการแก้ปัญหาสำหรับ Render Free Tier
+    # เราจะสั่งให้ SQLAlchemy สร้างตารางที่ยังไม่มี (ถ้ามีอยู่แล้วมันจะข้ามไป)
+    # โดยไม่สนใจประวัติ Migration (Alembic) ที่พังไปแล้ว
+    with app.app_context():
+        # เราต้อง import models ที่นี่เพื่อให้ SQLAlchemy รู้จักตารางทั้งหมด
+        # (แม้ว่า blueprints ต่างๆ จะ import ไปแล้วก็ตาม นี่คือการการันตี)
+        from app import models 
+        db.create_all()
+    # --- [END FIX] ---
+
     return app
