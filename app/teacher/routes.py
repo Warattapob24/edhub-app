@@ -41,7 +41,7 @@ import uuid # 👈 สำหรับสร้าง ID ที่ไม่ซ้
 
 @bp.route('/dashboard')
 @login_required
-def todays_classroom():
+def dashboard():
     if not current_user.has_role('Teacher'):
         abort(403)
     
