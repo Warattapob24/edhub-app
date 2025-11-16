@@ -482,13 +482,7 @@ document.addEventListener('DOMContentLoaded', function () {
             if (data.is_midterm_enabled) finalColspan++;
             if (data.is_final_enabled) finalColspan++;
             headerRow.innerHTML += `<th colspan="${finalColspan}" class="text-center">สรุปผลการเรียน</th>`;
-            subHeaderRowHtml += `<th class="text-nowrap text-center">คะแนนเก็บ</th>`;
-            if (data.is_midterm_enabled) {
-                subHeaderRowHtml += `<th class="text-nowrap text-center">กลางภาค (${data.total_midterm_max_score || 0}) ${createToggleSwitches('midterm', false)}</th>`;
-            }
-            if (data.is_final_enabled) {
-                subHeaderRowHtml += `<th class="text-nowrap text-center">ปลายภาค (${data.total_final_max_score || 0}) ${createToggleSwitches('final', false)}</th>`;
-            }
+            
             subHeaderRowHtml += `<th class="text-nowrap text-center">คะแนนจริง</th><th class="text-nowrap text-center">รวมคะแนน (100)</th><th class="text-nowrap text-center">เกรด</th>`;
             thead.innerHTML = '';
             thead.appendChild(headerRow);
