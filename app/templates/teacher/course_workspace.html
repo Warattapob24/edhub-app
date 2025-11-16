@@ -1282,6 +1282,8 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         headerRow.innerHTML += `<th colspan="${finalColspan}" class="text-center">สรุปผลการเรียน</th>`;
 
+        subHeaderRowHtml += `<th class="text-nowrap text-center">คะแนนจริง</th><th class="text-nowrap text-center">รวมคะแนน (100)</th><th class="text-nowrap text-center">เกรด</th>`;
+
         thead.innerHTML = '';
         thead.appendChild(headerRow);
         const subHeader = document.createElement('tr');
