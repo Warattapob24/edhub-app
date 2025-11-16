@@ -572,8 +572,11 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         function setupGradebookEventListeners(table, data) {
+            // --- START: Helper Functions (อยู่ข้างในนี้ทั้งหมด) ---
             let saveDebounce;
             let isDistributing = false;
+
+            // (ฟังก์ชัน calculateMode เหมือนเดิม)
             const calculateMode = (arr) => {
                 if (!arr || arr.length === 0) return '';
                 const frequency = arr.reduce((acc, val) => {
@@ -582,8 +585,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     }
                     return acc;
                 }, {});
-                let maxFreq = 0,
-                    mode = '';
+                let maxFreq = 0, mode = '';
                 for (const val in frequency) {
                     if (frequency[val] > maxFreq) {
                         maxFreq = frequency[val];
@@ -592,17 +594,42 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
                 return mode;
             };
+
+            // (ฟังก์ชัน saveScoresBulk เหมือนเดิม)
             const saveScoresBulk = (scoresData, endpointUrl) => {
                 if (scoresData.length === 0) return;
                 const table = document.getElementById('gradebook-table');
                 const courseId = table ? table.dataset.courseId : null;
-                if (!courseId) return;
+                if (!courseId) {
+                    console.error("CRITICAL: course_id not found on the gradebook table.");
+                    return;
+                }
+                const payload = { scores: scoresData, course_id: courseId };
+                
+                // console.log("--- [DEBUG] Preparing to save bulk scores ---");
+                // console.log("Endpoint URL:", endpointUrl);
+                // console.log("Payload being sent:", JSON.stringify(payload, null, 2));
+
                 fetch(endpointUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-                    body: JSON.stringify({ scores: scoresData, course_id: courseId })
-                }).catch(err => console.error('Bulk save error:', err));
+                    body: JSON.stringify(payload)
+                })
+                .then(response => {
+                    if (!response.ok) { return response.text().then(text => { throw new Error(`Server responded with status ${response.status}. Body: ${text}`); }); }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.status !== 'success') console.error('Save failed on server-side:', data.message);
+                })
+                .catch(err => {
+                    console.error('--- [DEBUG] An error occurred in fetch/save process ---');
+                    console.error('Bulk save error:', err);
+                    Swal.fire('เกิดข้อผิดพลาดในการบันทึก', `กรุณาตรวจสอบ Console (F12) สำหรับรายละเอียด: ${err.message}`, 'error');
+                });
             };
+
+            // (ฟังก์ชัน saveExamScore เหมือนเดิม)
             const saveExamScore = (examData) => {
                 fetch("{{ url_for('teacher.save_enrollment_exam_score') }}", {
                     method: 'POST',
@@ -610,19 +637,36 @@ document.addEventListener('DOMContentLoaded', function () {
                     body: JSON.stringify(examData)
                 }).catch(err => console.error('Exam save error:', err));
             };
+                        
+            // (ฟังก์ชัน handlePropagation เหมือนเดิม)
             const handlePropagation = (input) => {
                 const studentRow = input.closest('tr');
                 if (!studentRow) return;
                 const columnId = input.dataset.itemId || input.dataset.examType;
-                if (!columnId) return;
+                if (!columnId) {
+                    updateStudentRowTotals(studentRow);
+                    clearTimeout(saveDebounce);
+                    saveDebounce = setTimeout(() => {
+                        const studentId = studentRow.dataset.studentId;
+                        const score = input.value === '' ? null : parseFloat(input.value);
+                        if (input.dataset.itemId) {
+                            const numericId = input.dataset.itemId.replace('g-', '');
+                            saveScoresBulk([{ student_id: studentId, graded_item_id: numericId, score: score }], "{{ url_for('teacher.save_scores_bulk') }}");
+                        } else if (input.dataset.examType) {
+                            saveExamScore({ student_id: studentId, course_id: data.course_id, exam_type: input.dataset.examType, score: score });
+                        }
+                    }, 800);
+                    return;
+                }
                 const groupSelector = `.propagation-toggle.group-toggle[data-item-id="${columnId}"]`;
                 const allSelector = `.propagation-toggle.all-toggle[data-item-id="${columnId}"]`;
                 const allToggle = table.querySelector(allSelector);
                 const groupToggle = table.querySelector(groupSelector);
                 if (!allToggle && !groupToggle) return;
                 let activeToggle = null;
-                if (allToggle ?.checked) activeToggle = allToggle;
-                else if (groupToggle ?.checked) activeToggle = groupToggle;
+                if (allToggle?.checked) activeToggle = allToggle;
+                else if (groupToggle?.checked) activeToggle = groupToggle;
+
                 if (!activeToggle) {
                     updateStudentRowTotals(studentRow);
                     clearTimeout(saveDebounce);
@@ -680,11 +724,15 @@ document.addEventListener('DOMContentLoaded', function () {
                             examScoresToSave.push({ student_id: studentId, course_id: data.course_id, exam_type: i.dataset.examType, score: score });
                         }
                     });
-                    if (gradedItemsToSave.length > 0) saveScoresBulk(gradedItemsToSave, "{{ url_for('teacher.save_scores_bulk') }}");
+                    if (gradedItemsToSave.length > 0) {
+                        saveScoresBulk(gradedItemsToSave, "{{ url_for('teacher.save_scores_bulk') }}");
+                    }
                     examScoresToSave.forEach(examScore => saveExamScore(examScore));
                 }, 800);
                 isDistributing = false;
-            }
+            };
+            
+            // (ฟังก์ชัน handleQualitativeChange เหมือนเดิม)
             const handleQualitativeChange = (changedSelect) => {
                 if (isDistributing) return;
                 isDistributing = true;
@@ -702,16 +750,22 @@ document.addEventListener('DOMContentLoaded', function () {
                 const newValue = changedSelect.value;
                 if (changedSelect.classList.contains('qualitative-main-summary')) {
                     studentRow.querySelectorAll(`.qualitative-select[data-main-id="${mainTopicIdForSwitch}"]`).forEach(subSelect => {
-                        if (subSelect.value !== newValue) { subSelect.value = newValue; allModifiedSelects.push(subSelect); }
+                        if (subSelect.value !== newValue) {
+                            subSelect.value = newValue;
+                            allModifiedSelects.push(subSelect);
+                        }
                     });
                 }
                 if (activeToggle) {
                     let targetRows = [];
                     const mode = activeToggle.dataset.mode;
-                    if (mode === 'all') targetRows = Array.from(table.querySelectorAll('tr[data-student-id]'));
-                    else if (mode === 'group') {
+                    if (mode === 'all') {
+                        targetRows = Array.from(table.querySelectorAll('tr[data-student-id]'));
+                    } else if (mode === 'group') {
                         const targetGroupId = studentRow.dataset.groupId;
-                        if (targetGroupId) targetRows = Array.from(table.querySelectorAll(`tr[data-group-id="${targetGroupId}"]`));
+                        if (targetGroupId) {
+                            targetRows = Array.from(table.querySelectorAll(`tr[data-group-id="${targetGroupId}"]`));
+                        }
                     }
                     const uniqueSelectsToPropagate = [...new Set(allModifiedSelects)];
                     uniqueSelectsToPropagate.forEach(selectToPropagate => {
@@ -721,7 +775,10 @@ document.addEventListener('DOMContentLoaded', function () {
                         targetRows.forEach(row => {
                             if (row !== studentRow) {
                                 const selectInRow = row.querySelector(selector);
-                                if (selectInRow && selectInRow.value !== currentValue) { selectInRow.value = currentValue; allModifiedSelects.push(selectInRow); }
+                                if (selectInRow && selectInRow.value !== currentValue) {
+                                    selectInRow.value = currentValue;
+                                    allModifiedSelects.push(selectInRow);
+                                }
                             }
                         });
                     });
@@ -733,22 +790,183 @@ document.addEventListener('DOMContentLoaded', function () {
                         const subSelectsInRow = Array.from(row.querySelectorAll(`.qualitative-select[data-main-id="${mainTopicIdForSwitch}"]`));
                         if (subSelectsInRow.length > 0) {
                             const newMode = calculateMode(subSelectsInRow.map(s => s.value));
-                            if (mainSummaryInRow.value !== newMode) { mainSummaryInRow.value = newMode; allModifiedSelects.push(mainSummaryInRow); }
+                            if (mainSummaryInRow.value !== newMode) {
+                                mainSummaryInRow.value = newMode;
+                                allModifiedSelects.push(mainSummaryInRow);
+                            }
                         }
                     }
                 });
                 if (allModifiedSelects.length > 0) {
                     clearTimeout(saveDebounce);
                     saveDebounce = setTimeout(() => {
-                        const scoresToSave = [...new Set(allModifiedSelects)].map(sel => ({ student_id: sel.closest('tr') ?.dataset.studentId, topic_id: sel.dataset.topicId.replace('q-', ''), score: sel.value === '' ? null : sel.value })).filter(s => s.student_id && s.topic_id);
+                        const scoresToSave = [...new Set(allModifiedSelects)].map(sel => ({
+                            student_id: sel.closest('tr')?.dataset.studentId,
+                            topic_id: sel.dataset.topicId.replace('q-', ''),
+                            score: sel.value === '' ? null : sel.value
+                        })).filter(s => s.student_id && s.topic_id);
                         if (scoresToSave.length > 0) saveScoresBulk(scoresToSave, "{{ url_for('teacher.save_qualitative_scores_bulk') }}");
                     }, 800);
                 }
                 isDistributing = false;
             };
+            
+            // --- [NEW] Event Listener for creating EXAM Google Forms ---
+            table.addEventListener('click', function(e) {
+                const btn = e.target.closest('.btn-create-exam-form');
+                if (!btn) return;
+
+                e.preventDefault();
+                const examType = btn.dataset.examType; // 'midterm' or 'final'
+                const courseId = btn.dataset.courseId;
+                const examName = (examType === 'midterm') ? 'สอบกลางภาค' : 'สอบปลายภาค';
+
+                Swal.fire({
+                    title: `สร้าง Google Form?`,
+                    text: `คุณกำลังจะสร้าง Google Form Quiz สำหรับ "${examName}" ระบบจะติดตั้ง Trigger อัตโนมัติเพื่อรับคะแนนกลับมา`,
+                    icon: 'question',
+                    showCancelButton: true,
+                    confirmButtonText: 'ใช่, สร้างเลย',
+                    cancelButtonText: 'ยกเลิก'
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        btn.disabled = true;
+                        btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> สร้าง...';
+                        
+                        // [FIX] เพิ่ม /teacher/ prefix
+                        fetch(`/teacher/api/course/${courseId}/create-google-form/${examType}`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRFToken': csrfToken
+                            }
+                        })
+                        .then(response => {
+                            if (!response.ok) {
+                                return response.json().then(errData => {
+                                    // [FIX] ตรวจจับ Error 401 (Re-auth)
+                                    if (response.status === 401 && errData.reauth) {
+                                        Swal.fire('เกิดข้อผิดพลาด!', 'ไม่สามารถยืนยันสิทธิ์ Google ได้ กรุณา Logout และ Login ด้วย Google ใหม่อีกครั้ง', 'error');
+                                    }
+                                    throw new Error(errData.message || `HTTP error! status: ${response.status}`);
+                                });
+                            }
+                            return response.json();
+                        })
+                        .then(data => {
+                            if (data.status === 'success') {
+                                Swal.fire({
+                                    title: 'สร้าง Form สำเร็จ!',
+                                    text: 'ระบบได้สร้าง Form, Sheet, และติดตั้ง Trigger เรียบร้อยแล้ว',
+                                    icon: 'success',
+                                    confirmButtonText: 'เปิด Form (เพื่อเพิ่มข้อสอบ)',
+                                    showCancelButton: true,
+                                    cancelButtonText: 'ปิด'
+                                }).then((result) => {
+                                    if (result.isConfirmed) {
+                                        window.open(data.form_url, '_blank');
+                                    }
+                                });
+                                
+                                btn.classList.remove('btn-primary', 'btn-create-exam-form');
+                                btn.classList.add('btn-success');
+                                btn.innerHTML = '<i class="bi bi-check-circle"></i> Linked';
+                                btn.title = 'เชื่อมต่อกับ Google Form แล้ว';
+                                btn.disabled = true;
+                            } else {
+                                throw new Error(data.message || 'เกิดข้อผิดพลาดไม่ทราบสาเหตุ');
+                            }
+                        })
+                        .catch(error => {
+                            Swal.fire('เกิดข้อผิดพลาด!', error.message, 'error');
+                            btn.disabled = false;
+                            btn.innerHTML = `<i class="bi bi-google"></i> สร้าง Form`;
+                        });
+                    }
+                });
+            });
+            // --- [END NEW] ---
+
+            // --- [NEW] Event Listener for creating GRADED ITEM Google Forms ---
+            table.addEventListener('click', function(e) {
+                const btn = e.target.closest('.btn-create-google-form');
+                if (!btn) return;
+
+                e.preventDefault();
+                const itemId = btn.dataset.itemId.replace('g-', '');
+                const itemName = btn.closest('th').innerText.split('\n')[0];
+
+                Swal.fire({
+                    title: `สร้าง Google Form?`,
+                    text: `คุณกำลังจะสร้าง Google Form Quiz สำหรับรายการ "${itemName}" ระบบจะติดตั้ง Trigger อัตโนมัติเพื่อรับคะแนนกลับมา`,
+                    icon: 'question',
+                    showCancelButton: true,
+                    confirmButtonText: 'ใช่, สร้างเลย',
+                    cancelButtonText: 'ยกเลิก'
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        btn.disabled = true;
+                        btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> สร้าง...';
+                        
+                        // [FIX] เพิ่ม /teacher/ prefix
+                        fetch(`/teacher/api/graded-item/${itemId}/create-google-form`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRFToken': csrfToken
+                            }
+                        })
+                        .then(response => {
+                            if (!response.ok) {
+                                return response.json().then(errData => {
+                                    // [FIX] ตรวจจับ Error 401 (Re-auth)
+                                    if (response.status === 401 && errData.reauth) {
+                                        Swal.fire('เกิดข้อผิดพลาด!', 'ไม่สามารถยืนยันสิทธิ์ Google ได้ กรุณา Logout และ Login ด้วย Google ใหม่อีกครั้ง', 'error');
+                                    }
+                                    throw new Error(errData.message || `HTTP error! status: ${response.status}`);
+                                });
+                            }
+                            return response.json();
+                        })
+                        .then(data => {
+                            if (data.status === 'success') {
+                                Swal.fire({
+                                    title: 'สร้าง Form สำเร็จ!',
+                                    text: 'ระบบได้สร้าง Form, Sheet, และติดตั้ง Trigger เรียบร้อยแล้ว',
+                                    icon: 'success',
+                                    confirmButtonText: 'เปิด Form (เพื่อเพิ่มข้อสอบ)',
+                                    showCancelButton: true,
+                                    cancelButtonText: 'ปิด'
+                                }).then((result) => {
+                                    if (result.isConfirmed) {
+                                        window.open(data.form_url, '_blank');
+                                    }
+                                });
+                                
+                                btn.classList.remove('btn-primary', 'btn-create-google-form');
+                                btn.classList.add('btn-success');
+                                btn.innerHTML = '<i class="bi bi-check-circle"></i> Linked';
+                                btn.title = 'เชื่อมต่อกับ Google Form แล้ว';
+                                btn.disabled = true;
+                            } else {
+                                throw new Error(data.message || 'เกิดข้อผิดพลาดไม่ทราบสาเหตุ');
+                            }
+                        })
+                        .catch(error => {
+                            Swal.fire('เกิดข้อผิดพลาด!', error.message, 'error');
+                            btn.disabled = false;
+                            btn.innerHTML = '<i class="bi bi-google"></i> สร้าง Form';
+                        });
+                    }
+                });
+            });
+            // --- [END NEW] ---
+
+            // (Listener 'change' และ 'input' เหมือนเดิม)
             table.addEventListener('change', e => {
                 const target = e.target;
                 if (target.matches('.unit-summary-input')) {
+                    // ... (โค้ด unit-summary-input เหมือนเดิม) ...
                     const studentRow = target.closest('tr');
                     if (!studentRow) return;
                     const unitId = target.dataset.unitId;
@@ -757,46 +975,71 @@ document.addEventListener('DOMContentLoaded', function () {
                     if (unitTotalMaxScore <= 0) return;
                     const ratio = newSummaryScore / unitTotalMaxScore;
                     const scoreInputsInUnit = studentRow.querySelectorAll(`.score-input[data-unit-id="${unitId}"]`);
-                    let calculatedScores = [],
-                        sumOfFlooredScores = 0;
+                    let calculatedScores = [];
+                    let sumOfFlooredScores = 0;
                     scoreInputsInUnit.forEach(input => {
                         const itemMaxScore = parseFloat(input.dataset.maxScore) || 0;
                         const idealScore = itemMaxScore * ratio;
                         const flooredScore = Math.floor(idealScore);
-                        calculatedScores.push({ input: input, finalScore: flooredScore, remainder: idealScore - flooredScore });
+                        calculatedScores.push({
+                            input: input,
+                            finalScore: flooredScore,
+                            remainder: idealScore - flooredScore
+                        });
                         sumOfFlooredScores += flooredScore;
                     });
                     let remainderToDistribute = newSummaryScore - sumOfFlooredScores;
                     calculatedScores.sort((a, b) => b.remainder - a.remainder);
-                    for (let i = 0; i < remainderToDistribute; i++)
-                        if (calculatedScores[i]) calculatedScores[i].finalScore++;
+                    for (let i = 0; i < remainderToDistribute; i++) {
+                        if (calculatedScores[i]) {
+                            calculatedScores[i].finalScore++;
+                        }
+                    }
                     const itemsToSave = [];
                     calculatedScores.forEach(calc => {
                         const itemMaxScore = parseFloat(calc.input.dataset.maxScore) || 0;
-                        if (calc.finalScore > itemMaxScore) calc.finalScore = itemMaxScore;
+                        if (calc.finalScore > itemMaxScore) {
+                            calc.finalScore = itemMaxScore;
+                        }
                         calc.input.value = calc.finalScore;
-                        itemsToSave.push({ student_id: studentRow.dataset.studentId, graded_item_id: calc.input.dataset.itemId.replace('g-', ''), score: calc.finalScore });
+                        itemsToSave.push({
+                            student_id: studentRow.dataset.studentId,
+                            graded_item_id: calc.input.dataset.itemId.replace('g-', ''),
+                            score: calc.finalScore
+                        });
                     });
                     if (itemsToSave.length > 0) {
                         clearTimeout(saveDebounce);
-                        saveDebounce = setTimeout(() => saveScoresBulk(itemsToSave, "{{ url_for('teacher.save_scores_bulk') }}"), 800);
+                        saveDebounce = setTimeout(() => {
+                            saveScoresBulk(itemsToSave, "{{ url_for('teacher.save_scores_bulk') }}");
+                        }, 800);
                     }
-                } else if (target.matches('.qualitative-select, .qualitative-main-summary')) {
+                }                
+                else if (target.matches('.qualitative-select, .qualitative-main-summary')) {
                     handleQualitativeChange(target);
-                } else if (target.classList.contains('propagation-toggle')) {
+                }
+                else if (target.classList.contains('propagation-toggle')) {
                     const itemId = target.dataset.itemId;
                     const mode = target.dataset.mode;
-                    const otherToggle = (mode === 'group') ? table.querySelector(`.propagation-toggle.all-toggle[data-item-id="${itemId}"]`) : table.querySelector(`.propagation-toggle.group-toggle[data-item-id="${itemId}"]`);
-                    if (target.checked && otherToggle) otherToggle.checked = false;
+                    const otherToggle = (mode === 'group')
+                        ? table.querySelector(`.propagation-toggle.all-toggle[data-item-id="${itemId}"]`)
+                        : table.querySelector(`.propagation-toggle.group-toggle[data-item-id="${itemId}"]`);
+                    
+                    if (target.checked && otherToggle) {
+                        otherToggle.checked = false;
+                    }
                 }
             });
+
             table.addEventListener('input', e => {
                 const target = e.target;
                 if (target.matches('.score-input, .exam-input')) {
                     updateStudentRowTotals(target.closest('tr'));
-                    handlePropagation(target);
+                    handlePropagation(target); 
                 }
             });
+
+            // Initial calculation for all rows on load.
             table.querySelectorAll('tbody tr').forEach(row => updateStudentRowTotals(row));
         }
 
