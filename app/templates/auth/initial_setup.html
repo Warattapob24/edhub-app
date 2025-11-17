@@ -20,14 +20,19 @@
                     <form method="POST" action="">
                         {{ form.hidden_tag() }}
 
-                        {% if password_required %}
+                        {# --- [FIX] Fieldset 1 MUST be visible to ALL users --- #}
                         <fieldset class="border p-3 rounded-3 mb-4">
                             <legend class="fs-6 fw-bold">ส่วนที่ 1: ตั้งค่าการเข้าสู่ระบบ</legend>
+                            
+                            {# Username is required by ALL users (Google or Manual) #}
                             <div class="form-floating mb-3">
                                 {{ form.username(class="form-control", placeholder="Username") }}
                                 {{ form.username.label() }}
                                 {% for error in form.username.errors %}<small class="text-danger">{{ error }}</small>{% endfor %}
                             </div>
+
+                            {# Password fields are ONLY for manual setup users #}
+                            {% if password_required %}
                              <div class="form-floating mb-3">
                                 {{ form.password(class="form-control", placeholder="Password") }}
                                 {{ form.password.label() }}
@@ -38,8 +43,10 @@
                                 {{ form.password2.label() }}
                                 {% for error in form.password2.errors %}<small class="text-danger">{{ error }}</small>{% endfor %}
                             </div>
+                            {% endif %}
                         </fieldset>
-                        {% endif %}
+                        {# --- [END FIX] --- #}
+                        
                         <fieldset class="border p-3 rounded-3 mb-4">
                             <legend class="fs-6 fw-bold">ส่วนที่ 2: ข้อมูลส่วนตัวและการมอบหมายหน้าที่</legend>
                             

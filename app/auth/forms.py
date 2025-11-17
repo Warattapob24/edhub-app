@@ -24,8 +24,8 @@ def get_classrooms_for_advisors():
 class InitialSetupForm(FlaskForm):
     # Part 1: Login credentials
     username = StringField('ชื่อผู้ใช้ (Username) ใหม่', validators=[DataRequired(), Length(min=4, max=64)])
-    password = PasswordField('รหัสผ่านใหม่', validators=[DataRequired(), Length(min=6)])
-    password2 = PasswordField('ยืนยันรหัสผ่านใหม่', validators=[DataRequired(), EqualTo('password', message='รหัสผ่านต้องตรงกัน')])
+    password = PasswordField('รหัสผ่านใหม่', validators=[Optional(), Length(min=6)])
+    password2 = PasswordField('ยืนยันรหัสผ่านใหม่', validators=[Optional(), EqualTo('password', message='รหัสผ่านต้องตรงกัน')])
 
     first_name = StringField('ชื่อจริง', validators=[DataRequired(), Length(max=64)])
     last_name = StringField('นามสกุล', validators=[DataRequired(), Length(max=64)])
