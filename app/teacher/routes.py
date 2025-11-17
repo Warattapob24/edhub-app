@@ -4771,8 +4771,8 @@ def create_google_form_for_item(item_id):
         # เราจะใช้ Apps Script trigger แทนการ link โดยตรง
         # forms_service.forms().watches().create(formId=form_id, body=link_request_body).execute()
         # --- [NEW] Set form destination to our new sheet ---
-        link_sheet_body = { "requests": [ { "updateFormInfo": { "info": { "linkedSheetId": sheet_id }, "updateMask": "linkedSheetId" } } ] }
-        forms_service.forms().batchUpdate(formId=form_id, body=link_sheet_body).execute()
+        # link_sheet_body = { "requests": [ { "updateFormInfo": { "info": { "linkedSheetId": sheet_id }, "updateMask": "linkedSheetId" } } ] }
+        # forms_service.forms().batchUpdate(formId=form_id, body=link_sheet_body).execute()
 
 
         # 8. Create and Install the Apps Script "Trigger" (The Spy)
@@ -4955,8 +4955,8 @@ def create_google_form_for_exam(course_id, exam_type):
         sheet_url = sheet_result['spreadsheetUrl']
 
         # 8. Link Form to Sheet
-        link_sheet_body = { "requests": [ { "updateFormInfo": { "info": { "linkedSheetId": sheet_id }, "updateMask": "linkedSheetId" } } ] }
-        forms_service.forms().batchUpdate(formId=form_id, body=link_sheet_body).execute()
+        # link_sheet_body = { "requests": [ { "updateFormInfo": { "info": { "linkedSheetId": sheet_id }, "updateMask": "linkedSheetId" } } ] }
+        # forms_service.forms().batchUpdate(formId=form_id, body=link_sheet_body).execute()
 
         # 9. Create and Install the Apps Script "Trigger"
         # 9.1 Create a secure token (THIS IS THE KEY DIFFERENCE)
