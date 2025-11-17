@@ -34,14 +34,6 @@ def login():
 
     form = LoginForm()
     if form.validate_on_submit():
-        if password_required and not form.password.data:
-            # ถ้าเป็นผู้ใช้ที่ "ต้อง" เปลี่ยนรหัส แต่ "ไม่ได้กรอก" รหัสใหม่
-            flash('กรุณาตั้งรหัสผ่านใหม่', 'danger')
-            return render_template('auth/initial_setup.html', 
-                                   title='ตั้งค่าบัญชีครั้งแรก', 
-                                   form=form,
-                                   password_required=password_required)
-        
         username_input = form.username.data
         password_input = form.password.data
         user = None
