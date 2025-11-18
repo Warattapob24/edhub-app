@@ -4862,8 +4862,11 @@ function createOnSubmitTrigger() {{
         ).execute()
 
         # 8.5 Install the 'onFormSubmit' trigger by running the installer function
+        import time
+        time.sleep(2) # Give Google a moment to propagate the new script
         run_request_body = {
-            "function": "createOnSubmitTrigger"
+            "function": "createOnSubmitTrigger",
+            "devMode": True  # [FIX] Force run on HEAD (draft) version
         }
         script_service.scripts().run(
             scriptId=script_id,
@@ -5033,8 +5036,11 @@ function createOnSubmitTrigger() {{
         script_service.projects().updateContent(scriptId=script_id, body={'files': script_files}).execute()
 
         # 9.5 Install the 'onFormSubmit' trigger by running the installer function
+        import time
+        time.sleep(2) # Give Google a moment to propagate the new script
         run_request_body = {
-            "function": "createOnSubmitTrigger"
+            "function": "createOnSubmitTrigger",
+            "devMode": True  # [FIX] Force run on HEAD (draft) version
         }
         script_service.scripts().run(
             scriptId=script_id,
