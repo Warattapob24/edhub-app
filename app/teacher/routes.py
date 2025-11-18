@@ -4830,7 +4830,7 @@ function onFormSubmit(e) {{
 
 // [THE FIX] This function installs the trigger
 function createOnSubmitTrigger() {{
-  var form = FormApp.getActiveForm();
+  var form = FormApp.openById('{form_id}');
   ScriptApp.newTrigger('onFormSubmit')
     .forForm(form)
     .onFormSubmit()
@@ -4846,7 +4846,7 @@ function createOnSubmitTrigger() {{
         # 8.3 Create the script project
         script_request_body = {
             'title': f'EdHub Trigger for {form_title}',
-            'parentId': sheet_id # [FIX] ผูก Script กับ Sheet
+            #'parentId': sheet_id # [FIX] ผูก Script กับ Sheet
         }
         script_project = script_service.projects().create(body=script_request_body).execute()
         script_id = script_project['scriptId']
@@ -5010,7 +5010,7 @@ function onFormSubmit(e) {{
 
 // [THE FIX] This function installs the trigger
 function createOnSubmitTrigger() {{
-  var form = FormApp.getActiveForm();
+  var form = FormApp.openById('{form_id}');
   ScriptApp.newTrigger('onFormSubmit')
     .forForm(form)
     .onFormSubmit()
@@ -5021,7 +5021,7 @@ function createOnSubmitTrigger() {{
         
         # 9.3 Create the script project
         script_project = script_service.projects().create(
-            body={'title': f'EdHub Trigger for {form_title}', 'parentId': sheet_id}
+            body={'title': f'EdHub Trigger for {form_title}'}
         ).execute()
         script_id = script_project['scriptId']
 
