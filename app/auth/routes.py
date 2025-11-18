@@ -290,18 +290,17 @@ os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 def get_google_flow():
     """สร้าง instance ของ Google OAuth Flow จาก Config."""
     
-    # [FIX] สร้าง client_config dictionary จาก Config แทนการอ่านไฟล์
     client_config = {
         "web": {
             "client_id": current_app.config['GOOGLE_CLIENT_ID'],
             "client_secret": current_app.config['GOOGLE_CLIENT_SECRET'],
-            "auth_uri": "[https://accounts.google.com/o/oauth2/auth](https://accounts.google.com/o/oauth2/auth)",
-            "token_uri": "[https://oauth2.googleapis.com/token](https://oauth2.googleapis.com/token)",
-            "auth_provider_x509_cert_url": "[https://www.googleapis.com/oauth2/v1/certs](https://www.googleapis.com/oauth2/v1/certs)",
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
             "redirect_uris": [
-                "[http://127.0.0.1:5000/auth/google-callback](http://127.0.0.1:5000/auth/google-callback)",
+                "http://127.0.0.1:5000/auth/google-callback",
                 "http://localhost:5000/auth/google-callback",
-                "[https://edhub-app.onrender.com/auth/google-callback](https://edhub-app.onrender.com/auth/google-callback)"
+                "https://edhub-app.onrender.com/auth/google-callback"
             ]
         }
     }
@@ -309,14 +308,14 @@ def get_google_flow():
     flow = Flow.from_client_config(
         client_config=client_config,
         scopes=[
-            "[https://www.googleapis.com/auth/userinfo.profile](https://www.googleapis.com/auth/userinfo.profile)",
-            "[https://www.googleapis.com/auth/userinfo.email](https://www.googleapis.com/auth/userinfo.email)",
+            "https://www.googleapis.com/auth/userinfo.profile",
+            "https://www.googleapis.com/auth/userinfo.email",
             "openid",
-            "[https://www.googleapis.com/auth/drive.file](https://www.googleapis.com/auth/drive.file)",
-            "[https://www.googleapis.com/auth/forms.body](https://www.googleapis.com/auth/forms.body)",
-            "[https://www.googleapis.com/auth/spreadsheets](https://www.googleapis.com/auth/spreadsheets)",
-            "[https://www.googleapis.com/auth/script.projects](https://www.googleapis.com/auth/script.projects)",
-            "[https://www.googleapis.com/auth/script.scriptapp](https://www.googleapis.com/auth/script.scriptapp)"
+            "https://www.googleapis.com/auth/drive.file",
+            "https://www.googleapis.com/auth/forms.body",
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/script.projects",
+            "https://www.googleapis.com/auth/script.scriptapp"
         ],
         redirect_uri=url_for('auth.google_callback', _external=True)
     )
