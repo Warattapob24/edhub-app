@@ -35,6 +35,7 @@ from docx import Document # Add this import for Word export
 from docx.shared import Pt, Inches # Add this for setting font size in Word
 import google.oauth2.credentials
 import googleapiclient.discovery
+from googleapiclient.errors import HttpError
 from google.auth.transport.requests import Request as GoogleRequest
 import jwt # 👈 สำหรับสร้าง Token ที่ปลอดภัย
 import uuid # 👈 สำหรับสร้าง ID ที่ไม่ซ้ำกัน
