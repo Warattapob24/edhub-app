@@ -4869,7 +4869,7 @@ function createOnSubmitTrigger() {{
             "function": "createOnSubmitTrigger",
             "devMode": True  # [FIX] Force run on HEAD (draft) version
         }
-        max_retries = 5
+        max_retries = 15
         for attempt in range(max_retries):
             try:
                 current_app.logger.info(f"Attempting to install trigger (Attempt {attempt + 1}/{max_retries})...")
@@ -5060,7 +5060,7 @@ function createOnSubmitTrigger() {{
             "function": "createOnSubmitTrigger",
             "devMode": True  # [FIX] Force run on HEAD (draft) version
         }
-        max_retries = 5
+        max_retries = 15
         for attempt in range(max_retries):
             try:
                 current_app.logger.info(f"Attempting to install trigger (Attempt {attempt + 1}/{max_retries})...")
