@@ -281,9 +281,10 @@ def edit_profile():
                            title='แก้ไขข้อมูลส่วนตัว', 
                            form=form)
 
-# --- [FIX] เพิ่มบรรทัดนี้เพื่ออนุญาต HTTP (สำหรับ Local Development) ---
-if not os.environ.get('RENDER'):
-    os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+# --- [FIX] บังคับอนุญาต Insecure Transport (สำหรับ Production ที่อยู่หลัง Proxy) ---
+# We are always running behind a proxy (Render's HTTPS proxy or local HTTP),
+# so we must tell oauthlib to allow this internal HTTP traffic.
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
 # --- [NEW] ฟังก์ชันสำหรับสร้าง OAuth Flow (เวอร์ชันปลอดภัย) ---
 def get_google_flow():
