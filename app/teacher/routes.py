@@ -4862,6 +4862,15 @@ function createOnSubmitTrigger() {{
             body={'files': script_files}
         ).execute()
 
+        # NOTE: This creates the "API Executable" state required for scripts.run()
+        deployment_body = {
+            'manifestFileName': 'appsscript', 
+            'description': 'EdHub API Executable Deployment'
+        }
+        script_service.projects().deployments().create(
+            scriptId=script_id, body=deployment_body
+        ).execute()
+
         # 8.5 Install the 'onFormSubmit' trigger by running the installer function
         import time
         time.sleep(2) # Give Google a moment to propagate the new script
@@ -5052,6 +5061,15 @@ function createOnSubmitTrigger() {{
             {'name': 'appsscript', 'type': 'JSON', 'source': json.dumps(script_manifest)}
         ]
         script_service.projects().updateContent(scriptId=script_id, body={'files': script_files}).execute()
+
+        # NOTE: This creates the "API Executable" state required for scripts.run()
+        deployment_body = {
+            'manifestFileName': 'appsscript', 
+            'description': 'EdHub API Executable Deployment'
+        }
+        script_service.projects().deployments().create(
+            scriptId=script_id, body=deployment_body
+        ).execute()
 
         # 9.5 Install the 'onFormSubmit' trigger by running the installer function
         import time
