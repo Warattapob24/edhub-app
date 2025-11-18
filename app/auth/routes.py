@@ -308,13 +308,14 @@ def get_google_flow():
     flow = Flow.from_client_config(
         client_config=client_config, # 👈 [FIX] เปลี่ยนจาก .from_client_secrets_file
         scopes=[
-            "https://www.googleapis.com/auth/userinfo.profile",
-            "https://www.googleapis.com/auth/userinfo.email",
+            "[https://www.googleapis.com/auth/userinfo.profile](https://www.googleapis.com/auth/userinfo.profile)",
+            "[https://www.googleapis.com/auth/userinfo.email](https://www.googleapis.com/auth/userinfo.email)",
             "openid",
-            "https://www.googleapis.com/auth/drive.file",
-            "https://www.googleapis.com/auth/forms.body",
-            "https://www.googleapis.com/auth/spreadsheets",
-            "https://www.googleapis.com/auth/script.projects"
+            "[https://www.googleapis.com/auth/drive.file](https://www.googleapis.com/auth/drive.file)",
+            "[https://www.googleapis.com/auth/forms.body](https://www.googleapis.com/auth/forms.body)",
+            "[https://www.googleapis.com/auth/spreadsheets](https://www.googleapis.com/auth/spreadsheets)",
+            "[https://www.googleapis.com/auth/script.projects](https://www.googleapis.com/auth/script.projects)",
+            "[https://www.googleapis.com/auth/script.scriptapp](https://www.googleapis.com/auth/script.scriptapp)" # <-- [THE FIX] Add this scope to RUN scripts
         ],
         redirect_uri=url_for('auth.google_callback', _external=True)
     )
