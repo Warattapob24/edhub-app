@@ -4868,10 +4868,27 @@ function createOnSubmitTrigger() {{
             "function": "createOnSubmitTrigger",
             "devMode": True  # [FIX] Force run on HEAD (draft) version
         }
-        script_service.scripts().run(
-            scriptId=script_id,
-            body=run_request_body
-        ).execute()
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                current_app.logger.info(f"Attempting to install trigger (Attempt {attempt + 1}/{max_retries})...")
+                # Wait a bit before each attempt to allow propagation
+                time.sleep(3) 
+                
+                script_service.scripts().run(
+                    scriptId=script_id,
+                    body=run_request_body
+                ).execute()
+                
+                current_app.logger.info("Trigger installed successfully.")
+                break # Success! Exit loop
+            except HttpError as e:
+                if e.resp.status == 404:
+                    current_app.logger.warning(f"Script not found yet (404). Retrying in 3 seconds...")
+                    if attempt == max_retries - 1:
+                        raise e # Raise if it's the last attempt
+                else:
+                    raise e # Raise other errors immediately
 
         # 9. Save IDs to our Database
         item.google_form_id = form_id
@@ -5042,10 +5059,26 @@ function createOnSubmitTrigger() {{
             "function": "createOnSubmitTrigger",
             "devMode": True  # [FIX] Force run on HEAD (draft) version
         }
-        script_service.scripts().run(
-            scriptId=script_id,
-            body=run_request_body
-        ).execute()
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                current_app.logger.info(f"Attempting to install trigger (Attempt {attempt + 1}/{max_retries})...")
+                time.sleep(3) 
+                
+                script_service.scripts().run(
+                    scriptId=script_id,
+                    body=run_request_body
+                ).execute()
+                
+                current_app.logger.info("Trigger installed successfully.")
+                break 
+            except HttpError as e:
+                if e.resp.status == 404:
+                    current_app.logger.warning(f"Script not found yet (404). Retrying in 3 seconds...")
+                    if attempt == max_retries - 1:
+                        raise e 
+                else:
+                    raise e
 
         # 10. Save IDs to *Course* Model
         if exam_type == 'midterm':
