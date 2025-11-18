@@ -4734,9 +4734,9 @@ def create_google_form_for_item(item_id):
 
     try:
         # 3. Build API Services
-        forms_service = googleapiclient.discovery.build('forms', 'v1', credentials=creds, cache_discovery=False)
-        sheets_service = googleapiclient.discovery.build('sheets', 'v4', credentials=creds, cache_discovery=False)
-        script_service = googleapiclient.discovery.build('script', 'v1', credentials=creds, cache_discovery=False)
+        forms_service = googleapiclient.discovery.build('forms', 'v1', credentials=creds, cache_discovery=False, static_discovery=False)
+        sheets_service = googleapiclient.discovery.build('sheets', 'v4', credentials=creds, cache_discovery=False, static_discovery=False)
+        script_service = googleapiclient.discovery.build('script', 'v1', credentials=creds, cache_discovery=False, static_discovery=False)
 
         # 4. Create the Google Form
         form_title = f"{course.subject.name} - {item.name}"
@@ -4923,9 +4923,9 @@ def create_google_form_for_exam(course_id, exam_type):
 
     try:
         # 4. Build API Services
-        forms_service = googleapiclient.discovery.build('forms', 'v1', credentials=creds, cache_discovery=False)
-        sheets_service = googleapiclient.discovery.build('sheets', 'v4', credentials=creds, cache_discovery=False)
-        script_service = googleapiclient.discovery.build('script', 'v1', credentials=creds, cache_discovery=False)
+        forms_service = googleapiclient.discovery.build('forms', 'v1', credentials=creds, cache_discovery=False, static_discovery=False)
+        sheets_service = googleapiclient.discovery.build('sheets', 'v4', credentials=creds, cache_discovery=False, static_discovery=False)
+        script_service = googleapiclient.discovery.build('script', 'v1', credentials=creds, cache_discovery=False, static_discovery=False)
 
         # 5. Create the Google Form
         form_title = f"{course.subject.name} - {exam_name}"
