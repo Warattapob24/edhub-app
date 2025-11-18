@@ -307,7 +307,7 @@ def get_google_flow():
     }
 
     flow = Flow.from_client_config(
-        client_config=client_config, # 👈 [FIX] เปลี่ยนจาก .from_client_secrets_file
+        client_config=client_config,
         scopes=[
             "[https://www.googleapis.com/auth/userinfo.profile](https://www.googleapis.com/auth/userinfo.profile)",
             "[https://www.googleapis.com/auth/userinfo.email](https://www.googleapis.com/auth/userinfo.email)",
