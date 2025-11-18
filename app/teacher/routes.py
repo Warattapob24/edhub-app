@@ -4734,9 +4734,9 @@ def create_google_form_for_item(item_id):
 
     try:
         # 3. Build API Services
-        forms_service = googleapiclient.discovery.build('forms', 'v1', credentials=creds, cache_discovery=False, static_discovery=False)
-        sheets_service = googleapiclient.discovery.build('sheets', 'v4', credentials=creds, cache_discovery=False, static_discovery=False)
-        script_service = googleapiclient.discovery.build('script', 'v1', credentials=creds, cache_discovery=False, static_discovery=False)
+        forms_service = googleapiclient.discovery.build('forms', 'v1', credentials=creds, cache_discovery=False)
+        sheets_service = googleapiclient.discovery.build('sheets', 'v4', credentials=creds, cache_discovery=False)
+        script_service = googleapiclient.discovery.build('script', 'v1', credentials=creds, cache_discovery=False)
 
         # 4. Create the Google Form
         form_title = f"{course.subject.name} - {item.name}"
@@ -4827,6 +4827,15 @@ function onFormSubmit(e) {{
     Logger.log('Error sending score to EdHub: ' + error.toString());
   }}
 }}
+
+// [THE FIX] This function installs the trigger
+function createOnSubmitTrigger() {{
+  var form = FormApp.getActiveForm();
+  ScriptApp.newTrigger('onFormSubmit')
+    .forForm(form)
+    .onFormSubmit()
+    .create();
+}}
 """
         script_manifest = {
             "timeZone": "Asia/Bangkok",
@@ -4852,17 +4861,14 @@ function onFormSubmit(e) {{
             body={'files': script_files}
         ).execute()
 
-        # 8.5 Install the 'onFormSubmit' trigger
-        trigger_request_body = {
-            'function': 'onFormSubmit',
-            'event': {'type': 'ON_FORM_SUBMIT'}
+        # 8.5 Install the 'onFormSubmit' trigger by running the installer function
+        run_request_body = {
+            "function": "createOnSubmitTrigger"
         }
-        # [FIX] ใช้ script_id ที่เพิ่งสร้าง และตั้งค่า trigger ให้กับ Sheet
-        script_service.projects().triggers().create(
+        script_service.scripts().run(
             scriptId=script_id,
-            body=trigger_request_body
+            body=run_request_body
         ).execute()
-
 
         # 9. Save IDs to our Database
         item.google_form_id = form_id
@@ -4923,9 +4929,9 @@ def create_google_form_for_exam(course_id, exam_type):
 
     try:
         # 4. Build API Services
-        forms_service = googleapiclient.discovery.build('forms', 'v1', credentials=creds, cache_discovery=False, static_discovery=False)
-        sheets_service = googleapiclient.discovery.build('sheets', 'v4', credentials=creds, cache_discovery=False, static_discovery=False)
-        script_service = googleapiclient.discovery.build('script', 'v1', credentials=creds, cache_discovery=False, static_discovery=False)
+        forms_service = googleapiclient.discovery.build('forms', 'v1', credentials=creds, cache_discovery=False)
+        sheets_service = googleapiclient.discovery.build('sheets', 'v4', credentials=creds, cache_discovery=False)
+        script_service = googleapiclient.discovery.build('script', 'v1', credentials=creds, cache_discovery=False)
 
         # 5. Create the Google Form
         form_title = f"{course.subject.name} - {exam_name}"
@@ -5001,6 +5007,15 @@ function onFormSubmit(e) {{
     Logger.log('Error sending score to EdHub: ' + error.toString());
   }}
 }}
+
+// [THE FIX] This function installs the trigger
+function createOnSubmitTrigger() {{
+  var form = FormApp.getActiveForm();
+  ScriptApp.newTrigger('onFormSubmit')
+    .forForm(form)
+    .onFormSubmit()
+    .create();
+}}
 """
         script_manifest = {"timeZone": "Asia/Bangkok", "exceptionLogging": "STACKDRIVER", "runtimeVersion": "V8"}
         
@@ -5017,9 +5032,14 @@ function onFormSubmit(e) {{
         ]
         script_service.projects().updateContent(scriptId=script_id, body={'files': script_files}).execute()
 
-        # 9.5 Install the 'onFormSubmit' trigger
-        trigger_request_body = {'function': 'onFormSubmit', 'event': {'type': 'ON_FORM_SUBMIT'}}
-        script_service.projects().triggers().create(scriptId=script_id, body=trigger_request_body).execute()
+        # 9.5 Install the 'onFormSubmit' trigger by running the installer function
+        run_request_body = {
+            "function": "createOnSubmitTrigger"
+        }
+        script_service.scripts().run(
+            scriptId=script_id,
+            body=run_request_body
+        ).execute()
 
         # 10. Save IDs to *Course* Model
         if exam_type == 'midterm':
