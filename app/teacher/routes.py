@@ -4858,10 +4858,12 @@ function createOnSubmitTrigger() {{
             {'name': 'appsscript', 'type': 'JSON', 'source': json.dumps(script_manifest)}
         ]
         script_service.projects().updateContent(
-            scriptId=script_id, 
+            scriptId=script_id,
             body={'files': script_files}
         ).execute()
-
+        
+        # --- [FIX] 8.4b Create VERSION and Deployment (Essential for final API execution) ---
+        
         # 1. Create a new Version (necessary before deployment)
         version_body = {}
         version_response = script_service.projects().versions().create(
@@ -4871,15 +4873,16 @@ function createOnSubmitTrigger() {{
         
         # 2. Create the Deployment using the new Version
         deployment_body = {
-            'versionNumber': version_number, # <-- Use the version number
+            'versionNumber': version_number, 
             'manifestFileName': 'appsscript', 
             'description': 'EdHub API Executable Deployment'
         }
         script_service.projects().deployments().create(
             scriptId=script_id, body=deployment_body
         ).execute()
+        # --- [END FIX] ---
 
-        # 8.5 Install the 'onFormSubmit' trigger by running the installer function
+        # 8.5 Install the 'onFormSubmit' trigger with Retry Logic (This will now succeed)
         import time
         time.sleep(2) # Give Google a moment to propagate the new script
         run_request_body = {
@@ -5068,10 +5071,21 @@ function createOnSubmitTrigger() {{
             {'name': 'Code', 'type': 'SERVER_JS', 'source': script_content},
             {'name': 'appsscript', 'type': 'JSON', 'source': json.dumps(script_manifest)}
         ]
-        script_service.projects().updateContent(scriptId=script_id, body={'files': script_files}).execute()
-
-        # NOTE: This creates the "API Executable" state required for scripts.run()
+        script_service.projects().updateContent(
+            scriptId=script_id, 
+            body={'files': script_files}
+        ).execute()
+        
+        # 1. Create a new Version (necessary before deployment)
+        version_body = {}
+        version_response = script_service.projects().versions().create(
+            scriptId=script_id, body=version_body
+        ).execute()
+        version_number = version_response['versionNumber']
+        
+        # 2. Create the Deployment using the new Version
         deployment_body = {
+            'versionNumber': version_number, 
             'manifestFileName': 'appsscript', 
             'description': 'EdHub API Executable Deployment'
         }
