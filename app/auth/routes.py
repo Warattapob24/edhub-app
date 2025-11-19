@@ -308,15 +308,15 @@ def get_google_flow():
     flow = Flow.from_client_config(
         client_config=client_config,
         scopes=[
-            "[https://www.googleapis.com/auth/userinfo.profile](https://www.googleapis.com/auth/userinfo.profile)",
-            "[https://www.googleapis.com/auth/userinfo.email](https://www.googleapis.com/auth/userinfo.email)",
+            "https://www.googleapis.com/auth/userinfo.profile",
+            "https://www.googleapis.com/auth/userinfo.email",
             "openid",
-            "[https://www.googleapis.com/auth/drive.file](https://www.googleapis.com/auth/drive.file)",
-            "[https://www.googleapis.com/auth/forms.body](https://www.googleapis.com/auth/forms.body)",
-            "[https://www.googleapis.com/auth/spreadsheets](https://www.googleapis.com/auth/spreadsheets)",
-            "[https://www.googleapis.com/auth/script.projects](https://www.googleapis.com/auth/script.projects)",
-            "[https://www.googleapis.com/auth/script.scriptapp](https://www.googleapis.com/auth/script.scriptapp)",
-            "[https://www.googleapis.com/auth/script.deployments](https://www.googleapis.com/auth/script.deployments)" # <-- [THE FINAL FIX] Scope for creating deployments
+            "https://www.googleapis.com/auth/drive.file",
+            "https://www.googleapis.com/auth/forms.body",
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/script.projects",
+            "https://www.googleapis.com/auth/script.scriptapp",
+            "https://www.googleapis.com/auth/script.deployments" # ต้องมี 9 ตัวนี้
         ],
         redirect_uri=url_for('auth.google_callback', _external=True)
     )
