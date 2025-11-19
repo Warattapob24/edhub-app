@@ -4862,8 +4862,16 @@ function createOnSubmitTrigger() {{
             body={'files': script_files}
         ).execute()
 
-        # NOTE: This creates the "API Executable" state required for scripts.run()
+        # 1. Create a new Version (necessary before deployment)
+        version_body = {}
+        version_response = script_service.projects().versions().create(
+            scriptId=script_id, body=version_body
+        ).execute()
+        version_number = version_response['versionNumber']
+        
+        # 2. Create the Deployment using the new Version
         deployment_body = {
+            'versionNumber': version_number, # <-- Use the version number
             'manifestFileName': 'appsscript', 
             'description': 'EdHub API Executable Deployment'
         }
