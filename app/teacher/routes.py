@@ -4750,7 +4750,7 @@ def create_google_form_for_item(item_id):
             'info': {
                 'title': form_title,
                 'documentTitle': document_title,
-                'description': f"{school_name}\nรายวิชา: {course.subject.name} ({course.subject.subject_code})\nระดับชั้น: {course.grade_level} ห้อง: {course.classroom.name}\nครูผู้สอน: {current_user.full_name}"
+                'description': f"{school_name}\nรายวิชา: {course.subject.name} ({course.subject.subject_code})\nชั้นเรียน: {course.classroom.name}\nครูผู้สอน: {current_user.full_name}"
             }
         }
         form_result = forms_service.forms().create(body=form_body).execute()
@@ -4883,7 +4883,7 @@ def create_google_form_for_exam(course_id, exam_type):
             'info': {
                 'title': form_title,
                 'documentTitle': document_title,
-                'description': f"{school_name}\nการทดสอบ: {exam_name_th}\nรายวิชา: {course.subject.name} ({course.subject.subject_code})\nระดับชั้น: {course.grade_level} ห้อง: {course.classroom.name}\nครูผู้สอน: {current_user.full_name}"
+                'description': f"{school_name}\nการทดสอบ: {exam_name_th}\nรายวิชา: {course.subject.name} ({course.subject.subject_code})\nชั้นเรียน: {course.classroom.name}\nครูผู้สอน: {current_user.full_name}"
             }
         }
         form_result = forms_service.forms().create(body=form_body).execute()
