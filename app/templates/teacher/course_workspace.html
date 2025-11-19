@@ -1173,19 +1173,21 @@ document.addEventListener('DOMContentLoaded', function() {
             headerRow.innerHTML += `<th colspan="${unit.items.length + 1}" class="text-center unit-column unit-id-${unit.unit_id}">${unit.title}</th>`;
 
             unit.items.forEach(item => {
-            let googleFormBtnHtml = '';
+                let googleFormBtnHtml = '';
                 if (item.google_form_id) {
-                    // ถ้าเชื่อมแล้ว: แสดงปุ่มสีเขียว "เชื่อมแล้ว"
+                    // [MODIFIED] ถ้าเชื่อมแล้ว: แสดงปุ่มสีเขียว "Sync Score"
                     googleFormBtnHtml = `
-                        <button class="btn btn-success btn-sm mt-1" disabled title="เชื่อมต่อกับ Google Form แล้ว">
-                            <i class="bi bi-check-circle"></i> Google Form
+                        <button class="btn btn-success btn-sm mt-1 btn-sync-google-form"
+                                data-item-id="${item.id}"
+                                data-form-type="item" 
+                                title="ดึงคะแนนล่าสุดจาก Google Form Quiz">
+                            <i class="bi bi-arrow-repeat"></i> Sync Score
                         </button>`;
                 } else {
-                    // ถ้ายังไม่เชื่อม: แสดงปุ่มสีน้ำเงิน "สร้าง"
-                    // สังเกต data-item-id="g-${item.id}" ที่ตรงกับ score-input
+                    // ถ้ายังไม่เชื่อม: แสดงปุ่มสีน้ำเงิน "สร้าง" (ใช้ item.id ตรง ๆ)
                     googleFormBtnHtml = `
                         <button class="btn btn-primary btn-sm mt-1 btn-create-google-form" 
-                                data-item-id="g-${item.id}" 
+                                data-item-id="${item.id}" 
                                 title="สร้างและเชื่อมต่อ Google Form Quiz สำหรับรายการคะแนนนี้">
                             <i class="bi bi-google"></i> สร้าง Form
                         </button>`;
@@ -1232,15 +1234,21 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
         // Step 1.3: Build Exams & Final Summary Header (คงเดิม)
-        let finalColspan = 4;
+let finalColspan = 4;
         subHeaderRowHtml += `<th class="text-nowrap text-center">คะแนนเก็บ</th>`;
         
         if (data.is_midterm_enabled) {
             finalColspan++;
-            // --- [NEW] Midterm Button Logic ---
+            // --- [MODIFIED] Midterm Button Logic (Sync/Create) ---
             let midtermBtnHtml = '';
             if (data.midterm_google_form_id) {
-                midtermBtnHtml = `<button class="btn btn-success btn-sm mt-1" disabled title="เชื่อมต่อ Google Form แล้ว"><i class="bi bi-check-circle"></i> Google Form</button>`;
+                midtermBtnHtml = `<button class="btn btn-success btn-sm mt-1 btn-sync-google-form"
+                                        data-course-id="${data.course_id}"
+                                        data-form-type="exam"
+                                        data-exam-type="midterm"
+                                        title="ดึงคะแนนล่าสุดจาก Google Form Quiz">
+                                    <i class="bi bi-arrow-repeat"></i> Sync Score
+                                </button>`;
             } else {
                 midtermBtnHtml = `<button class="btn btn-primary btn-sm mt-1 btn-create-exam-form" 
                                         data-exam-type="midterm" 
@@ -1249,7 +1257,6 @@ document.addEventListener('DOMContentLoaded', function() {
                                     <i class="bi bi-google"></i> สร้าง Form
                                 </button>`;
             }
-            // --- [END NEW] ---
             
             subHeaderRowHtml += `<th class="text-nowrap text-center">
                                     กลางภาค (${data.total_midterm_max_score || 0}) 
@@ -1260,10 +1267,16 @@ document.addEventListener('DOMContentLoaded', function() {
         
         if (data.is_final_enabled) {
             finalColspan++;
-            // --- [NEW] Final Button Logic ---
+            // --- [MODIFIED] Final Button Logic (Sync/Create) ---
             let finalBtnHtml = '';
             if (data.final_google_form_id) {
-                finalBtnHtml = `<button class="btn btn-success btn-sm mt-1" disabled title="เชื่อมต่อ Google Form แล้ว"><i class="bi bi-check-circle"></i> Google Form</button>`;
+                finalBtnHtml = `<button class="btn btn-success btn-sm mt-1 btn-sync-google-form"
+                                        data-course-id="${data.course_id}"
+                                        data-form-type="exam"
+                                        data-exam-type="final"
+                                        title="ดึงคะแนนล่าสุดจาก Google Form Quiz">
+                                    <i class="bi bi-arrow-repeat"></i> Sync Score
+                                </button>`;
             } else {
                 finalBtnHtml = `<button class="btn btn-primary btn-sm mt-1 btn-create-exam-form" 
                                       data-exam-type="final" 
@@ -1272,7 +1285,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                   <i class="bi bi-google"></i> สร้าง Form
                               </button>`;
             }
-            // --- [END NEW] ---
+            // --- [END MODIFIED] ---
             
             subHeaderRowHtml += `<th class="text-nowrap text-center">
                                     ปลายภาค (${data.total_final_max_score || 0}) 
@@ -1770,7 +1783,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
             Swal.fire({
                 title: `สร้าง Google Form?`,
-                text: `คุณกำลังจะสร้าง Google Form Quiz สำหรับ "${examName}" ระบบจะติดตั้ง Trigger อัตโนมัติเพื่อรับคะแนนกลับมา`,
+                text: `คุณกำลังจะสร้าง Google Form Quiz สำหรับ "${examName}" ระบบจะสร้าง Form และพร้อมสำหรับการดึงคะแนน`, // [MODIFIED TEXT]
                 icon: 'question',
                 showCancelButton: true,
                 confirmButtonText: 'ใช่, สร้างเลย',
@@ -1780,7 +1793,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     btn.disabled = true;
                     btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> สร้าง...';
                     
-                    // --- [FIX] ADD /teacher/ PREFIX ---
                     fetch(`/teacher/api/course/${courseId}/create-google-form/${examType}`, {
                         method: 'POST',
                         headers: {
@@ -1800,7 +1812,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         if (data.status === 'success') {
                             Swal.fire({
                                 title: 'สร้าง Form สำเร็จ!',
-                                text: 'ระบบได้สร้าง Form, Sheet, และติดตั้ง Trigger เรียบร้อยแล้ว',
+                                text: 'ระบบได้สร้าง Form และพร้อมสำหรับการดึงคะแนนแล้ว', // [MODIFIED TEXT]
                                 icon: 'success',
                                 confirmButtonText: 'เปิด Form (เพื่อเพิ่มข้อสอบ)',
                                 showCancelButton: true,
@@ -1811,12 +1823,15 @@ document.addEventListener('DOMContentLoaded', function() {
                                 }
                             });
                             
-                            // Update button state
-                            btn.classList.remove('btn-primary', 'btn-create-exam-form');
-                            btn.classList.add('btn-success');
-                            btn.innerHTML = '<i class="bi bi-check-circle"></i> Linked';
-                            btn.title = 'เชื่อมต่อกับ Google Form แล้ว';
-                            btn.disabled = true;
+                            // [MODIFIED] อัปเดตปุ่มใน UI ให้เป็น "Sync Score"
+                            const newSyncBtnHtml = `<button class="btn btn-success btn-sm mt-1 btn-sync-google-form"
+                                                            data-course-id="${data.course_id}"
+                                                            data-form-type="exam"
+                                                            data-exam-type="${examType}"
+                                                            title="ดึงคะแนนล่าสุดจาก Google Form Quiz">
+                                                        <i class="bi bi-arrow-repeat"></i> Sync Score
+                                                    </button>`;
+                            btn.outerHTML = newSyncBtnHtml; // Replace the button element
                         } else {
                             throw new Error(data.message || 'เกิดข้อผิดพลาดไม่ทราบสาเหตุ');
                         }
@@ -1837,12 +1852,12 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!btn) return;
 
             e.preventDefault();
-            const itemId = btn.dataset.itemId.replace('g-', ''); // เอา 'g-' ออก
+            const itemId = btn.dataset.itemId; // *** ใช้ item.id ตรง ๆ ***
             const itemName = btn.closest('th').innerText.split('\n')[0]; // ดึงชื่อรายการจาก <th>
 
             Swal.fire({
                 title: `สร้าง Google Form?`,
-                text: `คุณกำลังจะสร้าง Google Form Quiz สำหรับรายการ "${itemName}" ระบบจะติดตั้ง Trigger อัตโนมัติเพื่อรับคะแนนกลับมา`,
+                text: `คุณกำลังจะสร้าง Google Form Quiz สำหรับรายการ "${itemName}" ระบบจะสร้าง Form และพร้อมสำหรับการดึงคะแนน`, // [MODIFIED TEXT]
                 icon: 'question',
                 showCancelButton: true,
                 confirmButtonText: 'ใช่, สร้างเลย',
@@ -1852,7 +1867,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     btn.disabled = true;
                     btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> สร้าง...';
                     
-                    // --- [FIX] ADD /teacher/ PREFIX ---
                     fetch(`/teacher/api/graded-item/${itemId}/create-google-form`, {
                         method: 'POST',
                         headers: {
@@ -1873,7 +1887,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         if (data.status === 'success') {
                             Swal.fire({
                                 title: 'สร้าง Form สำเร็จ!',
-                                text: 'ระบบได้สร้าง Form, Sheet, และติดตั้ง Trigger เรียบร้อยแล้ว',
+                                text: 'ระบบได้สร้าง Form และพร้อมสำหรับการดึงคะแนนแล้ว', // [MODIFIED TEXT]
                                 icon: 'success',
                                 confirmButtonText: 'เปิด Form (เพื่อเพิ่มข้อสอบ)',
                                 showCancelButton: true,
@@ -1884,12 +1898,15 @@ document.addEventListener('DOMContentLoaded', function() {
                                 }
                             });
                             
-                            // อัปเดตปุ่มใน UI ให้เป็น "Linked"
-                            btn.classList.remove('btn-primary', 'btn-create-google-form');
-                            btn.classList.add('btn-success');
-                            btn.innerHTML = '<i class="bi bi-check-circle"></i> Linked';
-                            btn.title = 'เชื่อมต่อกับ Google Form แล้ว';
-                            btn.disabled = true; // ปิดปุ่มไปเลยหลังสร้างเสร็จ
+                            // [MODIFIED] อัปเดตปุ่มใน UI ให้เป็น "Sync Score"
+                            const newSyncBtnHtml = `<button class="btn btn-success btn-sm mt-1 btn-sync-google-form"
+                                                            data-item-id="${itemId}"
+                                                            data-form-type="item" 
+                                                            title="ดึงคะแนนล่าสุดจาก Google Form Quiz">
+                                                        <i class="bi bi-arrow-repeat"></i> Sync Score
+                                                    </button>`;
+                            btn.outerHTML = newSyncBtnHtml; // Replace the button element
+
                         } else {
                             throw new Error(data.message || 'เกิดข้อผิดพลาดไม่ทราบสาเหตุ');
                         }
@@ -1903,6 +1920,70 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         });
         // --- [END EXISTING] ---
+
+
+        // --- [NEW] Event Listener for SYNCING Google Form Scores (Item and Exam) ---
+        table.addEventListener('click', function(e) {
+            const btn = e.target.closest('.btn-sync-google-form');
+            if (!btn) return;
+
+            e.preventDefault();
+            const formType = btn.dataset.formType; // 'item' or 'exam'
+            let apiUrl = '';
+            let syncMessage = '';
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> Syncing...';
+            
+            if (formType === 'item') {
+                const itemId = btn.dataset.itemId;
+                apiUrl = `/teacher/api/sync-scores/item/${itemId}`;
+                syncMessage = 'รายการคะแนน';
+            } else if (formType === 'exam') {
+                const courseId = btn.dataset.courseId;
+                const examType = btn.dataset.examType; // 'midterm' or 'final'
+                apiUrl = `/teacher/api/sync-scores/exam/${courseId}/${examType}`;
+                syncMessage = (examType === 'midterm') ? 'สอบกลางภาค' : 'สอบปลายภาค';
+            }
+
+            fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'X-CSRFToken': csrfToken }
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(errData => {
+                        throw new Error(errData.message || `HTTP error! status: ${response.status}`);
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.status === 'success') {
+                    Swal.fire({
+                        toast: true,
+                        position: 'top-end',
+                        icon: 'success',
+                        title: `ซิงค์คะแนน ${syncMessage} สำเร็จ!`,
+                        text: `อัปเดตไป ${data.updated_count} คน`,
+                        showConfirmButton: false,
+                        timer: 3000
+                    });
+                    
+                    // Crucial: Re-render the affected table rows to show new scores.
+                    fetchAndRenderGradebookTable(document.getElementById('classroom-selector'));
+
+                } else {
+                    throw new Error(data.message || 'เกิดข้อผิดพลาดไม่ทราบสาเหตุ');
+                }
+            })
+            .catch(error => {
+                Swal.fire('เกิดข้อผิดพลาด!', error.message, 'error');
+                btn.disabled = false;
+                btn.innerHTML = `<i class="bi bi-arrow-repeat"></i> Sync Score`;
+            });
+        });
+        // --- [END NEW] ---
 
         table.addEventListener('change', e => {
             const target = e.target;

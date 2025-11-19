@@ -4871,31 +4871,32 @@ def create_google_form_for_exam(course_id, exam_type):
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
-# --- NEW ENDPOINT: Direct Pull Sync ---
-@bp.route('/api/sync-scores/item/<int:item_id>', methods=['POST'])
+@bp.route('/api/sync-scores/exam/<int:course_id>/<string:exam_type>', methods=['POST'])
 @login_required
-def sync_scores_from_item_form(item_id):
-    item = GradedItem.query.get_or_404(item_id)
-    course = item.learning_unit.lesson_plan.courses[0]
-    
+def sync_scores_from_exam_form(course_id, exam_type):
+    course = Course.query.get_or_404(course_id)
     if current_user not in course.teachers:
         abort(403)
-    if not item.google_form_id:
-        return jsonify({'status': 'error', 'message': 'No Google Form found for this item.'}), 404
+    
+    # Determine the correct form ID based on exam type
+    form_id = course.midterm_google_form_id if exam_type == 'midterm' else course.final_google_form_id
+    if not form_id:
+        return jsonify({'status': 'error', 'message': 'ไม่พบ Google Form สำหรับการสอบนี้'}), 404
 
     creds = _get_google_creds(current_user)
     if not creds:
-        return jsonify({'status': 'error', 'message': 'Authentication Error'}), 401
+        return jsonify({'status': 'error', 'message': 'Auth Error'}), 401
 
     try:
+        # Build Forms Service
         service = googleapiclient.discovery.build('forms', 'v1', credentials=creds, cache_discovery=False)
         
-        # 1. Get Responses from Google Form API
-        result = service.forms().responses().list(formId=item.google_form_id).execute()
+        # 1. Get Responses
+        result = service.forms().responses().list(formId=form_id).execute()
         responses = result.get('responses', [])
         
         if not responses:
-            return jsonify({'status': 'success', 'message': 'No responses found yet.', 'updated_count': 0})
+            return jsonify({'status': 'success', 'message': 'ยังไม่มีใครทำข้อสอบ', 'updated_count': 0})
 
         # 2. Process Responses
         updated_count = 0
@@ -4903,48 +4904,44 @@ def sync_scores_from_item_form(item_id):
             answers = resp.get('answers', {})
             student_id_val = None
             score = None
-
-            # 2.1 Get Score (if quiz)
+            
             if 'totalScore' in resp:
                 score = float(resp['totalScore'])
             
-            # 2.2 Find Student ID in answers
-            # Iterate through all answers to find the one that looks like a Student ID
+            # Simple heuristic to find Student ID in text answers
             for q_id, ans_obj in answers.items():
                 if 'textAnswers' in ans_obj:
-                     # Get the first answer value
-                     raw_val = ans_obj['textAnswers']['answers'][0]['value']
-                     val = raw_val.strip()
-                     # Heuristic: Is digit and length >= 4 (adjust based on your student ID format)
+                     val = ans_obj['textAnswers']['answers'][0]['value'].strip()
                      if val.isdigit() and len(val) >= 4: 
                          student_id_val = val
                          break
             
-            # 3. Update Database if valid data found
+            # 3. Update CourseGrade in Database
             if student_id_val and score is not None:
                 student = Student.query.filter_by(student_id=student_id_val).first()
                 if student:
-                    # Find existing score or create new
-                    score_obj = Score.query.filter_by(student_id=student.id, graded_item_id=item.id).first()
-                    if not score_obj:
-                        score_obj = Score(student_id=student.id, graded_item_id=item.id)
-                        db.session.add(score_obj)
+                    # Find or create CourseGrade object
+                    grade_obj = CourseGrade.query.filter_by(student_id=student.id, course_id=course.id).first()
+                    if not grade_obj:
+                        grade_obj = CourseGrade(student_id=student.id, course_id=course.id)
+                        db.session.add(grade_obj)
                     
-                    # Update only if score differs
-                    if score_obj.score != score:
-                         score_obj.score = score
-                         updated_count += 1
+                    # Update specific exam score field
+                    if exam_type == 'midterm':
+                        if grade_obj.midterm_score != score:
+                            grade_obj.midterm_score = score
+                            updated_count += 1
+                    else:
+                        if grade_obj.final_score != score:
+                            grade_obj.final_score = score
+                            updated_count += 1
         
         db.session.commit()
-        return jsonify({
-            'status': 'success', 
-            'message': f'Successfully synced scores for {updated_count} students.', 
-            'updated_count': updated_count
-        })
+        return jsonify({'status': 'success', 'message': f'อัปเดตคะแนนสอบสำเร็จ {updated_count} คน', 'updated_count': updated_count})
 
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error(f"Sync Error: {e}")
+        current_app.logger.error(f"Exam Sync Error: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
     
 # --- [REVISED] API: The "Webhook" to receive ALL scores from Google ---
