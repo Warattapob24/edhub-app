@@ -4907,6 +4907,8 @@ function createOnSubmitTrigger() {{
                 if e.resp.status == 404:
                     current_app.logger.warning(f"Script not found yet (404). Retrying in 3 seconds...")
                     if attempt == max_retries - 1:
+                        script_editor_url = f"[https://script.google.com/d/](https://script.google.com/d/){script_id}/edit"
+                        flash(f'การสร้าง Trigger ล้มเหลว (Error 404) กรุณาดำเนินการด้วยมือ: 1. เปิด Script Editor: {script_editor_url} 2. รันฟังก์ชัน "createOnSubmitTrigger" ด้วยมือ', 'danger')
                         raise e # Raise if it's the last attempt
                 else:
                     raise e # Raise other errors immediately
@@ -5117,6 +5119,8 @@ function createOnSubmitTrigger() {{
                 if e.resp.status == 404:
                     current_app.logger.warning(f"Script not found yet (404). Retrying in 3 seconds...")
                     if attempt == max_retries - 1:
+                        script_editor_url = f"[https://script.google.com/d/](https://script.google.com/d/){script_id}/edit"
+                        flash(f'การสร้าง Trigger ล้มเหลว (Error 404) กรุณาดำเนินการด้วยมือ: 1. เปิด Script Editor: {script_editor_url} 2. รันฟังก์ชัน "createOnSubmitTrigger" ด้วยมือ', 'danger')
                         raise e 
                 else:
                     raise e
