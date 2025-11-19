@@ -4726,35 +4726,52 @@ def create_google_form_for_item(item_id):
     item = GradedItem.query.get_or_404(item_id)
     course = item.learning_unit.lesson_plan.courses[0]
 
-    # 1. Permission Check
     if current_user not in course.teachers:
         abort(403)
     if item.google_form_id:
-        return jsonify({'status': 'error', 'message': 'This item already is linked to a Google Form.'}), 400
+        return jsonify({'status': 'error', 'message': 'รายการนี้มี Google Form แล้ว'}), 400
 
-    # 2. Get Credentials
     creds = _get_google_creds(current_user)
     if not creds:
-        return jsonify({'status': 'error', 'message': 'Google Authentication failed. Please Login with Google again.', 'reauth': True}), 401
+        return jsonify({'status': 'error', 'message': 'กรุณา Login ด้วย Google ใหม่', 'reauth': True}), 401
 
     try:
-        # 3. Build Service (Only Forms API needed now)
+        # 1. Fetch School Name
+        school_name_setting = Setting.query.filter_by(key='school_name').first()
+        school_name = school_name_setting.value if school_name_setting else "โรงเรียน......................."
+
         forms_service = googleapiclient.discovery.build('forms', 'v1', credentials=creds, cache_discovery=False)
 
-        # 4. Create Form
-        form_title = f"{course.subject.name} - {item.name}"
-        form_body = {'info': {'title': form_title, 'documentTitle': form_title}}
+        # 2. Create Form with Professional Header
+        form_title = f"{item.name} - {course.subject.subject_code}"
+        document_title = f"[EdHub] {item.name} - {course.classroom.name}"
+        
+        form_body = {
+            'info': {
+                'title': form_title,
+                'documentTitle': document_title,
+                'description': f"{school_name}\nรายวิชา: {course.subject.name} ({course.subject.subject_code})\nระดับชั้น: {course.grade_level} ห้อง: {course.classroom.name}\nครูผู้สอน: {current_user.full_name}"
+            }
+        }
         form_result = forms_service.forms().create(body=form_body).execute()
         form_id = form_result['formId']
         form_url = form_result['responderUri']
 
-        # 5. Update Form (Add Student ID & Enable Quiz Mode)
+        # 3. Batch Update: Add Standard Questions & Quiz Settings
         update_body = {
             'requests': [
+                {
+                    'updateSettings': {
+                        'settings': {'quizSettings': {'isQuiz': True}},
+                        'updateMask': 'quizSettings.isQuiz'
+                    }
+                },
+                # Q1: Student ID (Critical for Sync)
                 {
                     'createItem': {
                         'item': {
                             'title': 'รหัสนักเรียน (Student ID)',
+                            'description': 'กรุณากรอกเฉพาะตัวเลข (เช่น 12345)',
                             'questionItem': {
                                 'question': {
                                     'required': True,
@@ -4765,31 +4782,70 @@ def create_google_form_for_item(item_id):
                         'location': {'index': 0}
                     }
                 },
+                # Q2: Name - Surname
                 {
-                    'updateSettings': {
-                        'settings': {'quizSettings': {'isQuiz': True}},
-                        'updateMask': 'quizSettings.isQuiz'
+                    'createItem': {
+                        'item': {
+                            'title': 'ชื่อ - นามสกุล',
+                            'questionItem': {
+                                'question': {
+                                    'required': True,
+                                    'textQuestion': {}
+                                }
+                            }
+                        },
+                        'location': {'index': 1}
+                    }
+                },
+                # Q3: Seat Number
+                {
+                    'createItem': {
+                        'item': {
+                            'title': 'เลขที่',
+                            'questionItem': {
+                                'question': {
+                                    'required': True,
+                                    'textQuestion': {}
+                                }
+                            }
+                        },
+                        'location': {'index': 2}
+                    }
+                },
+                # Q4: Class/Room (Pre-filled description)
+                {
+                    'createItem': {
+                        'item': {
+                            'title': 'ชั้น / ห้อง',
+                            'description': f'{course.classroom.name}',
+                            'questionItem': {
+                                'question': {
+                                    'required': True,
+                                    'textQuestion': {}
+                                }
+                            }
+                        },
+                        'location': {'index': 3}
                     }
                 }
             ]
         }
         forms_service.forms().batchUpdate(formId=form_id, body=update_body).execute()
 
-        # 6. Save ID to Database
+        # 4. Save ID
         item.google_form_id = form_id
         db.session.commit()
 
         return jsonify({
             'status': 'success',
-            'message': 'Google Form created successfully (Ready for manual sync)!',
+            'message': 'สร้าง Google Form มาตรฐานโรงเรียนสำเร็จ!',
             'form_url': form_url
         })
 
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error(f"Error creating form for item: {e}")
+        current_app.logger.error(f"Error creating form: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
-
 
 @bp.route('/api/course/<int:course_id>/create-google-form/<string:exam_type>', methods=['POST'])
 @login_required
@@ -4799,69 +4855,90 @@ def create_google_form_for_exam(course_id, exam_type):
 
     course = Course.query.get_or_404(course_id)
     
-    # 1. Permission Check
     if current_user not in course.teachers:
         abort(403)
     
-    # 2. Check Existing
+    # Check existing
     if (exam_type == 'midterm' and course.midterm_google_form_id) or \
        (exam_type == 'final' and course.final_google_form_id):
-        return jsonify({'status': 'error', 'message': f'This course already has a Google Form for {exam_type}.'}), 400
+        return jsonify({'status': 'error', 'message': 'รายการนี้มี Google Form แล้ว'}), 400
 
-    # 3. Get Credentials
     creds = _get_google_creds(current_user)
     if not creds:
-        return jsonify({'status': 'error', 'message': 'Google Authentication failed. Please Login with Google again.', 'reauth': True}), 401
+        return jsonify({'status': 'error', 'message': 'กรุณา Login ด้วย Google ใหม่', 'reauth': True}), 401
 
     try:
-        # 4. Build Service
+        # 1. Fetch School Name
+        school_name_setting = Setting.query.filter_by(key='school_name').first()
+        school_name = school_name_setting.value if school_name_setting else "โรงเรียน......................."
+        
+        exam_name_th = "สอบกลางภาค" if exam_type == 'midterm' else "สอบปลายภาค"
         forms_service = googleapiclient.discovery.build('forms', 'v1', credentials=creds, cache_discovery=False)
 
-        # 5. Create Form
-        exam_name_display = "Midterm Exam" if exam_type == 'midterm' else "Final Exam"
-        form_title = f"{course.subject.name} - {exam_name_display}"
-        form_body = {'info': {'title': form_title, 'documentTitle': form_title}}
+        # 2. Create Form
+        form_title = f"{exam_name_th} - {course.subject.subject_code}"
+        document_title = f"[EdHub] {exam_name_th} - {course.classroom.name}"
+        
+        form_body = {
+            'info': {
+                'title': form_title,
+                'documentTitle': document_title,
+                'description': f"{school_name}\nการทดสอบ: {exam_name_th}\nรายวิชา: {course.subject.name} ({course.subject.subject_code})\nระดับชั้น: {course.grade_level} ห้อง: {course.classroom.name}\nครูผู้สอน: {current_user.full_name}"
+            }
+        }
         form_result = forms_service.forms().create(body=form_body).execute()
         form_id = form_result['formId']
         form_url = form_result['responderUri']
 
-        # 6. Update Form (Add Student ID & Enable Quiz Mode)
+        # 3. Batch Update: Add Standard Questions & Quiz Settings
         update_body = {
             'requests': [
-                {
-                    'createItem': {
-                        'item': {
-                            'title': 'รหัสนักเรียน (Student ID)',
-                            'questionItem': {
-                                'question': {
-                                    'required': True,
-                                    'textQuestion': {} 
-                                }
-                            }
-                        },
-                        'location': {'index': 0}
-                    }
-                },
                 {
                     'updateSettings': {
                         'settings': {'quizSettings': {'isQuiz': True}},
                         'updateMask': 'quizSettings.isQuiz'
+                    }
+                },
+                # Standard Fields (ID, Name, Seat, Class)
+                {
+                    'createItem': {
+                        'item': {'title': 'รหัสนักเรียน (Student ID)', 'description': 'กรุณากรอกเฉพาะตัวเลข', 'questionItem': {'question': {'required': True, 'textQuestion': {}}}},
+                        'location': {'index': 0}
+                    }
+                },
+                {
+                    'createItem': {
+                        'item': {'title': 'ชื่อ - นามสกุล', 'questionItem': {'question': {'required': True, 'textQuestion': {}}}},
+                        'location': {'index': 1}
+                    }
+                },
+                {
+                    'createItem': {
+                        'item': {'title': 'เลขที่', 'questionItem': {'question': {'required': True, 'textQuestion': {}}}},
+                        'location': {'index': 2}
+                    }
+                },
+                {
+                    'createItem': {
+                        'item': {'title': 'ชั้น / ห้อง', 'description': f'{course.classroom.name}', 'questionItem': {'question': {'required': True, 'textQuestion': {}}}},
+                        'location': {'index': 3}
                     }
                 }
             ]
         }
         forms_service.forms().batchUpdate(formId=form_id, body=update_body).execute()
 
-        # 7. Save ID to Database
+        # 4. Save ID
         if exam_type == 'midterm':
             course.midterm_google_form_id = form_id
         else:
             course.final_google_form_id = form_id
+            
         db.session.commit()
 
         return jsonify({
             'status': 'success',
-            'message': f'Google Form for {exam_type} created successfully!',
+            'message': 'สร้าง Google Form มาตรฐานโรงเรียนสำเร็จ!',
             'form_url': form_url
         })
 
