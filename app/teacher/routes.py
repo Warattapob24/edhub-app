@@ -4715,230 +4715,82 @@ def copy_attendance_between_entries():
         current_app.logger.error(f"Error copying attendance: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
     
-# --- [NEW] API: The "Factory" for creating Google Forms ---
+# FILE: app/teacher/routes.py
+
+# ... (Imports should be correct from previous context, ensuring Score is imported) ...
+from app.models import Score # Ensure Score is imported
+
 @bp.route('/api/graded-item/<int:item_id>/create-google-form', methods=['POST'])
 @login_required
 def create_google_form_for_item(item_id):
     item = GradedItem.query.get_or_404(item_id)
-    course = item.learning_unit.lesson_plan.courses[0] # Get associated course
+    course = item.learning_unit.lesson_plan.courses[0]
 
     # 1. Permission Check
     if current_user not in course.teachers:
         abort(403)
     if item.google_form_id:
-        return jsonify({'status': 'error', 'message': 'This item is already linked to a Google Form.'}), 400
+        return jsonify({'status': 'error', 'message': 'This item already is linked to a Google Form.'}), 400
 
-    # 2. Get and Refresh Credentials
+    # 2. Get Credentials
     creds = _get_google_creds(current_user)
     if not creds:
-        return jsonify({'status': 'error', 'message': 'ไม่สามารถยืนยันสิทธิ์ Google ได้ กรุณา Logout และ Login ด้วย Google ใหม่อีกครั้ง', 'reauth': True}), 401
+        return jsonify({'status': 'error', 'message': 'Google Authentication failed. Please Login with Google again.', 'reauth': True}), 401
 
     try:
-        # 3. Build API Services
+        # 3. Build Service (Only Forms API needed now)
         forms_service = googleapiclient.discovery.build('forms', 'v1', credentials=creds, cache_discovery=False)
-        sheets_service = googleapiclient.discovery.build('sheets', 'v4', credentials=creds, cache_discovery=False)
-        script_service = googleapiclient.discovery.build('script', 'v1', credentials=creds, cache_discovery=False)
 
-        # 4. Create the Google Form
+        # 4. Create Form
         form_title = f"{course.subject.name} - {item.name}"
         form_body = {'info': {'title': form_title, 'documentTitle': form_title}}
         form_result = forms_service.forms().create(body=form_body).execute()
         form_id = form_result['formId']
         form_url = form_result['responderUri']
 
-        # 5. Add "Student ID" question and set as Quiz
-        update_request_body = {
+        # 5. Update Form (Add Student ID & Enable Quiz Mode)
+        update_body = {
             'requests': [
-                {'createItem': {'item': {'title': 'รหัสนักเรียน (Student ID)',
-                                        'questionItem': {'question': {'required': True, 'textQuestion': {}}}},
-                                'location': {'index': 0}}},
-                {'updateFormInfo': {'info': {'description': f'สำหรับ {course.subject.name} ห้อง {course.classroom.name}\nรายการคะแนน: {item.name} ({item.max_score} คะแนน)'},
-                                    'updateMask': 'description'}},
-                {'updateSettings': {'settings': {'quizSettings': {'isQuiz': True}},
-                                    'updateMask': 'quizSettings.isQuiz'}}
+                {
+                    'createItem': {
+                        'item': {
+                            'title': 'รหัสนักเรียน (Student ID)',
+                            'questionItem': {
+                                'question': {
+                                    'required': True,
+                                    'textQuestion': {} 
+                                }
+                            }
+                        },
+                        'location': {'index': 0}
+                    }
+                },
+                {
+                    'updateSettings': {
+                        'settings': {'quizSettings': {'isQuiz': True}},
+                        'updateMask': 'quizSettings.isQuiz'
+                    }
+                }
             ]
         }
-        forms_service.forms().batchUpdate(formId=form_id, body=update_request_body).execute()
+        forms_service.forms().batchUpdate(formId=form_id, body=update_body).execute()
 
-        # 6. Create the Google Sheet to store responses
-        sheet_body = {'properties': {'title': f'[RESPONSES] {form_title}'}}
-        sheet_result = sheets_service.spreadsheets().create(body=sheet_body).execute()
-        sheet_id = sheet_result['spreadsheetId']
-        sheet_url = sheet_result['spreadsheetUrl']
-
-        # 7. Link Form to Sheet
-        link_request_body = {'requests': [{'createWatch': {'watch': {'target': {'spreadsheetId': sheet_id}, 'eventType': 'RESPONSES'}}}]}
-        # หมายเหตุ: การ Link Sheet นี้ใช้ API คนละตัวกับการตั้งค่า "Create spreadsheet" ในหน้า Form UI
-        # เราจะใช้ Apps Script trigger แทนการ link โดยตรง
-        # forms_service.forms().watches().create(formId=form_id, body=link_request_body).execute()
-        # --- [NEW] Set form destination to our new sheet ---
-        # link_sheet_body = { "requests": [ { "updateFormInfo": { "info": { "linkedSheetId": sheet_id }, "updateMask": "linkedSheetId" } } ] }
-        # forms_service.forms().batchUpdate(formId=form_id, body=link_sheet_body).execute()
-
-
-        # 8. Create and Install the Apps Script "Trigger" (The Spy)
-        # 8.1 Create a secure token for our webhook
-        webhook_token = jwt.encode(
-            {'type': 'graded_item', 'item_id': item.id, 'course_id': course.id, 'user_id': current_user.id}, # 👈 [FIX]
-            current_app.config['SECRET_KEY'],
-            algorithm='HS256'
-        )
-        webhook_url = url_for('teacher.google_form_submit_score', _external=True)
-
-        # 8.2 Define the Apps Script code
-        script_content = f"""
-function onFormSubmit(e) {{
-  var formResponse = e.response;
-  var itemResponses = formResponse.getItemResponses();
-  var studentId = '';
-  
-  // 1. [FIX] Find the Student ID by question title (MUCH safer)
-  for (var i = 0; i < itemResponses.length; i++) {{
-    // Check if title *includes* 'รหัสนักเรียน'
-    if (itemResponses[i].getQuestion().includes('รหัสนักเรียน')) {{ 
-      studentId = itemResponses[i].getResponse();
-      break;
-    }}
-  }}
-  // [END FIX]
-
-  // 2. Get the score
-  var score = formResponse.getGradableResponse().getScore();
-  
-  // 3. Prepare data to send to our app
-  var payload = {{
-    'token': '{webhook_token}',
-    'student_id': studentId,
-    'score': score,
-    'max_score': {item.max_score},
-    'form_id': '{form_id}',
-    'response_id': formResponse.getId()
-  }};
-  
-  var options = {{
-    'method' : 'post',
-    'contentType': 'application/json',
-    'payload' : JSON.stringify(payload)
-  }};
-  
-  // 4. Send the data to our app's webhook
-  try {{
-    UrlFetchApp.fetch('{webhook_url}', options);
-  }} catch (error) {{
-    Logger.log('Error sending score to EdHub: ' + error.toString());
-  }}
-}}
-
-// [THE FIX] This function installs the trigger
-function createOnSubmitTrigger() {{
-  var form = FormApp.openById('{form_id}');
-  ScriptApp.newTrigger('onFormSubmit')
-    .forForm(form)
-    .onFormSubmit()
-    .create();
-}}
-"""
-        script_manifest = {
-            "timeZone": "Asia/Bangkok",
-            "exceptionLogging": "STACKDRIVER",
-            "runtimeVersion": "V8"
-        }
-        
-        # 8.3 Create the script project
-        script_request_body = {
-            'title': f'EdHub Trigger for {form_title}',
-            #'parentId': sheet_id # [FIX] ผูก Script กับ Sheet
-        }
-        script_project = script_service.projects().create(body=script_request_body).execute()
-        script_id = script_project['scriptId']
-
-        # 8.4 Update the script content
-        script_files = [
-            {'name': 'Code', 'type': 'SERVER_JS', 'source': script_content},
-            {'name': 'appsscript', 'type': 'JSON', 'source': json.dumps(script_manifest)}
-        ]
-        script_service.projects().updateContent(
-            scriptId=script_id,
-            body={'files': script_files}
-        ).execute()
-        
-        # --- [FIX] 8.4b Create VERSION and Deployment (Essential for final API execution) ---
-        
-        # 1. Create a new Version (necessary before deployment)
-        version_body = {}
-        version_response = script_service.projects().versions().create(
-            scriptId=script_id, body=version_body
-        ).execute()
-        version_number = version_response['versionNumber']
-        
-        # 2. Create the Deployment using the new Version
-        deployment_body = {
-            'versionNumber': version_number, 
-            'manifestFileName': 'appsscript', 
-            'description': 'EdHub API Executable Deployment'
-        }
-        script_service.projects().deployments().create(
-            scriptId=script_id, body=deployment_body
-        ).execute()
-        # --- [END FIX] ---
-
-        # 8.5 Install the 'onFormSubmit' trigger with Retry Logic (This will now succeed)
-        import time
-        time.sleep(2) # Give Google a moment to propagate the new script
-        run_request_body = {
-            "function": "createOnSubmitTrigger",
-            "devMode": True  # [FIX] Force run on HEAD (draft) version
-        }
-        max_retries = 15
-        for attempt in range(max_retries):
-            try:
-                current_app.logger.info(f"Attempting to install trigger (Attempt {attempt + 1}/{max_retries})...")
-                # Wait a bit before each attempt to allow propagation
-                time.sleep(3) 
-                
-                script_service.scripts().run(
-                    scriptId=script_id,
-                    body=run_request_body
-                ).execute()
-                
-                current_app.logger.info("Trigger installed successfully.")
-                break # Success! Exit loop
-            except HttpError as e:
-                if e.resp.status == 404:
-                    current_app.logger.warning(f"Script not found yet (404). Retrying in 3 seconds...")
-                    if attempt == max_retries - 1:
-                        script_editor_url = f"[https://script.google.com/d/](https://script.google.com/d/){script_id}/edit"
-                        flash(f'การสร้าง Trigger ล้มเหลว (Error 404) กรุณาดำเนินการด้วยมือ: 1. เปิด Script Editor: {script_editor_url} 2. รันฟังก์ชัน "createOnSubmitTrigger" ด้วยมือ', 'danger')
-                        raise e # Raise if it's the last attempt
-                else:
-                    raise e # Raise other errors immediately
-
-        # 9. Save IDs to our Database
+        # 6. Save ID to Database
         item.google_form_id = form_id
-        item.google_sheet_id = sheet_id
         db.session.commit()
 
         return jsonify({
             'status': 'success',
-            'message': 'สร้าง Google Form และติดตั้ง Trigger สำเร็จ!',
-            'form_url': form_url,
-            'sheet_url': sheet_url
+            'message': 'Google Form created successfully (Ready for manual sync)!',
+            'form_url': form_url
         })
 
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error(f"Error creating Google Form for item {item_id}: {e}", exc_info=True)
-        # พยายามลบ Form ที่อาจสร้างค้างไว้
-        try:
-            if 'form_id' in locals():
-                forms_service.forms().delete(formId=form_id).execute()
-            if 'sheet_id' in locals():
-                sheets_service.spreadsheets().delete(spreadsheetId=sheet_id).execute() # (ระวัง: Sheet API ไม่มี delete)
-        except:
-            pass
-        return jsonify({'status': 'error', 'message': f'เกิดข้อผิดพลาด: {e}'}), 500
+        current_app.logger.error(f"Error creating form for item: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
-# --- [NEW] API: The "Factory" for creating Google Forms for EXAMS ---
+
 @bp.route('/api/course/<int:course_id>/create-google-form/<string:exam_type>', methods=['POST'])
 @login_required
 def create_google_form_for_exam(course_id, exam_type):
@@ -4951,199 +4803,149 @@ def create_google_form_for_exam(course_id, exam_type):
     if current_user not in course.teachers:
         abort(403)
     
-    exam_name = "สอบกลางภาค" if exam_type == 'midterm' else "สอบปลายภาค"
-    max_score = 0
-    if course.lesson_plan:
-         all_units = course.lesson_plan.learning_units
-         if exam_type == 'midterm':
-             max_score = sum(u.midterm_score or 0 for u in all_units)
-         else:
-             max_score = sum(u.final_score or 0 for u in all_units)
-
-    # 2. Check if already exists
+    # 2. Check Existing
     if (exam_type == 'midterm' and course.midterm_google_form_id) or \
        (exam_type == 'final' and course.final_google_form_id):
-        return jsonify({'status': 'error', 'message': f'This course is already linked to a Google Form for {exam_type}.'}), 400
+        return jsonify({'status': 'error', 'message': f'This course already has a Google Form for {exam_type}.'}), 400
 
-    # 3. Get and Refresh Credentials
+    # 3. Get Credentials
     creds = _get_google_creds(current_user)
     if not creds:
-        return jsonify({'status': 'error', 'message': 'ไม่สามารถยืนยันสิทธิ์ Google ได้ กรุณา Logout และ Login ด้วย Google ใหม่อีกครั้ง', 'reauth': True}), 401
+        return jsonify({'status': 'error', 'message': 'Google Authentication failed. Please Login with Google again.', 'reauth': True}), 401
 
     try:
-        # 4. Build API Services
+        # 4. Build Service
         forms_service = googleapiclient.discovery.build('forms', 'v1', credentials=creds, cache_discovery=False)
-        sheets_service = googleapiclient.discovery.build('sheets', 'v4', credentials=creds, cache_discovery=False)
-        script_service = googleapiclient.discovery.build('script', 'v1', credentials=creds, cache_discovery=False)
 
-        # 5. Create the Google Form
-        form_title = f"{course.subject.name} - {exam_name}"
+        # 5. Create Form
+        exam_name_display = "Midterm Exam" if exam_type == 'midterm' else "Final Exam"
+        form_title = f"{course.subject.name} - {exam_name_display}"
         form_body = {'info': {'title': form_title, 'documentTitle': form_title}}
         form_result = forms_service.forms().create(body=form_body).execute()
         form_id = form_result['formId']
         form_url = form_result['responderUri']
 
-        # 6. Add "Student ID" question and set as Quiz
-        update_request_body = {
+        # 6. Update Form (Add Student ID & Enable Quiz Mode)
+        update_body = {
             'requests': [
-                {'createItem': {'item': {'title': 'รหัสนักเรียน (Student ID)',
-                                        'questionItem': {'question': {'required': True, 'textQuestion': {}}}},
-                                'location': {'index': 0}}},
-                {'updateFormInfo': {'info': {'description': f'สำหรับ {course.subject.name} ห้อง {course.classroom.name}\nการสอบ: {exam_name} ({max_score} คะแนน)'},
-                                    'updateMask': 'description'}},
-                {'updateSettings': {'settings': {'quizSettings': {'isQuiz': True}},
-                                    'updateMask': 'quizSettings.isQuiz'}}
+                {
+                    'createItem': {
+                        'item': {
+                            'title': 'รหัสนักเรียน (Student ID)',
+                            'questionItem': {
+                                'question': {
+                                    'required': True,
+                                    'textQuestion': {} 
+                                }
+                            }
+                        },
+                        'location': {'index': 0}
+                    }
+                },
+                {
+                    'updateSettings': {
+                        'settings': {'quizSettings': {'isQuiz': True}},
+                        'updateMask': 'quizSettings.isQuiz'
+                    }
+                }
             ]
         }
-        forms_service.forms().batchUpdate(formId=form_id, body=update_request_body).execute()
+        forms_service.forms().batchUpdate(formId=form_id, body=update_body).execute()
 
-        # 7. Create the Google Sheet
-        sheet_body = {'properties': {'title': f'[RESPONSES] {form_title}'}}
-        sheet_result = sheets_service.spreadsheets().create(body=sheet_body).execute()
-        sheet_id = sheet_result['spreadsheetId']
-        sheet_url = sheet_result['spreadsheetUrl']
-
-        # 8. Link Form to Sheet
-        # link_sheet_body = { "requests": [ { "updateFormInfo": { "info": { "linkedSheetId": sheet_id }, "updateMask": "linkedSheetId" } } ] }
-        # forms_service.forms().batchUpdate(formId=form_id, body=link_sheet_body).execute()
-
-        # 9. Create and Install the Apps Script "Trigger"
-        # 9.1 Create a secure token (THIS IS THE KEY DIFFERENCE)
-        webhook_token = jwt.encode(
-            {'type': exam_type, 'course_id': course.id, 'user_id': current_user.id}, # 👈 [FIX] Payload for Exams
-            current_app.config['SECRET_KEY'],
-            algorithm='HS256'
-        )
-        webhook_url = url_for('teacher.google_form_submit_score', _external=True)
-
-        # 9.2 Define the (robust) Apps Script code
-        script_content = f"""
-function onFormSubmit(e) {{
-  var formResponse = e.response;
-  var itemResponses = formResponse.getItemResponses();
-  var studentId = '';
-  
-  // [FIX] Find the Student ID by question title
-  for (var i = 0; i < itemResponses.length; i++) {{
-    if (itemResponses[i].getQuestion().includes('รหัสนักเรียน')) {{
-      studentId = itemResponses[i].getResponse();
-      break;
-    }}
-  }}
-
-  var score = formResponse.getGradableResponse().getScore();
-  
-  var payload = {{
-    'token': '{webhook_token}',
-    'student_id': studentId,
-    'score': score,
-    'max_score': {max_score},
-    'form_id': '{form_id}',
-    'response_id': formResponse.getId()
-  }};
-  
-  var options = {{ 'method' : 'post', 'contentType': 'application/json', 'payload' : JSON.stringify(payload) }};
-  
-  try {{
-    UrlFetchApp.fetch('{webhook_url}', options);
-  }} catch (error) {{
-    Logger.log('Error sending score to EdHub: ' + error.toString());
-  }}
-}}
-
-// [THE FIX] This function installs the trigger
-function createOnSubmitTrigger() {{
-  var form = FormApp.openById('{form_id}');
-  ScriptApp.newTrigger('onFormSubmit')
-    .forForm(form)
-    .onFormSubmit()
-    .create();
-}}
-"""
-        script_manifest = {"timeZone": "Asia/Bangkok", "exceptionLogging": "STACKDRIVER", "runtimeVersion": "V8"}
-        
-        # 9.3 Create the script project
-        script_project = script_service.projects().create(
-            body={'title': f'EdHub Trigger for {form_title}'}
-        ).execute()
-        script_id = script_project['scriptId']
-
-        # 9.4 Update the script content
-        script_files = [
-            {'name': 'Code', 'type': 'SERVER_JS', 'source': script_content},
-            {'name': 'appsscript', 'type': 'JSON', 'source': json.dumps(script_manifest)}
-        ]
-        script_service.projects().updateContent(
-            scriptId=script_id, 
-            body={'files': script_files}
-        ).execute()
-        
-        # 1. Create a new Version (necessary before deployment)
-        version_body = {}
-        version_response = script_service.projects().versions().create(
-            scriptId=script_id, body=version_body
-        ).execute()
-        version_number = version_response['versionNumber']
-        
-        # 2. Create the Deployment using the new Version
-        deployment_body = {
-            'versionNumber': version_number, 
-            'manifestFileName': 'appsscript', 
-            'description': 'EdHub API Executable Deployment'
-        }
-        script_service.projects().deployments().create(
-            scriptId=script_id, body=deployment_body
-        ).execute()
-
-        # 9.5 Install the 'onFormSubmit' trigger by running the installer function
-        import time
-        time.sleep(2) # Give Google a moment to propagate the new script
-        run_request_body = {
-            "function": "createOnSubmitTrigger",
-            "devMode": True  # [FIX] Force run on HEAD (draft) version
-        }
-        max_retries = 15
-        for attempt in range(max_retries):
-            try:
-                current_app.logger.info(f"Attempting to install trigger (Attempt {attempt + 1}/{max_retries})...")
-                time.sleep(3) 
-                
-                script_service.scripts().run(
-                    scriptId=script_id,
-                    body=run_request_body
-                ).execute()
-                
-                current_app.logger.info("Trigger installed successfully.")
-                break 
-            except HttpError as e:
-                if e.resp.status == 404:
-                    current_app.logger.warning(f"Script not found yet (404). Retrying in 3 seconds...")
-                    if attempt == max_retries - 1:
-                        script_editor_url = f"[https://script.google.com/d/](https://script.google.com/d/){script_id}/edit"
-                        flash(f'การสร้าง Trigger ล้มเหลว (Error 404) กรุณาดำเนินการด้วยมือ: 1. เปิด Script Editor: {script_editor_url} 2. รันฟังก์ชัน "createOnSubmitTrigger" ด้วยมือ', 'danger')
-                        raise e 
-                else:
-                    raise e
-
-        # 10. Save IDs to *Course* Model
+        # 7. Save ID to Database
         if exam_type == 'midterm':
             course.midterm_google_form_id = form_id
-            course.midterm_google_sheet_id = sheet_id
-        else: # final
+        else:
             course.final_google_form_id = form_id
-            course.final_google_sheet_id = sheet_id
-            
         db.session.commit()
 
         return jsonify({
-            'status': 'success', 'message': 'สร้าง Google Form และติดตั้ง Trigger สำเร็จ!',
-            'form_url': form_url, 'sheet_url': sheet_url
+            'status': 'success',
+            'message': f'Google Form for {exam_type} created successfully!',
+            'form_url': form_url
         })
 
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error(f"Error creating Google Form for exam {exam_type} (Course {course_id}): {e}", exc_info=True)
-        return jsonify({'status': 'error', 'message': f'เกิดข้อผิดพลาด: {e}'}), 500
+        current_app.logger.error(f"Error creating exam form: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+# --- NEW ENDPOINT: Direct Pull Sync ---
+@bp.route('/api/sync-scores/item/<int:item_id>', methods=['POST'])
+@login_required
+def sync_scores_from_item_form(item_id):
+    item = GradedItem.query.get_or_404(item_id)
+    course = item.learning_unit.lesson_plan.courses[0]
+    
+    if current_user not in course.teachers:
+        abort(403)
+    if not item.google_form_id:
+        return jsonify({'status': 'error', 'message': 'No Google Form found for this item.'}), 404
+
+    creds = _get_google_creds(current_user)
+    if not creds:
+        return jsonify({'status': 'error', 'message': 'Authentication Error'}), 401
+
+    try:
+        service = googleapiclient.discovery.build('forms', 'v1', credentials=creds, cache_discovery=False)
+        
+        # 1. Get Responses from Google Form API
+        result = service.forms().responses().list(formId=item.google_form_id).execute()
+        responses = result.get('responses', [])
+        
+        if not responses:
+            return jsonify({'status': 'success', 'message': 'No responses found yet.', 'updated_count': 0})
+
+        # 2. Process Responses
+        updated_count = 0
+        for resp in responses:
+            answers = resp.get('answers', {})
+            student_id_val = None
+            score = None
+
+            # 2.1 Get Score (if quiz)
+            if 'totalScore' in resp:
+                score = float(resp['totalScore'])
+            
+            # 2.2 Find Student ID in answers
+            # Iterate through all answers to find the one that looks like a Student ID
+            for q_id, ans_obj in answers.items():
+                if 'textAnswers' in ans_obj:
+                     # Get the first answer value
+                     raw_val = ans_obj['textAnswers']['answers'][0]['value']
+                     val = raw_val.strip()
+                     # Heuristic: Is digit and length >= 4 (adjust based on your student ID format)
+                     if val.isdigit() and len(val) >= 4: 
+                         student_id_val = val
+                         break
+            
+            # 3. Update Database if valid data found
+            if student_id_val and score is not None:
+                student = Student.query.filter_by(student_id=student_id_val).first()
+                if student:
+                    # Find existing score or create new
+                    score_obj = Score.query.filter_by(student_id=student.id, graded_item_id=item.id).first()
+                    if not score_obj:
+                        score_obj = Score(student_id=student.id, graded_item_id=item.id)
+                        db.session.add(score_obj)
+                    
+                    # Update only if score differs
+                    if score_obj.score != score:
+                         score_obj.score = score
+                         updated_count += 1
+        
+        db.session.commit()
+        return jsonify({
+            'status': 'success', 
+            'message': f'Successfully synced scores for {updated_count} students.', 
+            'updated_count': updated_count
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Sync Error: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
     
 # --- [REVISED] API: The "Webhook" to receive ALL scores from Google ---
 @bp.route('/api/google-form/submit-score', methods=['POST'])
