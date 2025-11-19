@@ -1130,7 +1130,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         try {
             container.innerHTML = '<div class="d-flex justify-content-center p-5"><div class="spinner-border"></div></div>';
-            const response = await fetch(`/teacher/api/course/${courseId}/gradebook-data`); // Do not pass unitId here, the server should send ALL data
+            const response = await fetch(`/teacher/api/course/${courseId}/gradebook-data?classroom_id=${classroomId}`);
             if (!response.ok) throw new Error('ไม่สามารถโหลดข้อมูลคะแนนได้');
 
             const data = await response.json();
