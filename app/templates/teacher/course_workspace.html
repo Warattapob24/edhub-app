@@ -386,7 +386,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // -------------------------------------------
     function saveState() {
         try {
-            localStorage.setItem(`workspaceState-${planId}`, JSON.stringify(state));
+            // Use the planId to namespace the state, preventing conflicts across plans
+            localStorage.setItem(`workspaceState-${planId}`, JSON.stringify(state)); 
+            console.log("State saved:", state);
         } catch (e) {
             console.error("Could not save state to localStorage:", e);
         }
@@ -402,6 +404,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const unitLink = unitList.querySelector(`a[data-unit-id="${state.activeUnitId}"]`);
                 if (unitLink) unitLink.classList.add('active');
             }
+            console.log("State restored:", state);
         } catch (e) {
             console.error("Could not restore state from localStorage:", e);
         }
@@ -411,30 +414,41 @@ document.addEventListener('DOMContentLoaded', function() {
     // 3. CORE LOGIC & DYNAMIC CONTENT LOADING
     // -------------------------------------------
     function isUnitDependentTab(tabId) {
-        return !['attendance-tab', 'gradebook-tab'].includes(tabId);
+        // [FIXED] Gradebook is NOT unit dependent (it loads all data), 
+        // but it filters by the selected unit (state.activeUnitId)
+        return !['attendance-tab'].includes(tabId);
     }
 
     function setActiveUnit(unitId) {
-        if (!unitId || unitId === state.activeUnitId) return;
+        // unitId อาจเป็น string หรือ null
+        const newUnitId = unitId ? String(unitId) : null;
+        
+        // 1. ถ้า unit เดิมกับ unit ใหม่เหมือนกันและไม่ใช่ null ให้จบการทำงาน
+        if (newUnitId && newUnitId === state.activeUnitId) return;
+        
+        // 2. ถ้ากำลังดูตารางคะแนนอยู่ ให้กรองคอลัมน์ทันที
+        if (state.activeTabId === 'gradebook-tab') {
+            filterGradebookColumns(newUnitId);
+            setActiveUnitFilter(newUnitId);
+            // 3. อัปเดต State หลักทันทีและไม่ต้องโหลดเนื้อหาใหม่
+            state.activeUnitId = newUnitId;
+            saveState();
+            return;
+        }
 
-        // 1. อัปเดต State หลักทันทีที่ผู้ใช้เลือกหน่วย
-        state.activeUnitId = unitId;
-        saveState();
+        // 4. ถ้าไม่ใช่แท็บตารางคะแนน
+        
+        // อัปเดต State และ UI ของ Sidebar
+        state.activeUnitId = newUnitId;
+        saveState(); 
 
-        // 2. อัปเดต UI ของ Sidebar ให้แสดงผลว่าหน่วยไหนถูกเลือก
         document.querySelectorAll('#unitList a').forEach(a => {
-            a.classList.toggle('active', a.dataset.unitId === unitId);
+            a.classList.toggle('active', a.dataset.unitId === newUnitId);
         });
 
-        // 3. ตรวจสอบว่าแท็บปัจจุบันต้องใช้ข้อมูลหน่วยหรือไม่
+        // 5. โหลดเนื้อหาของแท็บปัจจุบันใหม่
         if (isUnitDependentTab(state.activeTabId)) {
-            // ถ้าใช่, โหลดเนื้อหาของแท็บนั้นใหม่สำหรับหน่วยที่เพิ่งเลือก
             loadTabContent(state.activeTabId);
-        } else if (state.activeTabId === 'gradebook-tab') {
-            // ✅ [CRITICAL FIX] ถ้ากำลังดูตารางคะแนนอยู่ ให้กรองคอลัมน์ทันที
-            // ไม่ต้องโหลดข้อมูลใหม่ทั้งหมด แค่ซ่อน/แสดงคอลัมน์ให้ตรงกับหน่วยที่เลือก
-            filterGradebookColumns(unitId);
-            setActiveUnitFilter(unitId); // ทำให้ปุ่ม filter ด้านบน (ถ้ามี) แสดงผลตรงกัน
         }
     }
 
@@ -443,24 +457,20 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!paneId) return;
 
         const targetPane = document.getElementById(paneId);
-        if (isUnitDependentTab(tabId) && !state.activeUnitId) {
-            const firstUnitLink = unitList.querySelector('a.list-group-item');
-            if (firstUnitLink) {
-                return setActiveUnit(firstUnitLink.dataset.unitId);
-            }
-            targetPane.innerHTML = `<div class="text-center text-muted py-5"><h4><i class="bi bi-collection"></i> กรุณาสร้างหน่วยการเรียนรู้ก่อน</h4></div>`;
-            return;
+        
+        // [FIXED] Logic for when no unit is created yet
+        if (tabId !== 'gradebook-tab' && tabId !== 'attendance-tab' && !state.activeUnitId) {
+             const firstUnitLink = unitList.querySelector('a.list-group-item');
+             if (firstUnitLink) {
+                 // Try setting the first unit as active
+                 return setActiveUnit(firstUnitLink.dataset.unitId);
+             }
+             // Display message if no units exist
+             targetPane.innerHTML = `<div class="text-center text-muted py-5"><h4><i class="bi bi-collection"></i> กรุณาสร้างหน่วยการเรียนรู้ก่อน</h4></div>`;
+             return;
         }
-
-        const tabEndpoints = {
-            'plan-tab':       `/teacher/api/units/${state.activeUnitId}/plan`,
-            'assessment-tab': `/teacher/api/units/${state.activeUnitId}/assessment-setup`,
-            'gradebook-tab':  `/teacher/api/plan/${planId}/gradebook-ui`,
-            'attendance-tab': `/teacher/api/plan/${planId}/attendance-overview`,
-            'reflection-tab': `/teacher/api/units/${state.activeUnitId}/reflection-tab`
-        };
-
-        const apiUrl = tabEndpoints[tabId];
+        
+        const apiUrl = getApiUrlForTab(tabId, state.activeUnitId, planId);
         if (!targetPane || !apiUrl) return;
 
         document.getElementById('initial-message')?.remove();
@@ -480,12 +490,31 @@ document.addEventListener('DOMContentLoaded', function() {
             };
             if (initializers[tabId]) initializers[tabId]();
 
+            // [CRITICAL FIX HOOK]: If we just loaded gradebook, make sure the filter runs.
+            if (tabId === 'gradebook-tab' && state.activeUnitId) {
+                 filterGradebookColumns(state.activeUnitId);
+                 setActiveUnitFilter(state.activeUnitId);
+            }
+
         } catch (error) {
             targetPane.innerHTML = `<div class="alert alert-danger">${error.message}</div>`;
         } finally {
             workspaceTabsContent.classList.remove('loading');
         }
     }
+    
+    // Helper to get API URL
+    function getApiUrlForTab(tabId, activeUnitId, planId) {
+         const endpoints = {
+             'plan-tab':       `/teacher/api/units/${activeUnitId}/plan`,
+             'assessment-tab': `/teacher/api/units/${activeUnitId}/assessment-setup`,
+             'gradebook-tab':  `/teacher/api/plan/${planId}/gradebook-ui`,
+             'attendance-tab': `/teacher/api/plan/${planId}/attendance-overview`,
+             'reflection-tab': `/teacher/api/units/${activeUnitId}/reflection-tab`
+         };
+         return endpoints[tabId];
+    }
+
 
     // -------------------------------------------
     // 4. TAB-SPECIFIC INITIALIZERS & LOGIC
@@ -493,6 +522,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // --- 4.1. Lesson Plan Tab ---    
     function initializeLessonPlanTab(unitId) {
+        // ... (Lesson Plan Tab initialization code remains the same) ...
         const hoursInput = workspaceTabsContent.querySelector('.learning-unit-hours-input');
         if (hoursInput) {
             // Update the central data store with the value loaded from the server
@@ -659,6 +689,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // --- 4.2. Assessment Setup Tab ---
     function initializeAssessmentSetupTab() {
+        // ... (Assessment Setup Tab initialization code remains the same) ...
         const assessmentContent = document.getElementById('assessment-content');
         if (!assessmentContent) {
              console.error("CRITICAL: Could not find #assessment-content element during initialization.");
@@ -759,7 +790,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (newClassroomId) {
                 // โดยจะส่ง "state.activeUnitId" (หน่วยที่เลือกไว้ล่าสุดจาก Sidebar)
                 // ไปให้ฟังก์ชัน fetchAndRenderGradebookTable ด้วยเสมอ
-                fetchAndRenderGradebookTable(classroomSelector, state.activeUnitId);
+                fetchAndRenderGradebookTable(classroomSelector); // Active unit ID is handled inside render
             } else {
                 // ถ้าไม่ได้เลือกห้องเรียน ให้แสดงข้อความว่าง
                 if(container) container.innerHTML = '<div class="text-center p-5 text-muted">กรุณาเลือกห้องเรียนเพื่อแสดงข้อมูล</div>';
@@ -783,6 +814,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // --- 4.4. Attendance Tab ---
     function initializeAttendanceTab() {
+        // ... (Attendance Tab initialization code remains the same) ...
         const classroomSelector = document.getElementById('attendance-classroom-selector');
         const container = document.getElementById('attendance-overview-container');
 
@@ -888,6 +920,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // --- 4.5. Reflection Tab ---
     function initializeReflectionTab() {
+        // ... (Reflection Tab initialization code remains the same) ...
         const wrapper = document.getElementById('reflection-wrapper');
         if (!wrapper) return;
 
@@ -1075,7 +1108,7 @@ document.addEventListener('DOMContentLoaded', function() {
         loadDashboardAndLogs();
     }
 
-/**
+    /**
      * [FINAL ROBUST VERSION with MutationObserver]
      * แก้ปัญหาคอลัมน์กระพริบแล้วหาย โดยใช้ MutationObserver
      * เพื่อให้แน่ใจว่าการกรองคอลัมน์ของเราเป็นคำสั่งสุดท้ายเสมอ
@@ -1097,7 +1130,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         try {
             container.innerHTML = '<div class="d-flex justify-content-center p-5"><div class="spinner-border"></div></div>';
-            const response = await fetch(`/teacher/api/course/${courseId}/gradebook-data?classroom_id=${classroomId}`);
+            const response = await fetch(`/teacher/api/course/${courseId}/gradebook-data`); // Do not pass unitId here, the server should send ALL data
             if (!response.ok) throw new Error('ไม่สามารถโหลดข้อมูลคะแนนได้');
 
             const data = await response.json();
@@ -1108,11 +1141,13 @@ document.addEventListener('DOMContentLoaded', function() {
             if (state.activeUnitId && availableUnitIds.includes(String(state.activeUnitId))) {
                 chosenUnitId = state.activeUnitId;
             } else if (availableUnitIds.length > 0) {
+                // [FIXED] If no previous unit, or the previous unit is gone, select the first unit
                 chosenUnitId = availableUnitIds[0];
                 state.activeUnitId = chosenUnitId;
                 saveState();
             } else {
-                chosenUnitId = 'all';
+                // If there are no units at all, the filter should show nothing.
+                chosenUnitId = null;
                 state.activeUnitId = null;
                 saveState();
             }
@@ -1121,8 +1156,10 @@ document.addEventListener('DOMContentLoaded', function() {
             renderGradebookTable(data, container, chosenUnitId);
 
             // 3. สั่งกรองคอลัมน์ครั้งแรกทันที (เพื่อให้แสดงผลเร็วที่สุด)
-            filterGradebookColumns(chosenUnitId);
-            setActiveUnitFilter(chosenUnitId);
+            if (chosenUnitId) {
+                filterGradebookColumns(chosenUnitId);
+                setActiveUnitFilter(chosenUnitId);
+            }
 
         } catch (error) {
             container.innerHTML = `<div class="alert alert-danger">${error.message}</div>`;
@@ -1435,15 +1472,10 @@ let finalColspan = 4;
                 select.value = initialValue;
             }
         });
-
-        const firstUnitId = data.units_data.length > 0 ? data.units_data[0].unit_id : null;
-
-        const idToShow = String(unitIdToSelect || firstUnitId || '');
-        if (idToShow) {
-            setTimeout(() => {
-                filterGradebookColumns(idToShow);
-                setActiveUnitFilter(idToShow);
-            }, 0);
+        
+        // [FIXED] Call filter function immediately
+        if (unitIdToSelect) {
+             filterGradebookColumns(unitIdToSelect);
         }
     }
 
@@ -2091,6 +2123,7 @@ let finalColspan = 4;
     }
 
     function updateStudentRowTotals(rowElement) {
+        // ... (updateStudentRowTotals logic remains the same) ...
         if (!rowElement) return;
 
         const table = rowElement.closest('table#gradebook-table');
@@ -2185,16 +2218,18 @@ let finalColspan = 4;
         const table = document.getElementById('gradebook-table');
         if (!table) return;
 
-        // ซ่อนทุกคอลัมน์ก่อน
+        // 1. Hide all unit-specific columns first
         table.querySelectorAll('.unit-column').forEach(col => {
             col.style.display = 'none';
         });
-
-        // แสดงเฉพาะหน่วยที่เลือก
-        const selector = `.unit-id-${unitId}`;
-        table.querySelectorAll(selector).forEach(col => {
-            col.style.display = 'table-cell';
-        });
+        
+        // 2. Show ONLY columns for the selected unit
+        if (unitId) {
+            const selector = `.unit-id-${unitId}`;
+            table.querySelectorAll(selector).forEach(col => {
+                col.style.display = 'table-cell';
+            });
+        }
     }
 
     /**
@@ -2215,6 +2250,7 @@ let finalColspan = 4;
         
     // --- Unit CRUD Functions ---
     async function handleUnitCreate(e) {
+        // ... (handleUnitCreate logic remains the same) ...
         e.preventDefault();
         const titleInput = this.querySelector('#unit-title-input');
         const title = titleInput ? titleInput.value.trim() : '';
@@ -2266,6 +2302,7 @@ let finalColspan = 4;
     }
 
     function handleUnitDelete(unitLink) {
+        // ... (handleUnitDelete logic remains the same) ...
         Swal.fire({
             title: 'ยืนยันการลบ',
             text: "คุณแน่ใจหรือไม่ว่าต้องการลบหน่วยนี้?",
@@ -2283,13 +2320,14 @@ let finalColspan = 4;
                         }
                     }).then(res => res.json()).then(data => {
                         if (data.status === 'success') {
-                            const wasActive = unitLink.dataset.unitId === activeUnitId;
+                            const wasActive = unitLink.dataset.unitId === state.activeUnitId; // Use state.activeUnitId
                             unitLink.remove();
                             if (wasActive) {
-                                activeUnitId = null;
+                                state.activeUnitId = null; // Update state
+                                saveState();
                                 workspaceTabsContent.innerHTML = `<div id="initial-message" class="text-center text-muted py-5">
-                                    <h4><i class="bi bi-arrow-left-circle"></i> Please select a learning unit</h4>
-                                    <p>Select a unit from the menu on the left to get started.</p>
+                                    <h4><i class="bi bi-arrow-left-circle"></i> กรุณาเลือกหน่วยการเรียนรู้</h4>
+                                    <p>เลือกหน่วยการเรียนรู้จากเมนูด้านซ้ายเพื่อเริ่มทำงาน</p>
                                 </div>`;
                             }
                             if (unitList.children.length === 0) {
@@ -2316,6 +2354,7 @@ let finalColspan = 4;
     // =================================================================
 
     async function loadAndRenderGradebookSummary(courseId, classroomId) {
+        // ... (loadAndRenderGradebookSummary logic remains the same) ...
         const container = document.getElementById('gradebook-container');
         if (!container) return;
         container.innerHTML = '<div class="text-center p-5"><div class="spinner-border"></div><p class="mt-2">กำลังโหลด...</p></div>';
@@ -2331,6 +2370,7 @@ let finalColspan = 4;
     }
 
     function renderSummaryTable(data, container) {
+        // ... (renderSummaryTable logic remains the same) ...
         if (!data.students || data.students.length === 0) {
             container.innerHTML = '<div class="text-center p-5 text-muted">ไม่พบข้อมูลนักเรียน</div>';
             return;
@@ -2372,6 +2412,7 @@ let finalColspan = 4;
     }
 
     function recalculateSummaryRow(row) {
+        // ... (recalculateSummaryRow logic remains the same) ...
         const table = row.closest('table');
         if(!table) return;
         const grandMax = parseFloat(table.dataset.grandMax);
@@ -2401,6 +2442,7 @@ let finalColspan = 4;
      * @returns {string} - โค้ด HTML ของป้ายแจ้งเตือน
      */
     function renderAlerts(alerts) {
+        // ... (renderAlerts logic remains the same) ...
         if (!alerts || Object.keys(alerts).length === 0) return '';
 
         let badgesHtml = '';
@@ -2421,12 +2463,14 @@ let finalColspan = 4;
     // =======================================================
 
     function createStudentElement(enrollment) {
+        // ... (createStudentElement logic remains the same) ...
         return `<div class="list-group-item list-group-item-action p-2" data-id="${enrollment.id}">
                     <small>${enrollment.roll_number}. ${enrollment.name}</small>
                 </div>`;
     }
 
     function initializeAllSortables() {
+        // ... (initializeAllSortables logic remains the same) ...
         sortableInstances.forEach(s => s.destroy());
         sortableInstances = [];
         document.querySelectorAll('#groupManagementModal .list-group').forEach(list =>
@@ -2440,6 +2484,7 @@ let finalColspan = 4;
 
     // --- Core Functions ---
     function renderGroupManagerUI(groups = []) {
+        // ... (renderGroupManagerUI logic remains the same) ...
         const ungroupedList = document.getElementById('ungrouped-students-list');
         const groupsContainer = document.getElementById('groups-container');
         ungroupedList.innerHTML = '';
@@ -2465,6 +2510,7 @@ let finalColspan = 4;
     }
 
     async function saveGroups() {
+        // ... (saveGroups logic remains the same) ...
         const saveBtn = document.getElementById('save-groups-btn');
         const classroomSelector = document.getElementById('classroom-selector');
         const courseId = classroomSelector.options[classroomSelector.selectedIndex].dataset.courseId;
@@ -2492,7 +2538,7 @@ let finalColspan = 4;
             Swal.fire('สำเร็จ!', 'บันทึกการจัดกลุ่มเรียบร้อยแล้ว', 'success');
             groupModal.hide();
             // Reload gradebook to reflect new group assignments
-            fetchAndRenderGradebookTable(classroomSelector, state.activeUnitId);
+            fetchAndRenderGradebookTable(classroomSelector); // Active unit ID is not needed here
         } catch (error) {
             Swal.fire('ผิดพลาด!', 'ไม่สามารถบันทึกข้อมูลได้', 'error');
         } finally {
@@ -2505,6 +2551,7 @@ let finalColspan = 4;
     // 🧩 ฟังก์ชันสร้างกล่องกลุ่มหลัก (คงไว้เพียงตัวเดียว)
     //--------------------------------------------------------
     function createGroupCard(group, membersHtml = '') {
+        // ... (createGroupCard logic remains the same) ...
         return `
             <div class="card mb-3 group-card" data-group-id="${group.id}">
                 <div class="card-header p-2 d-flex justify-content-between align-items-center">
@@ -2513,7 +2560,6 @@ let finalColspan = 4;
                         <i class="bi bi-trash"></i>
                     </button>
                 </div>
-                <!-- ใช้ class group-dropzone ให้เหมือนกันทุกจุด -->
                 <div class="card-body p-2 list-group group-dropzone" style="min-height: 50px;">
                     ${membersHtml}
                 </div>
@@ -2526,6 +2572,7 @@ let finalColspan = 4;
      * ป้องกันการผูก Event ซ้ำซ้อน และรับประกันว่าปุ่มจะทำงานได้เสมอ
      */
     function bindGroupManagerEvents() {
+        // ... (bindGroupManagerEvents logic remains the same) ...
         const modalEl = document.getElementById('groupManagementModal');
         // ป้องกันการผูก Event ซ้ำ โดยการเพิ่ม 'data-events-bound' flag
         if (modalEl.dataset.eventsBound) {
@@ -2610,6 +2657,7 @@ let finalColspan = 4;
      * เปิด Modal จัดการกลุ่ม, โหลดข้อมูล, และเรียกใช้ฟังก์ชันผูก Event
      */
     async function openGroupManager() {
+        // ... (openGroupManager logic remains the same) ...
         const classroomSelector = document.getElementById('classroom-selector');
         if (!classroomSelector || !classroomSelector.value) {
             return Swal.fire('ข้อผิดพลาด', 'กรุณาเลือกห้องเรียนก่อนจัดการกลุ่ม', 'warning');
@@ -2656,6 +2704,7 @@ let finalColspan = 4;
      * Auto-generates groups and distributes students.
      */
     async function autoGenerateGroups() {
+        // ... (autoGenerateGroups logic remains the same) ...
         const {
             value: numGroups
         } = await Swal.fire({
@@ -2706,6 +2755,7 @@ let finalColspan = 4;
      * Handles changes for exam scores, syncs UI, saves data, and updates summary.
      */
     async function handleExamScoreChange(e) {
+        // ... (handleExamScoreChange logic remains the same) ...
         // Find the parent elements for the specific unit being edited
         const unitContainer = e.target.closest('.accordion-collapse');
         if (!unitContainer) return;
@@ -2769,6 +2819,7 @@ let finalColspan = 4;
     }
 
     function renderSelectedIndicators(tomSelectInstance) {
+        // ... (renderSelectedIndicators logic remains the same) ...
         const displayArea = document.getElementById('indicator-display-area');
         if (!displayArea) return;
         displayArea.innerHTML = '';
@@ -2837,6 +2888,7 @@ let finalColspan = 4;
     }
 
     function setupGradedItemModal() {
+        // ... (setupGradedItemModal logic remains the same) ...
         const modalEl = document.getElementById('addAssessmentItemModal');
         if (!modalEl) {
              console.error("Modal #addAssessmentItemModal not found!");
@@ -3001,6 +3053,7 @@ let finalColspan = 4;
     }
 
     function setupRatioTargetModal() {
+        // ... (setupRatioTargetModal logic remains the same) ...
         const modalEl = document.getElementById('ratioTargetModal');
         if (!modalEl) return;
         const ratioModal = new bootstrap.Modal(modalEl);
@@ -3078,6 +3131,7 @@ let finalColspan = 4;
 
         // --- 3. Helper function to get badge style ---
         function getStatusBadge(status) {
+            // ... (getStatusBadge logic remains the same) ...
             switch (status) {
                 case 'PRESENT': return { text: '✔', class: 'bg-success' };
                 case 'LATE':    return { text: 'ส', class: 'bg-warning text-dark' };
@@ -3089,6 +3143,7 @@ let finalColspan = 4;
 
         // --- 4. Helper function to update a badge's appearance ---
         function updateBadge(badgeElement, newStatus) {
+            // ... (updateBadge logic remains the same) ...
             const style = getStatusBadge(newStatus);
             badgeElement.dataset.status = newStatus;
             badgeElement.className = `badge rounded-pill fs-6 attendance-badge ${style.class}`;
@@ -3097,6 +3152,7 @@ let finalColspan = 4;
 
         // --- 5. Main Table Rendering Function (NEW) ---            
         function renderAttendanceTable(data, container) {
+            // ... (renderAttendanceTable logic remains the same) ...
             if (!data.students || data.students.length === 0) {
                 container.innerHTML = '<p class="text-center text-muted">ไม่พบข้อมูลนักเรียน</p>';
                 return;
@@ -3151,6 +3207,7 @@ let finalColspan = 4;
         }
     
     function renderSubUnit(subUnit) {
+        // ... (renderSubUnit logic remains the same) ...
         return `
         <div class="card mb-2" id="subunit-card-${subUnit.id}">
             <div class="card-body p-3">
@@ -3177,6 +3234,7 @@ let finalColspan = 4;
     }
 
     async function handleAddSubUnit(button) {
+        // ... (handleAddSubUnit logic remains the same) ...
         const unitId = button.dataset.unitId;
         const response = await fetch(`/teacher/api/units/${unitId}/sub_units`, {
             method: 'POST',
@@ -3200,6 +3258,7 @@ let finalColspan = 4;
     }
 
     async function handleEditSubUnit(button) {
+        // ... (handleEditSubUnit logic remains the same) ...
         const subUnitId = button.dataset.subunitId;
 
         const [subUnitResponse, gradedItemsResponse] = await Promise.all([
@@ -3242,6 +3301,7 @@ let finalColspan = 4;
     }
 
     async function handleSubUnitFormSubmit(e) {
+        // ... (handleSubUnitFormSubmit logic remains the same) ...
         e.preventDefault();
         const subUnitId = this.querySelector('#modal-subunit-id').value;
         const data = {
@@ -3281,6 +3341,7 @@ let finalColspan = 4;
     }
 
     function handleDeleteSubUnit(button) {
+        // ... (handleDeleteSubUnit logic remains the same) ...
         const subUnitId = button.dataset.subunitId;
         Swal.fire({
             title: 'ยืนยันการลบ',
@@ -3316,6 +3377,7 @@ let finalColspan = 4;
     }
 
     async function handlePlanFormSubmit(e) {
+        // ... (handlePlanFormSubmit logic remains the same) ...
         e.preventDefault();
         const form = e.target;
         const data = Object.fromEntries(new FormData(form).entries());
@@ -3349,6 +3411,7 @@ let finalColspan = 4;
     }
 
     function handleGradedItemDelete(itemId) {
+        // ... (handleGradedItemDelete logic remains the same) ...
         Swal.fire({
             title: 'ยืนยันการลบ',
             text: "คุณแน่ใจหรือไม่ว่าต้องการลบรายการนี้?",
@@ -3378,6 +3441,7 @@ let finalColspan = 4;
     }
 
     async function openTopicSelectionModal(button) {
+        // ... (openTopicSelectionModal logic remains the same) ...
         const templateId = button.dataset.templateId;
         const modalEl = document.getElementById('selectTopicsModal');
         modalEl.querySelector('.modal-title').textContent = `เลือกหัวข้อ: ${button.dataset.templateName}`;
@@ -3414,7 +3478,7 @@ let finalColspan = 4;
                         loadTabContent(state.activeTabId);
                     });
             } else {
-                Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถบันทึกการตั้งค่าได้', 'error');
+                Swal.fire('เกิดข้อผิดพลาด', result.message || 'ไม่สามารถบันทึกการตั้งค่าได้', 'error');
             }
         };
         const newSaveBtn = saveBtn.cloneNode(true);
@@ -3446,6 +3510,7 @@ let finalColspan = 4;
      * NEW: Calculates and displays cumulative periods for ALL units.
      */
     function updateCumulativePeriods() {
+        // ... (updateCumulativePeriods logic remains the same) ...
         let cumulativePeriods = 0;
         // Iterate through the unit list on the left to maintain correct order
         document.querySelectorAll('#unitList a').forEach(link => {
@@ -3471,6 +3536,7 @@ let finalColspan = 4;
     }
 
     const saveQualitativeScoresBulk = (scoresData) => {
+        // ... (saveQualitativeScoresBulk logic remains the same) ...
         const courseId = table.dataset.courseId;
         fetch('/teacher/api/qualitative-score/save-bulk', {
                 method: 'POST',
@@ -3492,6 +3558,7 @@ let finalColspan = 4;
     };
 
     const saveExamScoresBulk = (scoresData) => {
+        // ... (saveExamScoresBulk logic remains the same) ...
         const courseId = table.dataset.courseId;
         fetch('/teacher/api/enrollments/save-exam-score-bulk', {
                 method: 'POST',
@@ -3520,6 +3587,7 @@ let finalColspan = 4;
      * @returns {Array} - รายการ elements ทั้งหมดที่มีการเปลี่ยนแปลง
      */
     const propagateMainToSubs = (mainSelect, scope) => {
+        // ... (propagateMainToSubs logic remains the same) ...
         const mainId = mainSelect.dataset.topicId;
         const newValue = mainSelect.value;
         const changes = [mainSelect];
@@ -3550,6 +3618,7 @@ let finalColspan = 4;
      * @returns {Array} - รายการ elements ทั้งหมดที่มีการเปลี่ยนแปลง
      */
     const recalculateMainFromSubs = (subSelect, scope) => {
+        // ... (recalculateMainFromSubs logic remains the same) ...
         const mainId = subSelect.dataset.mainId;
         const changes = [subSelect];
         const rows = (scope === 'table') ? Array.from(table.querySelectorAll('tr[data-student-id]')) : [subSelect.closest('tr')];
@@ -3594,6 +3663,7 @@ let finalColspan = 4;
     // --- UI UPDATE & CALCULATION FUNCTIONS ---
 
     async function loadRatioTarget() {
+        // ... (loadRatioTarget logic remains the same) ...
         try {
             const resp = await fetch(`/teacher/api/plan/${planId}/ratio-target`);
             if (resp.ok) {
@@ -3629,6 +3699,7 @@ let finalColspan = 4;
      * - Uses clearer colors for the difference display (Warning/Danger).
      */
     function updateSummaryPanel() {
+        // ... (updateSummaryPanel logic remains the same) ...
         // --- [REVISED] Get assessmentContent element *inside* the function ---
         const container = document.getElementById('assessment-content');
         if (!container) {
@@ -3708,6 +3779,7 @@ let finalColspan = 4;
     }
 
     function buildCheckboxTree(nodes, selectedIds, isSublevel = false) {
+        // ... (buildCheckboxTree logic remains the same) ...
         let html = `<ul class="${isSublevel ? 'list-unstyled ps-4' : 'list-unstyled'}">`;
         nodes.forEach(node => {
             const isChecked = selectedIds.includes(node.id);
@@ -3721,6 +3793,7 @@ let finalColspan = 4;
     }
 
     function setupCheckboxLogic(container) {
+        // ... (setupCheckboxLogic logic remains the same) ...
         container.addEventListener('change', e => {
             if (e.target.type !== 'checkbox') return;
             const checkbox = e.target;
@@ -3748,6 +3821,7 @@ let finalColspan = 4;
      * @returns {string} The most frequent value, or an empty string if none.
      */
     function calculateMode(arr) {
+        // ... (calculateMode logic remains the same) ...
         if (!arr || arr.length === 0) return '';
         const frequency = arr.reduce((acc, val) => {
             if (val !== '') { // Only count non-empty values
@@ -3768,8 +3842,9 @@ let finalColspan = 4;
     }
     const saveSettingsBtn = document.getElementById('savePlanSettingsBtn');
 
-    // --- เพิ่มฟังก์ชันสำหรับ khởi tạo TomSelect ---
+    // --- เพิ่มฟังก์ชันสำหรับ khởi tổ TomSelect ---
     function initializeRoomSelector() {
+        // ... (initializeRoomSelector logic remains the same) ...
         const roomSelector = document.getElementById('room-select');
         if (!roomSelector) return;
 
@@ -3859,6 +3934,7 @@ let finalColspan = 4;
 
     // --- เรียกใช้ฟังก์ชันตอน Modal เปิด ---
     document.getElementById('planSettingsModal').addEventListener('show.bs.modal', function() {
+        // ... (planSettingsModal show.bs.modal logic remains the same) ...
         initializeRoomSelector();
 
         // ดึงข้อมูลเงื่อนไขและบันทึกมาแสดง
@@ -3884,6 +3960,7 @@ let finalColspan = 4;
     // อัปเดต Event Listener ของปุ่ม Save
     if (saveSettingsBtn) {
         saveSettingsBtn.addEventListener('click', function() {
+            // ... (saveSettingsBtn click logic remains the same) ...
             const statusEl = document.getElementById('settings-save-status');
             statusEl.textContent = 'กำลังบันทึก...';
             this.disabled = true;
@@ -3969,13 +4046,17 @@ let finalColspan = 4;
     // จะไม่โหลดซ้ำเมื่อคลิกที่แท็บเดิมที่เปิดอยู่แล้ว
     workspaceTabs.addEventListener('show.bs.tab', (event) => {
         const newTabId = event.target.id;
-
-        // ตรวจสอบว่าแท็บที่กำลังจะแสดง เป็นแท็บใหม่ที่ไม่ใช่แท็บเดิมหรือไม่
+        
+        // 1. [FIXED] Save the tab state immediately
         if (state.activeTabId !== newTabId) {
-            // ถ้าเป็นแท็บใหม่จริงๆ ให้ทำการอัปเดต State และโหลดเนื้อหา
-            state.activeTabId = newTabId;
-            saveState();
+             state.activeTabId = newTabId;
+             saveState();
+        }
 
+        // 2. โหลดเนื้อหาใหม่
+        // ตรวจสอบว่าแท็บที่กำลังจะแสดง เป็นแท็บใหม่ที่ไม่ใช่แท็บเดิมหรือไม่
+        if (event.relatedTarget.id !== newTabId) { // Check if the target is different from the previous one
+            
             // เรียกโหลดเนื้อหาของแท็บใหม่
             Promise.resolve(loadTabContent(newTabId)).then(() => {
                 // ส่วนนี้คือ Logic การคืนค่าห้องเรียนที่เลือกไว้ (ถูกต้องอยู่แล้ว)
@@ -4004,10 +4085,19 @@ let finalColspan = 4;
             // เมื่อ DOM พร้อมแล้ว จึงค่อยเรียกฟังก์ชันคำนวณ
             loadRatioTarget().then(updateSummaryPanel);
         }
+        
+        // [FIXED] ถ้าเพิ่งแสดง Gradebook ให้ตรวจสอบและกรองคอลัมน์ทันที
+        if (event.target.getAttribute('href') === '#gradebook-content') {
+            console.log('Gradebook tab shown, applying unit filter.');
+            if (state.activeUnitId) {
+                 filterGradebookColumns(state.activeUnitId);
+                 setActiveUnitFilter(state.activeUnitId); // Ensure sidebar is highlighted
+            }
+        }
     });    
 
     workspaceTabsContent.addEventListener('click', (e) => {
-        
+        // ... (workspaceTabsContent click logic remains the same) ...
         const deleteItemBtn = e.target.closest('.delete-graded-item-btn');
         if (deleteItemBtn) handleGradedItemDelete(deleteItemBtn.dataset.itemId);
         
@@ -4041,17 +4131,19 @@ let finalColspan = 4;
                 if(manageGroupsBtn) manageGroupsBtn.disabled = false;
                 // *** THE CRITICAL FIX IS HERE ***
                 // เรียกใช้ฟังก์ชันที่ถูกต้องสำหรับหน้านี้
-                loadAndRenderGradebookSummary(courseId, classroomId);
+                fetchAndRenderGradebookTable(selector); // Call the main gradebook render
             } else {
                 if(manageGroupsBtn) manageGroupsBtn.disabled = true;
                 const container = document.getElementById('gradebook-container');
                 if(container) container.innerHTML = '<div class="text-center p-5 text-muted">กรุณาเลือกห้องเรียนเพื่อแสดงข้อมูล</div>';
             }
         }
+        // --- Gradebook Table: Exam/Score Inputs Change (Handled by input event and debounce in setupGradebookEventListeners) ---
     });
 
     // --- เพิ่ม Event Listener สำหรับการกรอกชั่วโมง ---
     workspaceTabsContent.addEventListener('input', e => {
+        // ... (workspaceTabsContent input event logic remains the same) ...
         if (e.target.classList.contains('learning-unit-hours-input')) {
             const unitId = e.target.dataset.unitId;
             const periods = parseInt(e.target.value, 10) || 0;
@@ -4096,6 +4188,7 @@ let finalColspan = 4;
 
     // This button might be loaded dynamically, so we handle it via delegation on a static parent
     document.body.addEventListener('click', function(event) {
+        // ... (submit-for-review-btn logic remains the same) ...
         // ดักจับการคลิกปุ่ม "ส่งเพื่อรับการตรวจสอบ" ไม่ว่ามันจะถูกโหลดมาเมื่อไหร่ก็ตาม
         if (event.target.id === 'submit-for-review-btn') {
             Swal.fire({
@@ -4145,6 +4238,7 @@ let finalColspan = 4;
 
     // 4. Unit Creation Form
     document.getElementById('unitFormModal').addEventListener('show.bs.modal', (event) => {
+        // ... (unitFormModal show.bs.modal logic remains the same) ...
         const button = event.relatedTarget;
         if (button && button.dataset.bsAction === 'add') {
             const modal = event.currentTarget;
@@ -4155,6 +4249,7 @@ let finalColspan = 4;
     });
 
     document.getElementById('groupManagementModal').addEventListener('click', async (e) => {
+        // ... (groupManagementModal click logic remains the same) ...
         const target = e.target;
         const groupsContainer = document.getElementById('groups-container');
 
@@ -4302,27 +4397,28 @@ let finalColspan = 4;
         console.log("Unit to load:", unitLinkToLoad ? unitLinkToLoad.dataset.unitId : "None");
 
         // Step 5: ถ้ามี Unit, ให้ setActiveUnit และโหลดเนื้อหา
+        // เราจะโหลดเนื้อหาของแท็บที่ควรจะ active เสมอ
+        // การเรียก setActiveUnit(unitId) จะถูกย้ายไปอยู่ในการเรียก loadTabContent
+        // เพื่อป้องกันการโหลด 2 ครั้งซ้อนกัน (โหลด unit ก่อน, โหลด tab ซ้ำ)
+        
         if (unitLinkToLoad) {
-             setActiveUnit(unitLinkToLoad.dataset.unitId); // Set the active unit FIRST
-             // Then explicitly load the content for the tab we just made active
-             console.log("Explicitly loading content for tab:", state.activeTabId);
-             loadTabContent(state.activeTabId);
-        } else {
-            console.log("No units found, loading content for:", state.activeTabId);
-            loadTabContent(state.activeTabId); // Load even if no unit
+            // Highlight the unit immediately
+            unitLinkToLoad.classList.add('active');
         }
+
+        console.log("Explicitly loading content for tab:", state.activeTabId);
+        loadTabContent(state.activeTabId).then(() => {
+            // After tab content loaded, if it's unit dependent, ensure active unit is set
+            if (unitLinkToLoad && isUnitDependentTab(state.activeTabId)) {
+                // This ensures the content is loaded, and a secondary check updates state/filter if needed
+                setActiveUnit(unitLinkToLoad.dataset.unitId); 
+            }
+        });
     }
 
     // --- FINAL INITIALIZATION CALL ---
     // Ensure all other functions are defined above this point
     initializeWorkspace();
-    restoreState();
-    
-    // Load the content for the restored or default tab
-    const activeTabEl = document.getElementById(state.activeTabId) || document.querySelector('#workspaceTabs .nav-link');
-    if (activeTabEl) {
-        new bootstrap.Tab(activeTabEl).show();
-    }
     
 });
 </script>
