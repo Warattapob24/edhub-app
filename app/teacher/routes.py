@@ -4715,11 +4715,6 @@ def copy_attendance_between_entries():
         current_app.logger.error(f"Error copying attendance: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
     
-# FILE: app/teacher/routes.py
-
-# ... (Imports should be correct from previous context, ensuring Score is imported) ...
-from app.models import Score # Ensure Score is imported
-
 @bp.route('/api/graded-item/<int:item_id>/create-google-form', methods=['POST'])
 @login_required
 def create_google_form_for_item(item_id):
@@ -4739,12 +4734,17 @@ def create_google_form_for_item(item_id):
         # 1. Fetch School Name
         school_name_setting = Setting.query.filter_by(key='school_name').first()
         school_name = school_name_setting.value if school_name_setting else "โรงเรียน......................."
-
+        
         forms_service = googleapiclient.discovery.build('forms', 'v1', credentials=creds, cache_discovery=False)
 
-        # 2. Create Form with Professional Header
+        # Logic to extract Grade Level (e.g., "ม.3/1" -> "ม.3") [NEW]
+        classroom_full = course.classroom.name
+        grade_level_str = classroom_full.split('/')[0] if '/' in classroom_full else classroom_full
+        
+        # 2. Create Form with GENERIC Header
+        # [MODIFIED] Use generic name
         form_title = f"{item.name} - {course.subject.subject_code}"
-        document_title = f"[EdHub] {item.name} - {course.classroom.name}"
+        document_title = f"[EdHub] {item.name} ({course.subject.subject_code})"
         
         form_body = {
             'info': {
@@ -4762,7 +4762,8 @@ def create_google_form_for_item(item_id):
                 {
                     'updateFormInfo': {
                         'info': {
-                            'description': f"{school_name}\nรายวิชา: {course.subject.name} ({course.subject.subject_code})\nชั้นเรียน: {course.classroom.name}\nครูผู้สอน: {current_user.full_name}"
+                            # [MODIFIED] Use grade_level_str
+                            'description': f"{school_name}\nรายวิชา: {course.subject.name} ({course.subject.subject_code})\nระดับชั้น: {grade_level_str}\nครูผู้สอน: {current_user.full_name}"
                         },
                         'updateMask': 'description'
                     }
@@ -4783,7 +4784,7 @@ def create_google_form_for_item(item_id):
                         'location': {'index': 0}
                     }
                 },
-                # Q2: Name - Surname
+                # Q2, Q3, Q4 remain the same for student usability, relying on Q1 for sync.
                 {
                     'createItem': {
                         'item': {
@@ -4798,7 +4799,6 @@ def create_google_form_for_item(item_id):
                         'location': {'index': 1}
                     }
                 },
-                # Q3: Seat Number
                 {
                     'createItem': {
                         'item': {
@@ -4813,7 +4813,6 @@ def create_google_form_for_item(item_id):
                         'location': {'index': 2}
                     }
                 },
-                # Q4: Class/Room (Pre-filled description)
                 {
                     'createItem': {
                         'item': {
@@ -4827,6 +4826,13 @@ def create_google_form_for_item(item_id):
                             }
                         },
                         'location': {'index': 3}
+                    }
+                },
+                # Enable Quiz Settings
+                {
+                    'updateSettings': {
+                        'settings': {'quizSettings': {'isQuiz': True}},
+                        'updateMask': 'quizSettings.isQuiz'
                     }
                 }
             ]
@@ -4876,9 +4882,14 @@ def create_google_form_for_exam(course_id, exam_type):
         exam_name_th = "สอบกลางภาค" if exam_type == 'midterm' else "สอบปลายภาค"
         forms_service = googleapiclient.discovery.build('forms', 'v1', credentials=creds, cache_discovery=False)
 
-        # 2. Create Form
+        # Logic to extract Grade Level [NEW]
+        classroom_full = course.classroom.name
+        grade_level_str = classroom_full.split('/')[0] if '/' in classroom_full else classroom_full
+
+        # 2. Create Form with GENERIC Header
+        # [MODIFIED] Use generic name
         form_title = f"{exam_name_th} - {course.subject.subject_code}"
-        document_title = f"[EdHub] {exam_name_th} - {course.classroom.name}"
+        document_title = f"[EdHub] {exam_name_th} ({course.subject.subject_code})"
         
         form_body = {
             'info': {
@@ -4896,12 +4907,13 @@ def create_google_form_for_exam(course_id, exam_type):
                 {
                     'updateFormInfo': {
                         'info': {
-                            'description': f"{school_name}\nการทดสอบ: {exam_name_th}\nรายวิชา: {course.subject.name} ({course.subject.subject_code})\nชั้นเรียน: {course.classroom.name}\nครูผู้สอน: {current_user.full_name}"
+                            # [MODIFIED] Use grade_level_str
+                            'description': f"{school_name}\nการทดสอบ: {exam_name_th}\nรายวิชา: {course.subject.name} ({course.subject.subject_code})\nระดับชั้น: {grade_level_str}\nครูผู้สอน: {current_user.full_name}"
                         },
                         'updateMask': 'description'
                     }
                 },
-                # Standard Fields (ID, Name, Seat, Class)
+                # Standard Fields (Q1-Q4) remain for student usability
                 {
                     'createItem': {
                         'item': {'title': 'รหัสนักเรียน (Student ID)', 'description': 'กรุณากรอกเฉพาะตัวเลข', 'questionItem': {'question': {'required': True, 'textQuestion': {}}}},
@@ -4924,6 +4936,13 @@ def create_google_form_for_exam(course_id, exam_type):
                     'createItem': {
                         'item': {'title': 'ชั้น / ห้อง', 'description': f'{course.classroom.name}', 'questionItem': {'question': {'required': True, 'textQuestion': {}}}},
                         'location': {'index': 3}
+                    }
+                },
+                # Enable Quiz Settings
+                {
+                    'updateSettings': {
+                        'settings': {'quizSettings': {'isQuiz': True}},
+                        'updateMask': 'quizSettings.isQuiz'
                     }
                 }
             ]
@@ -5092,76 +5111,3 @@ def sync_scores_from_exam_form(course_id, exam_type):
         current_app.logger.error(f"Exam Sync Error: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
         
-# --- [REVISED] API: The "Webhook" to receive ALL scores from Google ---
-@bp.route('/api/google-form/submit-score', methods=['POST'])
-def google_form_submit_score():
-    data = request.get_json()
-    token = data.get('token')
-    
-    if not token:
-        current_app.logger.warning("Google Webhook received NO TOKEN.")
-        abort(401)
-
-    try:
-        # 1. Decode the token to identify the item AND TYPE
-        payload = jwt.decode(token, current_app.config['SECRET_KEY'], algorithms=['HS256'])
-        score_type = payload.get('type') # 👈 [NEW] 'graded_item', 'midterm', or 'final'
-        course_id = payload['course_id']
-        
-        # 2. Get data from Google
-        student_id_str = data.get('student_id')
-        score_value = data.get('score')
-        score_float = float(score_value) if score_value is not None else None
-
-        if not student_id_str or score_value is None:
-            current_app.logger.warning(f"Webhook (Type: {score_type}): Missing student_id or score.")
-            return jsonify({'status': 'error', 'message': 'Missing student_id or score'}), 400
-
-        # 3. Find the student in our DB
-        student = Student.query.filter_by(student_id=student_id_str).first()
-        if not student:
-            current_app.logger.error(f"Webhook (Type: {score_type}): Student ID '{student_id_str}' NOT FOUND.")
-            return jsonify({'status': 'error', 'message': 'Student ID not found'}), 404
-
-        # 4. --- [NEW] Smart Upsert Logic ---
-        if score_type == 'graded_item':
-            item_id = payload['item_id']
-            score_obj = Score.query.filter_by(student_id=student.id, graded_item_id=item_id).first()
-            if score_obj:
-                score_obj.score = score_float
-            else:
-                score_obj = Score(student_id=student.id, graded_item_id=item_id, score=score_float)
-                db.session.add(score_obj)
-            log_message = f"Webhook SUCCESS: Saved GradedItem score {score_float} for Student {student.id} on Item {item_id}."
-
-        elif score_type in ['midterm', 'final']:
-            grade_obj = CourseGrade.query.filter_by(student_id=student.id, course_id=course_id).first()
-            if not grade_obj:
-                grade_obj = CourseGrade(student_id=student.id, course_id=course_id)
-                db.session.add(grade_obj)
-            
-            if score_type == 'midterm':
-                grade_obj.midterm_score = score_float
-                log_message = f"Webhook SUCCESS: Saved Midterm score {score_float} for Student {student.id} on Course {course_id}."
-            else: # final
-                grade_obj.final_score = score_float
-                log_message = f"Webhook SUCCESS: Saved Final score {score_float} for Student {student.id} on Course {course_id}."
-        
-        else:
-            current_app.logger.error(f"Webhook: Unknown score type '{score_type}' in token.")
-            return jsonify({'status': 'error', 'message': 'Unknown score type'}), 400
-        
-        db.session.commit()
-        current_app.logger.info(log_message)
-        return jsonify({'status': 'success'})
-
-    except jwt.ExpiredSignatureError:
-        current_app.logger.error("Google Webhook: Expired token.")
-        abort(401)
-    except jwt.InvalidTokenError:
-        current_app.logger.error("Google Webhook: Invalid token.")
-        abort(401)
-    except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Error in google_form_submit_score: {e}", exc_info=True)
-        return jsonify({'status': 'error', 'message': str(e)}), 500
