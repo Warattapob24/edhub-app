@@ -314,9 +314,12 @@
             <div class="mb-3"> 
                 <label for="gradedItemSelect" class="form-label">เลือกรายการให้คะแนน:</label>
                 <select class="form-select" id="gradedItemSelect">
-                    <option value="" selected>-- เลือกรายการ --</option>
+                    <option value="">-- เลือกรายการ --</option>
                     {% for item in graded_items %}
-                    <option value="{{ item.id }}">{{ item.name }} ({{ item.max_score }} คะแนน)</option>
+                    <option value="{{ item.id }}" 
+                            {% if default_item_id and item.id == default_item_id %}selected{% endif %}>
+                        {{ item.learning_unit.title }} : {{ item.name }} ({{ item.max_score }} คะแนน)
+                    </option>
                     {% endfor %}
                 </select>
             </div>

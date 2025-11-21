@@ -4244,13 +4244,23 @@ def mobile_entry(entry_id):
     
     # --- 5. [FIXED] ดึงข้อมูลคะแนนเก็บ (Graded Item) จาก "หน่วยแม่" ---
     graded_items = []
-    if parent_unit:
-        # Load all graded items from the PARENT unit
-        parent_with_items = LearningUnit.query.options(
-            selectinload(LearningUnit.graded_items)
-        ).get(parent_unit.id)
-        graded_items = parent_with_items.graded_items if parent_with_items else []
-    
+    default_item_id = None
+
+    if lesson_plan:
+        # 1. Fetch ALL items for the dropdown
+        graded_items = GradedItem.query.join(LearningUnit).filter(
+            LearningUnit.lesson_plan_id == lesson_plan.id
+        ).options(
+            joinedload(GradedItem.learning_unit)
+        ).order_by(LearningUnit.sequence, GradedItem.id).all()
+        
+        # 2. Identify the default item (The first item belonging to the current parent_unit)
+        if parent_unit:
+            for item in graded_items:
+                if item.learning_unit_id == parent_unit.id:
+                    default_item_id = item.id
+                    break # Pick the first one found for this unit
+
     existing_scores_list = Score.query.filter(
         Score.graded_item_id.in_([item.id for item in graded_items]),
         Score.student_id.in_([e.student_id for e in enrollments]) # 👈 [FIX] ใช้ student_ids
@@ -4445,6 +4455,7 @@ def mobile_entry(entry_id):
                            enrollments=enrollments,
                            attendance_records=attendance_records,
                            graded_items=graded_items, 
+                           default_item_id=default_item_id,
                            scores=scores,
                            date_iso=date_iso,
                            attendance_date=attendance_date,
