@@ -654,6 +654,10 @@
                 if (e.target.classList.contains('score-input')) {
                     handleScoreChange(e.target);
                 }
+                if (gradedItemSelect.value) {
+                // Dispatch change event to trigger the listener above
+                gradedItemSelect.dispatchEvent(new Event('change'));
+                }
             });
         }
         
